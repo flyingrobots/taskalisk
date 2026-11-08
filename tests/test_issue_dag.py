@@ -1,39 +1,45 @@
-"""Offline tests for issue_dag_snapshot.py. Run: python3 -m unittest discover -s tests"""
+"""Offline tests for issue_dag_snapshot.py (frontmatter model issue-dag/1).
+
+Run: python3 -m unittest discover -s tests
+"""
 import json, os, pathlib, shutil, subprocess, sys, tempfile, unittest
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "skills" / "issue-dag" / "scripts" / "issue_dag_snapshot.py"
 FAKE_GH = pathlib.Path(__file__).resolve().parent / "fake_gh.py"
 HOME = "flyingrobots/geordi"
-HOUSE_BODY = "# Feature\n\n```text\nDo it.\n```\n\n" + "\n\n".join(f"## {i}. Section" for i in range(1, 10))
+ECHO = "flyingrobots/echo"
+BUNNY = "flyingrobots/bunny"
 
 
-def issue(i, title, state="open", labels=(), body=HOUSE_BODY):
-    return {"id": i, "title": title, "state": state, "labels": list(labels), "body": body, "state_reason": None}
+def fm(id_, kind="task", type_="feature", blocked_by=(), children=None, extra=""):
+    lines = [".dag: issue-dag/1", f".id: {id_}", f".kind: {kind}"]
+    if kind == "task":
+        lines += [f".type: {type_}", ".blocked_by: [" + ", ".join(blocked_by) + "]"]
+    if children is not None:
+        lines.append(".children: [" + ", ".join(children) + "]")
+    if extra:
+        lines.append(extra)
+    lines.append("area: notes are free")
+    return "```yaml\n" + "\n".join(lines) + "\n```\n\n# Feature\n\nBody text.\n"
 
 
-def single_repo_state():
-    return {"home": HOME,
-            "issues": {f"{HOME}#1": issue(101, "One"), f"{HOME}#2": issue(102, "Two"), f"{HOME}#3": issue(103, "Three")},
-            "blocked_by": {f"{HOME}#2": [f"{HOME}#1"], f"{HOME}#3": [f"{HOME}#2"]}}
+def issue(i, title, body, state="open", reason=None):
+    return {"id": i, "title": title, "state": state, "labels": [], "body": body, "state_reason": reason}
 
 
-def cross_repo_state():
-    return {"home": HOME,
+def plan_state():
+    """Home roadmap #9 with children in three repositories; echo#6 blocks nothing at home."""
+    return {"home": HOME, "blocked_by": {},
             "issues": {
-                f"{HOME}#1": issue(101, "Home one"),
-                f"{HOME}#2": issue(102, "Home two"),
-                f"{HOME}#110": issue(110, "Home 110"),
-                f"{HOME}#9": issue(109, "Container", labels=["type:goalpost"]),
-                "flyingrobots/echo#5": issue(5005, "Echo five"),
-                "flyingrobots/bunny#110": issue(9110, "Bunny 110"),
-                "flyingrobots/bunny#7": issue(9007, "Bunny seven, closed", state="closed"),
-            },
-            "blocked_by": {
-                f"{HOME}#1": ["flyingrobots/echo#5"],
-                f"{HOME}#2": [f"{HOME}#1"],
-                f"{HOME}#110": ["flyingrobots/bunny#110"],
-                "flyingrobots/echo#5": ["flyingrobots/bunny#7"],
+                f"{HOME}#9": issue(109, "Roadmap", fm("#9", kind="container", children=["#1", "#2", f"{ECHO}#5", f"{ECHO}#6", "#110"])),
+                f"{HOME}#1": issue(101, "Home one", fm("#1", blocked_by=[f"{ECHO}#5"])),
+                f"{HOME}#2": issue(102, "Home two", fm("#2", blocked_by=["#1"])),
+                f"{HOME}#110": issue(110, "Home 110", fm("#110", blocked_by=[f"{BUNNY}#110"])),
+                f"{ECHO}#5": issue(5005, "Echo five", fm(f"{ECHO}#5", blocked_by=[f"{BUNNY}#7"])),
+                f"{ECHO}#6": issue(5006, "Echo six", fm(f"{ECHO}#6", blocked_by=["#5"])),
+                f"{BUNNY}#110": issue(9110, "Bunny 110, no frontmatter", "Plain body."),
+                f"{BUNNY}#7": issue(9007, "Bunny seven, closed", fm(f"{BUNNY}#7"), state="closed", reason="completed"),
             }}
 
 
@@ -53,110 +59,208 @@ class Harness(unittest.TestCase):
 
     def run_dag(self, state, *args):
         self.state.write_text(json.dumps(state))
-        env = dict(os.environ, PATH=f"{self.bin}{os.pathsep}{os.environ['PATH']}",
-                   FAKE_GH_STATE=str(self.state), FAKE_GH_LOG=str(self.log))
-        p = subprocess.run([sys.executable, str(SCRIPT), "--repo", str(self.repo), *args],
-                           capture_output=True, text=True, env=env)
-        return p
+        env = dict(os.environ, PATH=f"{self.bin}{os.pathsep}{os.environ['PATH']}", FAKE_GH_STATE=str(self.state), FAKE_GH_LOG=str(self.log))
+        return subprocess.run([sys.executable, str(SCRIPT), "--repo", str(self.repo), *args], capture_output=True, text=True, env=env)
+
+    def current(self):
+        return json.loads(self.state.read_text())
 
     def calls(self):
         return [json.loads(line) for line in self.log.read_text().splitlines() if line.strip()]
 
-    def json_out(self, p):
+    def out(self, p):
         try:
             return json.loads(p.stdout)
         except json.JSONDecodeError:
             self.fail(f"not JSON (exit {p.returncode}): {p.stdout[:400]} {p.stderr[:400]}")
 
     @staticmethod
-    def node_ids(result):
-        return sorted(n["id"] for items in result["waves"].values() for n in items)
+    def ids(r):
+        return sorted(n["id"] for items in r["waves"].values() for n in items)
+
+    @staticmethod
+    def node(r, nid):
+        return next(n for items in r["waves"].values() for n in items if n["id"] == nid)
 
 
-class SingleRepoBehavior(Harness):
-    def test_home_ids_stay_bare(self):
-        p = self.run_dag(single_repo_state(), "--from-github")
-        r = self.json_out(p)
-        self.assertEqual(p.returncode, 0, r)
-        self.assertEqual(self.node_ids(r), ["#1", "#2", "#3"])
-        self.assertEqual(r["metrics"]["critical_path"], ["#1", "#2", "#3"])
-
-    def test_verify_dag_spec(self):
+class Parsing(Harness):
+    def test_verify_dag_spec_still_works(self):
         spec = self.tmp / "dag.json"
         spec.write_text(json.dumps({"nodes": {"#1": {"title": "a"}, "#2": {"title": "b", "depends_on": ["#1"]}}}))
         p = subprocess.run([sys.executable, str(SCRIPT), "--verify-dag", str(spec)], capture_output=True, text=True)
         self.assertEqual(p.returncode, 0, p.stdout)
-        self.assertEqual(self.json_out(p)["metrics"]["critical_path"], ["#1", "#2"])
+        self.assertEqual(self.out(p)["metrics"]["critical_path"], ["#1", "#2"])
 
 
-class CrossRepo(Harness):
-    def test_blockers_are_queried_in_their_own_repository(self):
-        p = self.run_dag(cross_repo_state(), "--from-github")
-        r = self.json_out(p)
+class Discovery(Harness):
+    def test_cross_repo_closure_from_frontmatter(self):
+        p = self.run_dag(plan_state(), "--from-github", "--root", "#9")
+        r = self.out(p)
         self.assertEqual(p.returncode, 0, r)
-        paths = [c[-1] if c[0] == "api" and "--paginate" in c else None for c in self.calls()]
-        self.assertIn("repos/flyingrobots/echo/issues/5/dependencies/blocked_by", paths)
-        self.assertNotIn(f"repos/{HOME}/issues/5/dependencies/blocked_by", paths)
-        self.assertIn("flyingrobots/echo#5", self.node_ids(r))
+        self.assertEqual(self.ids(r), ["#1", "#110", "#2", f"{BUNNY}#110", f"{ECHO}#5", f"{ECHO}#6"])
+
+    def test_other_repo_card_that_blocks_nothing_at_home_is_found_through_children(self):
+        r = self.out(self.run_dag(plan_state(), "--from-github", "--root", "#9"))
+        self.assertEqual(self.node(r, f"{ECHO}#6")["open_parents"], [f"{ECHO}#5"])
+
+    def test_relative_refs_resolve_in_the_holding_repository(self):
+        r = self.out(self.run_dag(plan_state(), "--from-github", "--root", "#9"))
+        self.assertIn(f"{ECHO}#6", self.node(r, f"{ECHO}#5")["directly_unlocks"])
 
     def test_same_number_in_two_repositories_stays_two_nodes(self):
-        r = self.json_out(self.run_dag(cross_repo_state(), "--from-github"))
-        ids = self.node_ids(r)
+        ids = self.ids(self.out(self.run_dag(plan_state(), "--from-github", "--root", "#9")))
         self.assertIn("#110", ids)
-        self.assertIn("flyingrobots/bunny#110", ids)
+        self.assertIn(f"{BUNNY}#110", ids)
 
-    def test_closed_cross_repo_blocker_is_a_completed_parent(self):
-        r = self.json_out(self.run_dag(cross_repo_state(), "--from-github"))
-        echo = next(n for items in r["waves"].values() for n in items if n["id"] == "flyingrobots/echo#5")
-        self.assertEqual(echo["completed_parents"], ["flyingrobots/bunny#7"])
-        self.assertEqual(r["metrics"]["critical_path"], ["flyingrobots/echo#5", "#1", "#2"])
+    def test_closed_issue_is_a_completed_parent(self):
+        r = self.out(self.run_dag(plan_state(), "--from-github", "--root", "#9"))
+        self.assertEqual(self.node(r, f"{ECHO}#5")["completed_parents"], [f"{BUNNY}#7"])
+        self.assertEqual(r["metrics"]["critical_path"], [f"{ECHO}#5", "#1", "#2"])
 
-    def test_containers_stay_excluded(self):
-        r = self.json_out(self.run_dag(cross_repo_state(), "--from-github"))
-        self.assertNotIn("#9", self.node_ids(r))
+    def test_referenced_issue_without_frontmatter_is_an_opaque_blocker(self):
+        r = self.out(self.run_dag(plan_state(), "--from-github", "--root", "#9"))
+        self.assertEqual([o["id"] for o in r["source"]["opaque_nodes"]], [f"{BUNNY}#110"])
+        self.assertNotIn(f"{BUNNY}#110", [b["id"] for b in r["conflict_free_frontier_batch"]])
+        self.assertEqual(self.node(r, "#110")["open_parents"], [f"{BUNNY}#110"])
 
-    def test_add_edge_from_another_repository(self):
-        state = cross_repo_state()
-        state["blocked_by"][f"{HOME}#2"] = []
-        p = self.run_dag(state, "--from-github", "--add-edge", "flyingrobots/echo#5->#2")
-        r = self.json_out(p)
-        self.assertEqual(p.returncode, 0, r)
-        self.assertEqual(r["mutation"]["parent"], "flyingrobots/echo#5")
-        self.assertEqual(r["mutation"]["child"], "#2")
-        calls = self.calls()
-        self.assertIn(["api", "repos/flyingrobots/echo/issues/5", "--jq", ".id"], calls)
-        self.assertIn(["api", "-X", "POST", f"repos/{HOME}/issues/2/dependencies/blocked_by", "-F", "issue_id=5005"], calls)
+    def test_containers_are_excluded_and_reported(self):
+        r = self.out(self.run_dag(plan_state(), "--from-github", "--root", "#9"))
+        self.assertNotIn("#9", self.ids(r))
+        self.assertEqual([c["id"] for c in r["source"]["containers_excluded"]], ["#9"])
 
-    def test_add_edge_to_another_repository(self):
-        state = cross_repo_state()
-        p = self.run_dag(state, "--from-github", "--add-edge", "#110->flyingrobots/echo#5")
+    def test_home_issue_without_frontmatter_is_listed_not_a_node(self):
+        state = plan_state()
+        state["issues"][f"{HOME}#40"] = issue(140, "Legacy", "No frontmatter here.")
+        r = self.out(self.run_dag(state, "--from-github"))
+        self.assertEqual([u["id"] for u in r["source"]["unmodeled_open_issues"]], ["#40"])
+        self.assertNotIn("#40", self.ids(r))
+
+    def test_labels_are_ignored(self):
+        state = plan_state()
+        state["issues"][f"{HOME}#1"]["labels"] = ["type:goalpost", "milestone", "lock:docs/"]
+        r = self.out(self.run_dag(state, "--from-github", "--root", "#9"))
+        self.assertIn("#1", self.ids(r))
+        self.assertEqual(self.node(r, "#1")["holds"], [])
+
+
+class Validation(Harness):
+    def assert_violation(self, body, needle):
+        state = plan_state()
+        state["issues"][f"{HOME}#1"]["body"] = body
+        p = self.run_dag(state, "--from-github", "--root", "#9")
+        r = self.out(p)
+        self.assertEqual(p.returncode, 1, r)
+        self.assertTrue(any(needle in v for v in r["frontmatter"]["violations"].get("#1", [])), r["frontmatter"])
+
+    def test_unknown_dot_key_fails(self):
+        self.assert_violation(fm("#1", extra=".blockedby: [#2]"), "unknown key .blockedby")
+
+    def test_copied_frontmatter_with_wrong_id_fails(self):
+        self.assert_violation(fm("#2", blocked_by=[f"{ECHO}#5"]), "does not name this issue")
+
+    def test_task_without_blocked_by_fails(self):
+        self.assert_violation("```yaml\n.dag: issue-dag/1\n.id: #1\n.kind: task\n.type: feature\n```\n", "needs .blocked_by")
+
+    def test_container_as_blocker_fails(self):
+        self.assert_violation(fm("#1", blocked_by=["#9"]), "names container #9")
+
+    def test_unparseable_line_fails(self):
+        self.assert_violation(fm("#1", extra="  nested:\n    - x"), "not 'key: value'")
+
+    def test_large_size_is_a_warning_only(self):
+        state = plan_state()
+        state["issues"][f"{HOME}#1"]["body"] = fm("#1", blocked_by=[f"{ECHO}#5"], extra=".size_hours: 12")
+        p = self.run_dag(state, "--from-github", "--root", "#9")
         self.assertEqual(p.returncode, 0, p.stdout)
-        self.assertIn(["api", "-X", "POST", "repos/flyingrobots/echo/issues/5/dependencies/blocked_by", "-F", "issue_id=110"], self.calls())
+        self.assertIn("#1", self.out(p)["frontmatter"]["warnings"])
 
-    def test_cross_repo_cycle_is_rolled_back(self):
-        p = self.run_dag(cross_repo_state(), "--from-github", "--add-edge", "#1->flyingrobots/echo#5")
-        r = self.json_out(p)
+
+class Resources(Harness):
+    def frontier_state(self, extra_a, extra_b):
+        return {"home": HOME, "blocked_by": {}, "issues": {
+            f"{HOME}#1": issue(101, "A", fm("#1", extra=extra_a)),
+            f"{HOME}#2": issue(102, "B", fm("#2", extra=extra_b))}}
+
+    def batch(self, state, *args):
+        return [b["id"] for b in self.out(self.run_dag(state, "--from-github", *args))["conflict_free_frontier_batch"]]
+
+    def test_no_resources_means_full_parallelism(self):
+        self.assertEqual(sorted(self.batch(self.frontier_state("", ""))), ["#1", "#2"])
+
+    def test_overlapping_holds_conflict(self):
+        self.assertEqual(len(self.batch(self.frontier_state(".holds: [host/docker/w/]", ".holds: [host/docker/w/cache]"))), 1)
+
+    def test_unknown_semaphore_capacity_is_exclusive(self):
+        state = self.frontier_state(".meters: [gpu]", ".meters: [gpu]")
+        r = self.out(self.run_dag(state, "--from-github"))
+        self.assertEqual(len(r["conflict_free_frontier_batch"]), 1)
+        self.assertEqual(r["semaphores_with_unknown_capacity_treated_as_1"], ["gpu"])
+
+    def test_declared_semaphore_capacity_allows_parallel_slots(self):
+        state = self.frontier_state(".meters: [gpu]", ".meters: [gpu]")
+        self.assertEqual(len(self.batch(state, "--sem-capacity", "gpu=2")), 2)
+
+    def test_multi_slot_meter_respects_capacity(self):
+        state = self.frontier_state(".meters: [gpu*2]", ".meters: [gpu]")
+        self.assertEqual(len(self.batch(state, "--sem-capacity", "gpu=2")), 1)
+
+
+class Mutation(Harness):
+    def test_add_edge_rewrites_only_the_blocked_by_line(self):
+        state = plan_state()
+        before = state["issues"][f"{HOME}#2"]["body"]
+        p = self.run_dag(state, "--from-github", "--root", "#9", "--add-edge", f"{ECHO}#6->#2")
+        r = self.out(p)
+        self.assertEqual(p.returncode, 0, r)
+        after = self.current()["issues"][f"{HOME}#2"]["body"]
+        self.assertEqual(after, before.replace(".blocked_by: [#1]", f".blocked_by: [#1, {ECHO}#6]"))
+        self.assertEqual(r["mutation"]["parent"], f"{ECHO}#6")
+
+    def test_edge_into_another_repository_uses_relative_form_there(self):
+        state = plan_state()
+        p = self.run_dag(state, "--from-github", "--root", "#9", "--add-edge", f"{ECHO}#5->{ECHO}#6")
+        self.assertEqual(p.returncode, 0, p.stdout)
+        self.assertIn(".blocked_by: [#5]", self.current()["issues"][f"{ECHO}#6"]["body"])
+
+    def test_cycle_restores_the_original_body(self):
+        state = plan_state()
+        before = state["issues"][f"{ECHO}#5"]["body"]
+        p = self.run_dag(state, "--from-github", "--root", "#9", "--add-edge", f"#2->{ECHO}#5")
+        r = self.out(p)
         self.assertEqual(p.returncode, 1, r)
         self.assertTrue(r["mutation"]["rolled_back"])
-        self.assertIn(["api", "-X", "DELETE", "repos/flyingrobots/echo/issues/5/dependencies/blocked_by/101"], self.calls())
-        self.assertNotIn(f"{HOME}#1", json.loads(self.state.read_text())["blocked_by"]["flyingrobots/echo#5"])
+        self.assertEqual(self.current()["issues"][f"{ECHO}#5"]["body"], before)
+
+    def test_remove_edge(self):
+        p = self.run_dag(plan_state(), "--from-github", "--root", "#9", "--remove-edge", "#1->#2")
+        self.assertEqual(p.returncode, 0, p.stdout)
+        self.assertIn(".blocked_by: []", self.current()["issues"][f"{HOME}#2"]["body"])
 
     def test_owner_is_required_for_another_repository(self):
-        p = self.run_dag(cross_repo_state(), "--from-github", "--add-edge", "echo#5->#2")
+        p = self.run_dag(plan_state(), "--from-github", "--add-edge", "echo#5->#2")
         self.assertEqual(p.returncode, 1)
         self.assertIn("Invalid edge syntax", p.stdout)
 
-    def test_roadmap_renders_qualified_ids(self):
-        p = self.run_dag(cross_repo_state(), "--from-github", "--emit-roadmap")
-        self.assertEqual(p.returncode, 0, p.stdout[-600:])
-        self.assertIn("flyingrobots/echo#5", p.stdout)
+    def test_edit_refuses_a_child_without_frontmatter(self):
+        p = self.run_dag(plan_state(), "--from-github", "--add-edge", f"#1->{BUNNY}#110")
+        self.assertEqual(p.returncode, 1, p.stdout)
+        self.assertEqual(self.current()["issues"][f"{BUNNY}#110"]["body"], "Plain body.")
 
-    def test_missing_repository_url_fails_closed(self):
-        state = cross_repo_state()
-        state["strip_repository_url"] = True
-        p = self.run_dag(state, "--from-github")
-        self.assertEqual(p.returncode, 2, p.stdout)
-        self.assertIn("no parseable repository_url", p.stdout)
+
+class Mirror(Harness):
+    def test_relationship_drift_is_reported(self):
+        state = plan_state()
+        state["blocked_by"] = {f"{HOME}#2": [f"{HOME}#1"], f"{HOME}#1": [f"{BUNNY}#110"]}
+        r = self.out(self.run_dag(state, "--from-github", "--root", "#9", "--compare-relationships"))
+        d = r["relationship_drift"]
+        self.assertIn(f"{ECHO}#5 -> #1", d["only_in_frontmatter"])
+        self.assertIn(f"{BUNNY}#110 -> #1", d["only_in_github"])
+        self.assertNotIn("#1 -> #2", d["only_in_frontmatter"])
+
+    def test_roadmap_renders(self):
+        p = self.run_dag(plan_state(), "--from-github", "--root", "#9", "--emit-roadmap")
+        self.assertEqual(p.returncode, 0, p.stdout[-600:])
+        self.assertIn(f"{ECHO}#6", p.stdout)
 
 
 if __name__ == "__main__":

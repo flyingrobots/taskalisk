@@ -61,6 +61,10 @@ def main(argv):
     if key not in state["issues"]:
         fail("gh: Not Found (HTTP 404)")
     if not m.group(3):
+        if method == "PATCH":
+            payload = json.loads(sys.stdin.read())
+            state["issues"][key]["body"] = payload["body"]
+            save(state); print("{}"); return
         if "--jq" in args and args[args.index("--jq") + 1] == ".id":
             print(state["issues"][key]["id"]); return
         print(json.dumps(issue_obj(state, key))); return
