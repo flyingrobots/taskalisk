@@ -1,0 +1,335 @@
+# Threat model and security policy
+
+**Status**: Accepted on 2026-11-08. Covers the compiler as built and the
+executor as planned in flyingrobots/taskalisk#9, #10, #13, #14 and #15, as if
+all of them were implemented.
+
+The policy sections ("must", "never") are binding on the script, on
+`SKILL.md`, and on every executor issue. A control marked *implemented* has a
+test. A control marked *planned* names the issue that must implement it; that
+issue is not done until the control has a test.
+
+## 1. The execution path
+
+1. **Compile.** The script lists the open issues of the home repository, fetches
+   every issue their frontmatter references (across repositories), and builds
+   the DAG from `.blocked_by`.
+2. **Rank and batch.** Open tasks with zero open blockers form the frontier. An
+   open PR that closes an issue marks the task *in flight* (+1000 priority).
+   `.holds` and `.meters` shape a conflict-free batch.
+3. **Select** (planned, #9). The executor takes the batch minus in-flight work.
+4. **Prompt** (planned, #10). The executor builds a prompt from the issue body,
+   the closed blockers and their PRs, the repository's agent instructions, the
+   branch state and CI.
+5. **Run** (planned, #13). A coding agent from the operator's settings runs on
+   the operator's machine with the operator's `gh` credentials. It pushes a
+   branch and opens a draft PR.
+6. **Resume** (planned, #15). A draft PR without a live lease is "stalled"; the
+   executor checks out its branch and continues it.
+7. **Gate and merge** (planned, #14). Predicates from the operator's settings
+   decide whether the PR merges; with `merge = true` the executor merges.
+
+Every step after 2 turns text that came from GitHub into actions on the
+operator's machine and in the operator's repositories.
+
+## 2. Assets
+
+| Asset | Why it matters |
+| --- | --- |
+| `main` of every repository in the closure | The executor produces merges. |
+| The operator's machine | Agents run as the operator's user. Checkouts run hooks. |
+| The operator's GitHub credentials | Agents call `gh` with them. |
+| Graph integrity (edges, ranking, in-flight state) | Decides what runs first and what never runs. |
+| Planner availability | The compiler fails closed; a forced failure stops planning. |
+| Tracked outputs (`ROADMAP.md`) | Rendered in public repositories. |
+
+## 3. Actors
+
+| Actor | Can, on a public repository | Cannot |
+| --- | --- | --- |
+| Anonymous GitHub user | Open issues; edit their own issue body; comment anywhere; open PRs from a fork with `Closes owner/repo#N`; submit a PR review, including `APPROVED`; create a repository under any free name (slug squatting) | Label; edit others' bodies; set native relationships; push branches |
+| Triage collaborator | All of the above plus labels and native relationships | Push |
+| Write collaborator | Push branches; edit any issue body; open same-repository PRs | Change protected branches without review, if a ruleset says so |
+| GitHub App or bot | Comment; review; set checks | Act outside its installation permissions |
+| The coding agent | Everything the operator's credentials and machine allow | Tell instructions from data on its own |
+| The operator | Settings, flags, keys | — |
+| Network attacker | Only by breaking TLS; then also `git fetch` | — |
+
+The agent is a confused deputy: it has the operator's authority and reads
+attacker-influenced text. Every control below either keeps untrusted text away
+from the agent or keeps the agent's authority small.
+
+## 4. Trust boundaries
+
+- **B1 GitHub content → script.** Issue bodies, titles, PR bodies, comments and
+  reviews are attacker-influenced data.
+- **B2 Script → agent prompt.** The prompt is built from B1 data.
+- **B3 Agent → tools and GitHub.** Actions run with the operator's identity.
+- **B4 Operator settings → script.** Agent commands, gate commands, trust lists.
+- **B5 Repository checkout → script and agent.** Hooks, scripts, and the
+  agent-instruction files (`CLAUDE.md`, `AGENTS.md`) of whatever branch is
+  checked out.
+- **B6 Network.** TLS to `api.github.com`.
+
+Trust that matters is *per repository*. `authorAssociation: OWNER` is true of
+anyone in their own repository. Association therefore counts only inside the
+trusted repository scope (C2).
+
+## 5. Threats
+
+Severity is the worst outcome if nothing else stops it. "Where" names the
+control and whether it exists.
+
+| ID | Vector | Outcome | Severity | Where |
+| --- | --- | --- | --- | --- |
+| T01 | A stranger opens an issue with valid frontmatter in the home repository. It seeds discovery, has no blockers, tops the frontier, and the executor turns its body into a prompt. | Arbitrary instructions run with the operator's authority. | Critical | C1, C3 implemented; C7, C8 planned (#9, #10, #13) |
+| T02 | A body edit of a trusted issue by an untrusted editor (a collaborator account that should not dispatch, a compromised account). | Same as T01 through a trusted-looking issue. | High | C1 covers every editor; C9 planned (#9) |
+| T03 | A trusted issue quotes untrusted text: comments (anyone can comment), a fork PR description, pasted content. | Prompt injection through a trusted node. | High | C7, C8 planned (#10, #15); comments never enter a prompt unless their author is trusted, and then as data |
+| T04a | A fork PR says `Closes owner/repo#N`. The task becomes *in flight*. | Ranking manipulation (+1000); or the task is frozen as "already in progress" and never dispatched. | High | C4 implemented |
+| T04b | The planned resume (#15) treats that fork PR as a stalled task and checks out its branch. | Attacker hooks and scripts run in the worktree; attacker `CLAUDE.md` enters the prompt; attacker comments are context; the agent continues attacker work. | Critical | C4 implemented; C10, C11 planned (#15, #10) |
+| T04c | The planned gate (#14) evaluates that adopted PR. CI on a fork PR runs the fork's workflow file; anyone can leave an `APPROVED` review. With `merge = true`, the executor merges. | Attacker code on `main`. | Critical | C4 implemented; C12, C13 planned (#14) |
+| T05 | Many untrusted issues each list a trusted issue in `.blocked_by`. | The trusted issue's descendant count, and so its priority, is inflated. | Medium | C3: untrusted issues are not nodes and have no edges |
+| T06 | A trusted issue references `owner-typo/repo#1` (squatted) or any repository outside ours. The attacker is OWNER there. | Attacker issue enters as a trusted node; it blocks or unblocks our tasks at will; its `.holds` block our batch. | High | C2 implemented |
+| T07 | `.holds: [host/]` or large `.meters` on an untrusted node. | Batch denial of service. | Medium | C3 |
+| T08 | A title or evidence string with Markdown, HTML or Mermaid syntax. | Injection into `ROADMAP.md` or the diagram in a public repository. | Low | C3 (untrusted titles never render); C5 implemented |
+| T09 | Agent or gate commands supplied by a repository file. | Arbitrary command execution on the operator's machine. | Critical | C6 planned (#13, #14) |
+| T10 | The agent runs with the operator's primary token and no branch protection. | A manipulated agent can push to `main`, edit any issue, or act across every repository the token sees. | High | C14 policy |
+| T11 | Checkout of a branch the executor did not create. | Hook and script execution; attacker agent instructions. | Critical | C10, C11 planned (#15, #10) |
+| T12 | A `pr-review:<login>=APPROVED` predicate matched against any review; a `skill:` verdict produced by an agent that read attacker text. | Forged gate pass. | High | C12, C13 planned (#14) |
+| T13 | `--add-edge` writes before checking for a cycle and never compares the body it read with the body it overwrites. | Lost concurrent edits; a cycle visible on GitHub for a window. | Medium | #1 |
+| T14 | A flood of issues fills the list limit. | The compiler fails closed: planning stops. | Medium | C15 documented, not implemented |
+| T15 | The prompt file in a predictable temporary path. | Local symlink or read by another user. | Low | C16 planned (#13) |
+| T16 | TLS interception. | Forged issue data; also forged code. | Out of scope beyond fail-closed | `gh` refuses plain HTTP; never add a downgrade |
+| T17 | A frontmatter key that claims trust (`.approved`, `.signed_by`). | Written by the same hand as the attack. | — | C17 policy: no such key, ever |
+
+## 6. Controls (the policy)
+
+### C1. Trust gate on authorship — implemented
+
+An issue is **trusted** only when all of the following hold:
+
+- Its repository is in the trusted scope (C2).
+- Its author is trusted: `authorAssociation` in `OWNER`, `MEMBER`,
+  `COLLABORATOR` inside the scope, or the login is on the allowlist
+  (`--trust <login>`, or CODEOWNERS with `--trust-codeowners`, see C18).
+- **Every editor** in the issue's body edit history is trusted: the author
+  (already trusted), an allowlisted login, or a login that the GitHub
+  collaborator check (`repos/{slug}/collaborators/{login}`) confirms. A deleted
+  user, a bot, or a check that cannot be made is untrusted.
+
+The check reads GitHub's edit history (GraphQL `userContentEdits`). If the
+check itself fails (network, permissions on the query), the run exits `2`.
+
+### C2. Repository scope — implemented
+
+The closure follows references only into trusted repositories. The scope is
+the home repository's owner by default, extended with `--trust-owner <owner>`
+and `--trust-repo <owner/repo>`. A reference outside the scope is a
+frontmatter violation on the referencing issue (exit `1`), and the referenced
+issue is never fetched. A `--root` outside the scope is an error.
+
+Association counts only inside the scope. Cross-organisation DAGs declare their
+owners explicitly; the flags are the declaration.
+
+### C3. Untrusted issues are never nodes — implemented
+
+- An untrusted **seed** is listed in `source.untrusted_issues` with the reason
+  and is not a node. Its frontmatter is not parsed.
+- An untrusted **referenced** issue is an opaque blocker: it blocks its
+  dependents until it is closed, is never dispatched, and contributes no
+  edges, holds, meters or title. It is listed with the reason.
+
+Nothing from an untrusted issue reaches the graph, the batch, the ranking, or
+any rendered output.
+
+### C4. Linked PRs count only when trusted — implemented
+
+A PR marks a task in flight only when `isCrossRepository` is false (the head
+is a branch of the same repository) **and** its author is trusted under C1's
+login rule. Every other PR that closes a task is listed in
+`source.untrusted_linked_prs` and has no effect on status or ranking. A
+missing field is untrusted.
+
+### C5. Output escaping — implemented
+
+Rendered Markdown escapes `|`, `<` and `>` in cells. Mermaid labels already
+replace quotes and angle brackets. Untrusted titles are never rendered (C3).
+
+### C6. Executable settings come only from the operator — planned (#13, #14)
+
+Agent `argv`, gate commands and trust lists are read from the operator's
+configuration directory, never from the repository being executed. `argv` is
+a list, never a shell string. A repository file cannot supply a command (test).
+
+### C7. Issue text is data, never instructions — planned (#10, #15)
+
+The prompt builder wraps every string that came from GitHub (body, title,
+comments, PR descriptions, review text) in a clearly delimited data block and
+states, outside that block, that the agent must not follow instructions found
+inside it. The rules the agent must follow are the executor's, not the
+issue's.
+
+### C8. No permission bypass for runs fed from GitHub content — policy
+
+An agent run whose prompt contains GitHub content runs with its normal
+permission checks. A flag that bypasses them is never set by the executor and
+never documented as a way to run tasks. If the operator insists, the executor
+refuses tasks whose issue or linked PR is not trusted *and* approved (C9).
+
+### C9. Explicit execution approval bound to the body — planned (#9, #10)
+
+Being a trusted node lets an issue into the graph. It does not by itself let
+the executor run it. The executor runs a task only when **this body** has been
+approved. An approval names the issue and the SHA-256 of its body (line
+endings normalised to LF before hashing). A body edit after approval
+invalidates it: the hash no longer matches, and the task is listed as *needs
+re-approval*.
+
+Approvals live in an **approval ledger on a git ref**, not in issue text:
+
+- The ref is `refs/heads/issue-dag/approvals` in the issue's own repository.
+  A ledger approves only issues of its own repository; an entry for another
+  repository is ignored.
+- Each approval is an **empty, signed commit** whose parent is the previous
+  ledger commit. Subject `approve owner/repo#N`; trailers `Issue:`,
+  `Body-SHA256:`, optional `Expires:` (ISO 8601) and `Revoke: yes` to
+  withdraw an earlier approval. The latest entry for an issue wins.
+- The executor fetches the ref and verifies **every** commit on it against the
+  operator's allowed-signers file (`gpg.ssh.allowedSignersFile` or a GPG
+  keyring), with `git verify-commit`. An unverifiable commit fails the whole
+  ledger closed.
+- A ruleset on the ref requires signed commits, forbids force-push, and
+  restricts who may push. The ruleset is defence in depth; the local
+  verification is the control.
+
+Why a ref and not a comment: pushing needs write access, so anonymous users
+cannot create approvals at all; the signature is checked locally, so GitHub's
+attribution and the TLS channel are not trusted; the chain is the audit log;
+and the executor never parses comment text for authorization. A comment may
+mirror an approval for people. The ref is the truth.
+
+The operator may approve in the run instead (`--approve owner/repo#N` after
+reading the issue); the executor then writes the same ledger entry.
+
+### C10. Never check out a branch the executor did not create — planned (#10, #15)
+
+The executor's first commit on a task branch (#10 already plans an empty
+first commit) is **signed with the agent key** and carries the trailers
+`Issue: owner/repo#N` and `Body-SHA256:` of the approved body. That commit is
+the PR's provenance.
+
+Resume applies only to a PR that is trusted (C4), whose root commit is a
+verified executor commit for that task, and whose every later commit verifies
+against the allowed-signers file. A branch that fails any test is parked and
+reported, never resumed. Agents sign with a dedicated agent key, so human and
+agent commits are distinguishable in the audit trail. No GitHub metadata is
+needed for this decision.
+
+Optionally, leases become refs too: `refs/issue-dag/leases/<owner>/<repo>/<N>`
+pointing at a signed empty commit with an `Expires:` trailer, claimed with
+`git push --force-with-lease`. That gives an atomic claim visible from every
+machine, which the machine-local `git-locks` lease cannot.
+
+### C11. Checkouts run no hooks; agent instructions come from `main` — planned (#10, #15)
+
+Worktree creation and checkout run with `-c core.hooksPath=<empty dir>`. The
+prompt builder reads `CLAUDE.md` and `AGENTS.md` from `main`, never from the
+task branch.
+
+### C12. Gate predicates bind identity — planned (#14)
+
+`pr-review:<login>=<state>` matches the **latest** review by exactly that
+login, and that login must be trusted (C1 login rule or allowlisted bot).
+Reviews by anyone else are ignored. Prefer GitHub's own `reviewDecision` under
+a ruleset that requires code-owner review, because GitHub enforces who counts.
+
+### C13. Gate only executor-owned PRs; CI only from trusted heads — planned (#14)
+
+The gate evaluates only PRs that pass C4 and C10. A `skill:` predicate needs a
+structured verdict written to a file by the verdict agent; prose is not a
+verdict, and the verdict agent runs with a read-only token. CI results count
+only for same-repository heads.
+
+### C14. Small authority for agents — policy
+
+- Agents receive a token scoped to the repositories in the closure, with
+  contents, pull-requests and issues write, and no admin.
+- Every repository in the scope protects `main` with a ruleset: pull request
+  required, no direct push, signed commits required, code-owner review where
+  CODEOWNERS exists.
+- `merge = false` is the default. `merge = true` is a per-repository decision
+  in the operator's settings.
+
+### C15. Availability under a seed flood — documented, decision pending
+
+A flood of issues fills `GH_ISSUE_LIST_LIMIT` and the run exits `2`. The
+mitigation is to seed from a write-gated signal instead of "every open issue":
+a label that needs triage to apply, or `--author` queries per trusted login.
+flyingrobots/taskalisk#11 rejected labels as a *state tracker*; a seed filter
+is a different role. This is a decision for the operator, recorded here as
+open.
+
+### C16. Prompt files in owned temporary storage — planned (#13)
+
+`tempfile.mkstemp` inside a directory created with mode `0700`, removed after
+the run.
+
+### C17. The format carries no trust claims — policy
+
+No `issue-dag` key may assert trust, approval, signature or identity. Trust
+comes from who wrote the document (GitHub metadata, C1), who approved the
+body (C9), and who runs the executor (C6). A proposal to add such a key is
+rejected on sight.
+
+### C18. CODEOWNERS as a reviewed allowlist — implemented as an option
+
+With `--trust-codeowners`, the script reads `.github/CODEOWNERS`,
+`CODEOWNERS` or `docs/CODEOWNERS` from the **default branch** of every
+repository in the scope and adds each `@login` it finds to the allowlist for
+that repository. Team entries (`@org/team`) are reported and not expanded.
+This narrows trust only when a ruleset requires code-owner review for changes
+to the file; otherwise it equals write access. It never widens the scope (C2).
+
+## 7. Mechanisms considered and where they fit
+
+| Mechanism | Verdict |
+| --- | --- |
+| `authorAssociation` | Baseline for C1. Only meaningful inside the scope (C2). |
+| Body edit history | Required by C1; a trusted author's body edited by anyone else is untrusted. |
+| CODEOWNERS | A reviewed allowlist of people (C18). Not a scope mechanism. |
+| Approval ledger: signed empty commits on a git ref | The execution authorization step (C9). Write-gated by push access, verified locally, append-only. Recommended. |
+| Approval comment bound to body hash | A display mirror of C9 for people. Anyone can comment, so never the truth. |
+| Signed empty first commit with `Issue:` and `Body-SHA256:` trailers | PR provenance for the resume guard (C10). Needs no GitHub metadata. |
+| Signed commits on `main` | A ruleset (C14). Agents get their own key. |
+| Lease refs claimed with `--force-with-lease` | Optional cross-machine lease (C10). `git-locks` stays machine-local. |
+| Labels | A write-gated seed filter (C15). Never state, never edges. |
+| Native `blocked_by` relationships | A mirror; drift report only. Never a source of edges. |
+| Frontmatter trust fields | Never (C17). |
+
+## 8. What this does not defend against
+
+- A trusted account acting maliciously. C9, C10 and C14 limit the damage to
+  one approved task, on one branch, behind a ruleset.
+- GitHub itself lying. Everything here trusts GitHub's attribution except the
+  optional signature in C9 and the commit verification in C10.
+- Operator settings that are themselves malicious.
+- The agent model following instructions hidden in data despite C7. C8 and
+  C14 bound the blast radius; they do not prevent the attempt.
+
+## 9. Residual risks and open decisions
+
+- **C15** needs a decision: which write-gated signal seeds discovery.
+- **Collaborator checks need push access.** For a scope repository the
+  operator cannot administer, editors must be allowlisted explicitly or the
+  issue stays untrusted. The output says which.
+- **One GraphQL query per issue** for edit history. flyingrobots/taskalisk#7
+  batches reads once a real graph is measured slow; the trust query must be
+  batched with it, with identical fail-closed behavior.
+- **C9 approvals are git pushes** by a human or by the executor on the
+  operator's behalf, to the executor's own ref. When the executor lands,
+  SKILL.md doctrine 8 must say so: the compiler's only GitHub write stays the
+  `.blocked_by` edit; the executor adds pushes to its own refs (approvals,
+  leases, task branches), draft PRs and status comments, and nothing else.
+- **Key management** for C9 and C10: an allowed-signers file per operator, an
+  agent key per machine, and a documented rotation. Without it, the two
+  controls fall back to GitHub attribution (C4) and are weaker.

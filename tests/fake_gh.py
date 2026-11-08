@@ -3,9 +3,18 @@
 
 State shape:
   {"home": "owner/repo",
-   "issues": {"owner/repo#N": {"id": int, "title": str, "state": "open"|"closed", "labels": [str], "body": str, "state_reason": str|null}},
+   "default_author": "owner",             # author of issues that do not name one (association OWNER)
+   "issues": {"owner/repo#N": {"id": int, "title": str, "state": "open"|"closed", "labels": [str], "body": str,
+                               "state_reason": str|null,
+                               "author": str|null, "association": str, "editors": [str|null, ...]}},
    "blocked_by": {"owner/repo#N": ["owner/repo#M", ...]},
-   "prs": [...]}
+   "prs": [{"number": int, "isDraft": bool, "url": str, "author": {"login": str}, "isCrossRepository": bool,
+            "closingIssuesReferences": [{"number": int, "repository": {"name": str, "owner": {"login": str}}}]}],
+   "collaborators": {"owner/repo": ["login", ...]},   # 204 from the collaborator check
+   "collaborators_forbidden": bool,                   # 403 instead of 404
+   "codeowners": {"owner/repo": {".github/CODEOWNERS": "text"}},
+   "fail_graphql": bool,
+   "edits_page_size": int}
 """
 import json, os, re, sys
 
@@ -35,6 +44,36 @@ def fail(msg):
     sys.stderr.write(msg + "\n")
     sys.exit(1)
 
+def graphql(state, args):
+    """The trust query: author, association and paginated body editors."""
+    if state.get("fail_graphql"):
+        fail("gh: GraphQL unavailable (fake)")
+    variables = {}
+    i = 0
+    while i < len(args):
+        if args[i] in ("-f", "-F") and i + 1 < len(args):
+            k, _, v = args[i + 1].partition("=")
+            variables[k] = v
+            i += 2
+        else:
+            i += 1
+    key = f"{variables['owner']}/{variables['name']}#{variables['number']}"
+    it = state["issues"].get(key)
+    if it is None:
+        print(json.dumps({"data": {"repository": {"issue": None}}, "errors": [{"message": "Could not resolve to an Issue"}]}))
+        sys.exit(1)
+    author = it.get("author", state.get("default_author", "owner"))
+    editors = it.get("editors", [author])
+    page = int(state.get("edits_page_size", 1000))
+    start = int(variables.get("after") or 0)
+    chunk = editors[start:start + page]
+    out = {"data": {"repository": {"issue": {
+        "author": {"login": author} if author else None,
+        "authorAssociation": it.get("association", "OWNER"),
+        "userContentEdits": {"pageInfo": {"hasNextPage": start + page < len(editors), "endCursor": str(start + page)},
+                             "nodes": [{"editor": {"login": e} if e else None} for e in chunk]}}}}}
+    print(json.dumps(out))
+
 def main(argv):
     with open(os.environ["FAKE_GH_LOG"], "a") as f:
         f.write(json.dumps(argv) + "\n")
@@ -49,11 +88,37 @@ def main(argv):
         print(json.dumps(state.get("prs", []))); return
     if argv[0] != "api":
         fail(f"fake gh: unsupported command {argv}")
-    args = [a for a in argv[1:] if a != "--paginate"]
+    if argv[1:2] == ["graphql"]:
+        graphql(state, argv[2:]); return
+    args = []
+    skip = False
+    for a in argv[1:]:
+        if skip:
+            skip = False
+            continue
+        if a in ("--paginate", "--silent"):
+            continue
+        if a == "-H":
+            skip = True
+            continue
+        args.append(a)
     method = "GET"
     if args[:1] == ["-X"]:
         method, args = args[1], args[2:]
     path = args[0]
+    m = re.fullmatch(r"repos/([^/]+/[^/]+)/collaborators/([^/]+)", path)
+    if m:
+        if m.group(2) in state.get("collaborators", {}).get(m.group(1), []):
+            return
+        if state.get("collaborators_forbidden"):
+            fail("gh: Must have push access to view repository collaborators (HTTP 403)")
+        fail("gh: Not Found (HTTP 404)")
+    m = re.fullmatch(r"repos/([^/]+/[^/]+)/contents/(.+)", path)
+    if m:
+        text = state.get("codeowners", {}).get(m.group(1), {}).get(m.group(2))
+        if text is None:
+            fail("gh: Not Found (HTTP 404)")
+        print(text); return
     m = re.fullmatch(r"repos/([^/]+/[^/]+)/issues/(\d+)(/dependencies/blocked_by(?:/(\d+))?)?", path)
     if not m:
         fail(f"fake gh: unsupported path {path}")

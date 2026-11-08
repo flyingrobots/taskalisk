@@ -17,6 +17,8 @@ Modes:
       roots) through `.blocked_by` and `.children`, across repositories,
       compiles the transitively-reduced DAG, ranks the Open Frontier, and
       proposes a batch that respects `.holds` and `.meters`.
+      Trust flags: --trust <login>, --trust-owner <owner>, --trust-repo
+      <owner/repo>, --trust-codeowners (docs/threat-model.md).
   --from-github --add-edge "owner/repo#1080->owner/repo#1052" [--reason "..."]
       Adds the parent to the child's frontmatter `.blocked_by`, then
       recompiles. If the edge creates a cycle the old body is restored and
@@ -43,6 +45,12 @@ Guarantees:
 5. Lexical lock conflicts: `.holds` keys are lexical; a trailing `/` claims a
    subtree, so `docs/` conflicts with `docs/plans/`. A semaphore with unknown
    capacity counts as exclusive.
+6. Trust gate (docs/threat-model.md): an issue is a node only when its
+   repository is in the trusted scope and its author and every body editor
+   are trusted. A linked PR counts only from a same-repository branch by a
+   trusted author. Untrusted issues and PRs are listed, never dispatched, and
+   contribute nothing to the graph or to rendered output. A trust lookup
+   that fails exits 2.
 """
 
 from __future__ import annotations
@@ -556,12 +564,168 @@ def branches_for_issue(number: int, branches: list[str]) -> list[str]:
     return [b for b in branches if pattern.search(b)]
 
 
-def collect_frontmatter_dag(repo: str, roots: list[str], errors: list[dict[str, str]]) -> dict[str, Any]:
+# --------------------------------------------------------------------------- #
+# Trust (docs/threat-model.md, controls C1-C4 and C18)
+# --------------------------------------------------------------------------- #
+
+TRUSTED_ASSOCIATIONS = {"OWNER", "MEMBER", "COLLABORATOR"}
+CODEOWNERS_PATHS = (".github/CODEOWNERS", "CODEOWNERS", "docs/CODEOWNERS")
+UNTRUSTED_TITLE = "(untrusted issue)"
+OWNER_RE = re.compile(r"[A-Za-z0-9_.-]+")
+SLUG_RE = re.compile(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+")
+# Author, association and the login of every body edit (the first edit is the creation).
+TRUST_QUERY = (
+    "query($owner:String!,$name:String!,$number:Int!,$after:String){"
+    "repository(owner:$owner,name:$name){issue(number:$number){"
+    "author{login} authorAssociation "
+    "userContentEdits(first:100,after:$after){pageInfo{hasNextPage endCursor} nodes{editor{login}}}}}}"
+)
+
+
+def parse_codeowners(text: str) -> tuple[set[str], list[str]]:
+    """Return (logins, teams) named as owners. Email owners are ignored."""
+    logins: set[str] = set()
+    teams: list[str] = []
+    for raw in text.splitlines():
+        tokens = raw.split("#", 1)[0].split()
+        for token in tokens[1:]:
+            if not token.startswith("@"):
+                continue
+            name = token[1:]
+            if "/" in name:
+                if name not in teams:
+                    teams.append(name)
+            elif name:
+                logins.add(name)
+    return logins, teams
+
+
+def gh_issue_trust_info(repo: str, ref: IssueRef, errors: list[dict[str, str]]) -> dict[str, Any] | None:
+    """Author, author association and every body editor of an issue, from GitHub's edit history."""
+    owner, name = ref[0].split("/", 1)
+    source = f"gh api graphql (trust of {node_id(*ref)})"
+    editors: list[str | None] = []
+    after: str | None = None
+    while True:
+        cmd = ["gh", "api", "graphql", "-f", f"query={TRUST_QUERY}", "-f", f"owner={owner}", "-f", f"name={name}", "-F", f"number={ref[1]}"]
+        if after:
+            cmd += ["-f", f"after={after}"]
+        ok, raw, err = run_cmd_checked(cmd, cwd=repo)
+        if not ok:
+            errors.append({"source": source, "error": err or "command failed"})
+            return None
+        data = parse_json(raw, source, errors)
+        issue = (((data or {}).get("data") or {}).get("repository") or {}).get("issue") if isinstance(data, dict) else None
+        if not isinstance(issue, dict):
+            errors.append({"source": source, "error": "GraphQL response has no issue"})
+            return None
+        edits = issue.get("userContentEdits") or {}
+        for node in edits.get("nodes") or []:
+            editors.append(((node or {}).get("editor") or {}).get("login"))
+        page = edits.get("pageInfo") or {}
+        if page.get("hasNextPage") and page.get("endCursor"):
+            after = str(page["endCursor"])
+            continue
+        return {"author": (issue.get("author") or {}).get("login"), "association": issue.get("authorAssociation"), "editors": editors}
+
+
+class TrustPolicy:
+    """Who may be a node. Association counts only inside the repository scope (C2)."""
+
+    def __init__(self, repo: str, home_slug: str, owners: list[str], repos: list[str], logins: list[str], codeowners: bool, errors: list[dict[str, str]]):
+        self.repo = repo
+        self.owners = {home_slug.split("/", 1)[0], *owners}
+        self.repos = set(repos)
+        self.logins = set(logins)
+        self.codeowners = codeowners
+        self.errors = errors
+        self._repo_logins: dict[str, set[str]] = defaultdict(set)
+        self._teams: dict[str, list[str]] = {}
+        self._codeowners_loaded: set[str] = set()
+        self._collaborator_cache: dict[tuple[str, str], tuple[bool, str]] = {}
+
+    def in_scope(self, slug: str) -> bool:
+        return slug in self.repos or slug.split("/", 1)[0] in self.owners
+
+    def describe(self) -> dict[str, Any]:
+        return {
+            "owners": sorted(self.owners),
+            "repos": sorted(self.repos),
+            "logins": sorted(self.logins),
+            "codeowners": {slug: sorted(v) for slug, v in sorted(self._repo_logins.items())} if self.codeowners else None,
+            "codeowners_teams_not_expanded": dict(sorted(self._teams.items())),
+        }
+
+    def login_trusted(self, slug: str, login: str | None, association: str | None = None) -> tuple[bool, str]:
+        if not login:
+            return False, "no login (deleted user or bot)"
+        if login in self.logins:
+            return True, "allowlisted"
+        if not self.in_scope(slug):
+            return False, f"{slug} is outside the trusted repositories"
+        self._load_codeowners(slug)
+        if login in self._repo_logins.get(slug, set()):
+            return True, "CODEOWNERS"
+        if association in TRUSTED_ASSOCIATIONS:
+            return True, f"association {association}"
+        return self._collaborator(slug, login)
+
+    def issue_trust(self, slug: str, info: dict[str, Any]) -> tuple[bool, list[str]]:
+        """(trusted, reasons). The author and every editor must be trusted."""
+        reasons: list[str] = []
+        author = info.get("author")
+        ok, why = self.login_trusted(slug, author, info.get("association"))
+        if not ok:
+            reasons.append(f"author {author or '(none)'}: {why}")
+        seen: set[str | None] = {author}
+        for editor in info.get("editors") or []:
+            if editor in seen:
+                continue
+            seen.add(editor)
+            ok_e, why_e = self.login_trusted(slug, editor)
+            if not ok_e:
+                reasons.append(f"editor {editor or '(none)'}: {why_e}")
+        return not reasons, reasons
+
+    def _collaborator(self, slug: str, login: str) -> tuple[bool, str]:
+        key = (slug, login)
+        if key not in self._collaborator_cache:
+            ok, _, err = run_cmd_checked(["gh", "api", f"repos/{slug}/collaborators/{login}", "--silent"], cwd=self.repo)
+            if ok:
+                self._collaborator_cache[key] = (True, "collaborator")
+            elif "HTTP 404" in err:
+                self._collaborator_cache[key] = (False, f"not a collaborator of {slug}")
+            else:
+                self._collaborator_cache[key] = (False, f"collaborator check failed ({err or 'command failed'})")
+        return self._collaborator_cache[key]
+
+    def _load_codeowners(self, slug: str) -> None:
+        """Read CODEOWNERS from the default branch of a scope repository (C18)."""
+        if not self.codeowners or slug in self._codeowners_loaded:
+            return
+        self._codeowners_loaded.add(slug)
+        for path in CODEOWNERS_PATHS:
+            source = f"gh api repos/{slug}/contents/{path}"
+            ok, raw, err = run_cmd_checked(["gh", "api", f"repos/{slug}/contents/{path}", "-H", "Accept: application/vnd.github.raw+json"], cwd=self.repo)
+            if ok:
+                logins, teams = parse_codeowners(raw)
+                self._repo_logins[slug] |= logins
+                if teams:
+                    self._teams[slug] = teams
+                return
+            if "HTTP 404" not in err:
+                self.errors.append({"source": source, "error": err or "command failed"})
+                return
+
+
+def collect_frontmatter_dag(repo: str, roots: list[str], errors: list[dict[str, str]], trust: dict[str, Any] | None = None) -> dict[str, Any]:
     """Build (merged, nodes) from issue frontmatter, across repositories."""
     empty: dict[str, Any] = {"merged": set(), "nodes": {}, "containers": [], "slug": None}
     slug = gh_repo_slug(repo, errors)
     if slug is None:
         return empty
+    trust = trust or {}
+    policy = TrustPolicy(repo, slug, trust.get("owners", []), trust.get("repos", []), trust.get("logins", []), bool(trust.get("codeowners")), errors)
     prs = gh_list_open_prs(repo, errors)
     branches = list_branches(repo, errors)
     fetched: dict[IssueRef, dict[str, Any]] = {}
@@ -572,6 +736,8 @@ def collect_frontmatter_dag(repo: str, roots: list[str], errors: list[dict[str, 
             r = parse_issue_ref(text)
             if r is None:
                 errors.append({"source": "--root", "error": f"invalid reference {text!r} (use owner/repo#N)"})
+            elif not policy.in_scope(r[0]):
+                errors.append({"source": "--root", "error": f"{node_id(*r)} is outside the trusted repositories (add --trust-owner or --trust-repo)"})
             else:
                 seeds.add(r)
     else:
@@ -583,14 +749,27 @@ def collect_frontmatter_dag(repo: str, roots: list[str], errors: list[dict[str, 
         return empty
     queue.extend(sorted(seeds))
 
+    # A PR links a task only from a same-repository branch by a trusted author (C4).
     prs_by_issue: dict[IssueRef, list[dict[str, Any]]] = defaultdict(list)
+    untrusted_prs: list[dict[str, Any]] = []
     for pr in prs:
+        closes: list[IssueRef] = []
         for ref in pr.get("closingIssuesReferences", []) or []:
             if isinstance(ref, dict) and "number" in ref:
                 repo_info = ref.get("repository") or {}
                 owner = (repo_info.get("owner") or {}).get("login")
                 ref_slug = f"{owner}/{repo_info['name']}" if owner and repo_info.get("name") else slug
-                prs_by_issue[(ref_slug, int(ref["number"]))].append({"number": pr["number"], "isDraft": pr.get("isDraft", False), "url": pr.get("url")})
+                closes.append((ref_slug, int(ref["number"])))
+        if not closes:
+            continue
+        author = (pr.get("author") or {}).get("login")
+        cross = pr.get("isCrossRepository")
+        ok, why = (False, "head is not a branch of this repository") if cross is not False else policy.login_trusted(slug, author)
+        if not ok:
+            untrusted_prs.append({"number": pr.get("number"), "url": pr.get("url"), "author": author, "cross_repository": cross, "closes": [node_id(*c) for c in closes], "reason": why})
+            continue
+        for c in closes:
+            prs_by_issue[c].append({"number": pr["number"], "isDraft": pr.get("isDraft", False), "url": pr.get("url")})
 
     seen: set[IssueRef] = set()
     referenced_by: dict[IssueRef, list[str]] = defaultdict(list)
@@ -598,6 +777,7 @@ def collect_frontmatter_dag(repo: str, roots: list[str], errors: list[dict[str, 
     violations: dict[str, list[str]] = {}
     warnings: dict[str, list[str]] = {}
     unmodeled_seeds: list[dict[str, Any]] = []
+    untrusted: list[dict[str, Any]] = []
     opaque: list[dict[str, Any]] = []
     containers: list[dict[str, Any]] = []
     not_planned: list[dict[str, Any]] = []
@@ -607,6 +787,12 @@ def collect_frontmatter_dag(repo: str, roots: list[str], errors: list[dict[str, 
             continue
         seen.add(ref)
         nid = node_id(ref[0], ref[1], slug)
+        if not policy.in_scope(ref[0]):
+            # Never fetch outside the scope: the attacker is OWNER of their own repository (C2).
+            hint = f"add --trust-owner {ref[0].split('/', 1)[0]} or --trust-repo {ref[0]}"
+            for who in referenced_by[ref] or [nid]:
+                violations.setdefault(who, []).append(f"reference {nid} is outside the trusted repositories; {hint}")
+            continue
         if ref not in fetched:
             obj = gh_get_issue(repo, ref, errors)
             if obj is None:
@@ -626,6 +812,17 @@ def collect_frontmatter_dag(repo: str, roots: list[str], errors: list[dict[str, 
                 continue
             fetched[ref] = {"title": obj.get("title", ""), "state": str(obj.get("state", "")).lower(), "state_reason": obj.get("state_reason"), "body": obj.get("body") or "", "html_url": obj.get("html_url")}
         meta = fetched[ref]
+        info = gh_issue_trust_info(repo, ref, errors)
+        if info is None:
+            break
+        trusted, reasons = policy.issue_trust(ref[0], info)
+        if not trusted:
+            # No title: nothing an untrusted author wrote reaches any output (C3).
+            untrusted.append({"id": nid, "url": meta["html_url"], "state": meta["state"], "author": info.get("author"), "reasons": reasons, "referenced_by": referenced_by[ref]})
+            if ref in seeds and not roots:
+                continue
+            records[ref] = {"kind": "opaque", "untrusted": True, "blocked_by": [], "children": [], "holds": [], "meters": [], "status": "blocked", "size_hours": None, "type": None}
+            continue
         fields, problems = parse_frontmatter(meta["body"])
         if fields is None:
             if ref in seeds and not roots:
@@ -673,22 +870,24 @@ def collect_frontmatter_dag(repo: str, roots: list[str], errors: list[dict[str, 
             if bmeta.get("state") == "closed" and str(bmeta.get("state_reason") or "") == "not_planned":
                 not_planned.append({"parent": bid, "child": nid, "title": bmeta.get("title", "")})
             depends_on.append({"from": bid, "type": "frontmatter", "isHard": True, "confidence": 1.0, "evidence": evidence})
-        linked = prs_by_issue.get(ref, []) if ref[0] == slug else []
+        untrusted_node = bool(rec.get("untrusted"))
+        linked = prs_by_issue.get(ref, []) if ref[0] == slug and not untrusted_node else []
         status = rec["status"] or "open"
         if status == "active" or linked:
             status = "in-progress"
         elif status == "parked":
             status = PARKED_STATUS
         nodes[nid] = {
-            "title": meta["title"], "type": rec["type"] or ("opaque" if rec["kind"] == "opaque" else "task"),
+            "title": UNTRUSTED_TITLE if untrusted_node else meta["title"], "type": rec["type"] or ("opaque" if rec["kind"] == "opaque" else "task"),
             "workstream": rec["type"] or "unassigned", "status": status, "depends_on": depends_on,
             "holds": rec["holds"], "meters": rec["meters"], "size_hours": rec["size_hours"],
             "linked_open_prs": linked, "recoverable_branches": branches_for_issue(ref[1], branches) if ref[0] == slug else [],
-            "url": meta["html_url"], "opaque": rec["kind"] == "opaque",
+            "url": meta["html_url"], "opaque": rec["kind"] == "opaque", "untrusted": untrusted_node,
         }
     return {"merged": merged, "nodes": nodes, "containers": containers, "slug": slug,
             "violations": violations, "warnings": warnings, "unmodeled_open_issues": unmodeled_seeds,
-            "opaque_nodes": opaque, "not_planned_parents": not_planned, "records": records, "fetched": fetched}
+            "opaque_nodes": opaque, "not_planned_parents": not_planned, "records": records, "fetched": fetched,
+            "untrusted_issues": untrusted, "untrusted_linked_prs": untrusted_prs, "trust": policy.describe()}
 
 
 def compare_relationships(repo: str, source: dict[str, Any], errors: list[dict[str, str]]) -> dict[str, Any]:
@@ -881,6 +1080,7 @@ def compile_and_analyze_dag(merged: set[str], nodes: dict[str, dict[str, Any]], 
                 "holds": sorted(set(holds)),
                 "meters": meters,
                 "opaque": bool(meta.get("opaque")),
+                "untrusted": bool(meta.get("untrusted")),
                 "size_hours": meta.get("size_hours"),
             }
         )
@@ -985,7 +1185,8 @@ def _resources_cell(holds: list[str], meters: list[dict[str, Any]], empty: str) 
 
 
 def _md_cell(text: str) -> str:
-    return str(text).replace("|", "\\|").replace("\n", " ")
+    """Issue text in a rendered table cell: no pipes, no HTML, no line breaks (C5)."""
+    return str(text).replace("|", "\\|").replace("<", "&lt;").replace(">", "&gt;").replace("\n", " ")
 
 
 def render_roadmap_block(result: dict[str, Any]) -> str:
@@ -1088,10 +1289,22 @@ def verify_and_layer_dag(dag_path: str, min_confidence: float, emit_mermaid: boo
     return emit(with_artifact_hash(result), emit_mermaid)
 
 
-def mutate_edge(repo: str, home: str, parent: IssueRef, child: IssueRef, add: bool, errors: list[dict[str, str]]) -> dict[str, Any] | None:
+def mutate_edge(repo: str, home: str, parent: IssueRef, child: IssueRef, add: bool, errors: list[dict[str, str]], policy: TrustPolicy) -> dict[str, Any] | None:
     """Edit the child's frontmatter .blocked_by. Returns {"child": ref, "old_body": str} or None."""
+    for ref in (parent, child):
+        if not policy.in_scope(ref[0]):
+            errors.append({"source": f"edge {node_id(*parent)}->{node_id(*child)}", "error": f"{node_id(*ref)} is outside the trusted repositories"})
+            return None
     obj = gh_get_issue(repo, child, errors)
     if obj is None:
+        return None
+    info = gh_issue_trust_info(repo, child, errors)
+    if info is None:
+        return None
+    trusted, reasons = policy.issue_trust(child[0], info)
+    if not trusted:
+        # Never write into a stranger's issue, even with the permission to do so (C3).
+        errors.append({"source": f"frontmatter of {node_id(child[0], child[1], home)}", "error": "child is untrusted: " + "; ".join(reasons)})
         return None
     body = obj.get("body") or ""
     fields, problems = parse_frontmatter(body)
@@ -1116,10 +1329,11 @@ def mutate_edge(repo: str, home: str, parent: IssueRef, child: IssueRef, add: bo
     return {"child": child, "old_body": body, "changed": new_body != body}
 
 
-def compile_from_github(repo: str, roots: list[str], min_confidence: float, emit_mermaid: bool, add_edge: str | None, remove_edge: str | None, reason: str, emit_roadmap: bool = False, capacities: dict[str, int] | None = None, compare: bool = False) -> int:
+def compile_from_github(repo: str, roots: list[str], min_confidence: float, emit_mermaid: bool, add_edge: str | None, remove_edge: str | None, reason: str, emit_roadmap: bool = False, capacities: dict[str, int] | None = None, compare: bool = False, trust: dict[str, Any] | None = None) -> int:
     errors: list[dict[str, str]] = []
     mutation: dict[str, Any] | None = None
     undo: dict[str, Any] | None = None
+    trust = trust or {}
 
     if add_edge or remove_edge:
         if parse_edge_arg(add_edge or remove_edge or "") is None:
@@ -1135,14 +1349,15 @@ def compile_from_github(repo: str, roots: list[str], min_confidence: float, emit
         if parent == child:
             print(json.dumps({"ok": False, "error": f"Self-edge rejected: {node_id(child[0], child[1], slug)}"}))
             return 1
-        undo = mutate_edge(repo, slug, parent, child, add=bool(add_edge), errors=errors)
+        policy = TrustPolicy(repo, slug, trust.get("owners", []), trust.get("repos", []), trust.get("logins", []), bool(trust.get("codeowners")), errors)
+        undo = mutate_edge(repo, slug, parent, child, add=bool(add_edge), errors=errors, policy=policy)
         if undo is None:
             print(json.dumps({"ok": False, "error": "Frontmatter edit failed", "github_errors": errors}, indent=2))
             return 2 if any(e["source"].startswith("gh ") for e in errors) else 1
         child_id = node_id(child[0], child[1], slug)
         mutation = {"type": "add_blocked_by" if add_edge else "remove_blocked_by", "parent": node_id(parent[0], parent[1], slug), "child": child_id, "changed": undo["changed"], "reason": reason, "recorded_in": f"frontmatter of {child_id} (the issue edit history is the ledger)"}
 
-    source = collect_frontmatter_dag(repo, roots, errors)
+    source = collect_frontmatter_dag(repo, roots, errors, trust)
     if errors:
         print(json.dumps({"ok": False, "error": "GitHub inventory failed; refusing to compile a partial graph", "github_errors": errors, "mutation": mutation}, indent=2))
         return 2
@@ -1153,8 +1368,11 @@ def compile_from_github(repo: str, roots: list[str], min_confidence: float, emit
         "schema": FM_SCHEMA,
         "repository": source.get("slug"),
         "roots": roots,
+        "trust": source["trust"],
         "containers_excluded": [{k: c[k] for k in ("id", "number", "title")} for c in source["containers"]],
         "unmodeled_open_issues": source["unmodeled_open_issues"],
+        "untrusted_issues": source["untrusted_issues"],
+        "untrusted_linked_prs": source["untrusted_linked_prs"],
         "opaque_nodes": source["opaque_nodes"],
         "not_planned_parents": source["not_planned_parents"],
     }
@@ -1205,6 +1423,10 @@ def main() -> int:
     parser.add_argument("--remove-edge", default=None, help="Remove 'owner/repo#parent->owner/repo#child' from the child's frontmatter .blocked_by, then recompile.")
     parser.add_argument("--reason", default="taskalisk edge update", help="Rationale echoed in the output for the mutation (GitHub timeline is the ledger)")
     parser.add_argument("--emit-roadmap", action="store_true", help="With --from-github: print the generated ROADMAP.md block (between BEGIN/END markers)")
+    parser.add_argument("--trust", action="append", default=[], metavar="LOGIN", help="With --from-github: a login trusted as author or editor everywhere (repeatable)")
+    parser.add_argument("--trust-owner", action="append", default=[], metavar="OWNER", help="With --from-github: add every repository of this owner to the trusted scope (repeatable; the home owner is always in scope)")
+    parser.add_argument("--trust-repo", action="append", default=[], metavar="OWNER/REPO", help="With --from-github: add one repository to the trusted scope (repeatable)")
+    parser.add_argument("--trust-codeowners", action="store_true", help="With --from-github: trust the logins named in each scope repository's CODEOWNERS on its default branch")
     args = parser.parse_args()
 
     if (args.add_edge or args.remove_edge) and not args.from_github:
@@ -1221,10 +1443,16 @@ def main() -> int:
         parser.error("--sem-capacity takes name=N with N >= 1")
     if (args.root or args.compare_relationships) and not args.from_github:
         parser.error("--root and --compare-relationships require --from-github")
+    trust_flags = args.trust or args.trust_owner or args.trust_repo or args.trust_codeowners
+    if trust_flags and not args.from_github:
+        parser.error("--trust, --trust-owner, --trust-repo and --trust-codeowners require --from-github")
+    if any(not OWNER_RE.fullmatch(o) for o in args.trust_owner) or any(not SLUG_RE.fullmatch(r) for r in args.trust_repo):
+        parser.error("--trust-owner takes an owner name; --trust-repo takes owner/repo")
+    trust = {"owners": args.trust_owner, "repos": args.trust_repo, "logins": args.trust, "codeowners": args.trust_codeowners}
 
     repo = os.path.abspath(args.repo)
     if args.from_github:
-        return compile_from_github(repo, args.root, args.min_confidence, args.emit_mermaid, args.add_edge, args.remove_edge, args.reason, emit_roadmap=args.emit_roadmap, capacities=capacities, compare=args.compare_relationships)
+        return compile_from_github(repo, args.root, args.min_confidence, args.emit_mermaid, args.add_edge, args.remove_edge, args.reason, emit_roadmap=args.emit_roadmap, capacities=capacities, compare=args.compare_relationships, trust=trust)
     if args.verify_dag:
         return verify_and_layer_dag(args.verify_dag, args.min_confidence, args.emit_mermaid)
 
