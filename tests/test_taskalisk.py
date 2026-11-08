@@ -24,8 +24,24 @@ def fm(id_, kind="task", type_="feature", blocked_by=(), children=None, extra=""
     return "```yaml\n" + "\n".join(lines) + "\n```\n\n# Feature\n\nBody text.\n"
 
 
-def issue(i, title, body, state="open", reason=None):
-    return {"id": i, "title": title, "state": state, "labels": [], "body": body, "state_reason": reason}
+def issue(i, title, body, state="open", reason=None, author=None, association=None, editors=None, **extra):
+    out = {"id": i, "title": title, "state": state, "labels": [], "body": body, "state_reason": reason}
+    if author is not None:
+        out["author"] = author
+    if association is not None:
+        out["association"] = association
+    if editors is not None:
+        out["editors"] = editors
+    out.update(extra)
+    return out
+
+
+def closing(number, slug=HOME):
+    owner, name = slug.split("/")
+    return {"number": number, "repository": {"name": name, "owner": {"login": owner}}}
+
+
+STRANGER = "mallory"
 
 
 def plan_state():
@@ -302,6 +318,414 @@ class Mirror(Harness):
         p = self.run_dag(plan_state(), "--from-github", "--root", f"{HOME}#9", "--emit-roadmap")
         self.assertEqual(p.returncode, 0, p.stdout[-600:])
         self.assertIn(f"{ECHO}#6", p.stdout)
+
+
+class Trust(Harness):
+    """docs/threat-model.md controls C1-C5 and C18."""
+
+    def untrusted_ids(self, r):
+        return [u["id"] for u in r["source"]["untrusted_issues"]]
+
+    def test_untrusted_seed_is_listed_and_never_a_node(self):
+        state = plan_state()
+        state["issues"][f"{HOME}#77"] = issue(177, "Free money", fm(f"{HOME}#77"), author=STRANGER, association="NONE")
+        p = self.run_dag(state, "--from-github")
+        r = self.out(p)
+        self.assertEqual(p.returncode, 0, r)
+        self.assertNotIn(f"{HOME}#77", self.ids(r))
+        self.assertNotIn(f"{HOME}#77", [b["id"] for b in r["conflict_free_frontier_batch"]])
+        entry = next(u for u in r["source"]["untrusted_issues"] if u["id"] == f"{HOME}#77")
+        self.assertEqual(entry["author"], STRANGER)
+        self.assertNotIn("title", entry)
+
+    def test_untrusted_seed_referenced_by_a_trusted_task_blocks_it(self):
+        state = plan_state()
+        state["issues"][f"{HOME}#77"] = issue(177, "Stranger", fm(f"{HOME}#77"), author=STRANGER, association="NONE")
+        state["issues"][f"{HOME}#2"]["body"] = fm(f"{HOME}#2", blocked_by=[f"{HOME}#1", f"{HOME}#77"])
+        p = self.run_dag(state, "--from-github")
+        r = self.out(p)
+        self.assertEqual(p.returncode, 0, r)
+        self.assertIn(f"{HOME}#77", self.node(r, f"{HOME}#2")["open_parents"])
+        self.assertTrue(self.node(r, f"{HOME}#77")["untrusted"])
+        self.assertNotIn(f"{HOME}#77", [b["id"] for b in r["conflict_free_frontier_batch"]])
+
+    def test_pr_inventory_requests_the_trust_fields(self):
+        self.run_dag(plan_state(), "--from-github")
+        call = next(c for c in self.calls() if c[:2] == ["pr", "list"])
+        fields = call[call.index("--json") + 1].split(",")
+        self.assertIn("author", fields)
+        self.assertIn("isCrossRepository", fields)
+
+    def test_untrusted_editor_makes_a_trusted_issue_an_opaque_blocker(self):
+        state = plan_state()
+        state["issues"][f"{HOME}#1"]["editors"] = ["owner", STRANGER]
+        r = self.out(self.run_dag(state, "--from-github", "--root", f"{HOME}#9"))
+        self.assertIn(f"{HOME}#1", self.untrusted_ids(r))
+        node = self.node(r, f"{HOME}#1")
+        self.assertTrue(node["opaque"] and node["untrusted"])
+        self.assertEqual(node["title"], "(untrusted issue)")
+        self.assertEqual(self.node(r, f"{HOME}#2")["open_parents"], [f"{HOME}#1"])
+        self.assertNotIn(f"{HOME}#1", [b["id"] for b in r["conflict_free_frontier_batch"]])
+
+    def test_allowlisted_login_is_trusted(self):
+        state = plan_state()
+        state["issues"][f"{HOME}#1"]["editors"] = ["owner", STRANGER]
+        r = self.out(self.run_dag(state, "--from-github", "--root", f"{HOME}#9", "--trust", STRANGER))
+        self.assertEqual(self.untrusted_ids(r), [])
+        self.assertFalse(self.node(r, f"{HOME}#1")["opaque"])
+
+    def test_collaborator_check_trusts_an_editor(self):
+        state = plan_state()
+        state["issues"][f"{HOME}#1"]["editors"] = ["owner", "carol"]
+        state["collaborators"] = {HOME: ["carol"]}
+        self.assertEqual(self.untrusted_ids(self.out(self.run_dag(state, "--from-github", "--root", f"{HOME}#9"))), [])
+
+    def test_triage_collaborator_is_not_trusted(self):
+        state = plan_state()
+        state["issues"][f"{HOME}#1"]["editors"] = ["owner", "carol"]
+        state["collaborators"] = {HOME: {"carol": "triage"}}
+        r = self.out(self.run_dag(state, "--from-github", "--root", f"{HOME}#9"))
+        self.assertIn(f"{HOME}#1", self.untrusted_ids(r))
+        self.assertTrue(any("below write" in why for u in r["source"]["untrusted_issues"] for why in u["reasons"]))
+
+    def test_member_association_alone_is_not_trusted(self):
+        state = plan_state()
+        state["issues"][f"{HOME}#77"] = issue(177, "Org member", fm(f"{HOME}#77"), author="pat", association="MEMBER")
+        r = self.out(self.run_dag(state, "--from-github"))
+        self.assertIn(f"{HOME}#77", self.untrusted_ids(r))
+
+    def test_names_compare_case_insensitively(self):
+        state = plan_state()
+        state["issues"][f"{HOME}#1"]["editors"] = ["owner", "Carol"]
+        state["issues"][f"{HOME}#1"]["body"] = fm(f"{HOME}#1", blocked_by=["Partner/Lib#1"])
+        state["issues"]["Partner/Lib#1"] = issue(4242, "Partner lib", fm("Partner/Lib#1"), author="pat", association="OWNER")
+        p = self.run_dag(state, "--from-github", "--root", f"{HOME}#9", "--trust", "carol", "--trust-owner", "partner")
+        r = self.out(p)
+        self.assertEqual(p.returncode, 0, r)
+        self.assertEqual(self.untrusted_ids(r), [])
+
+    def test_closed_not_planned_untrusted_blocker_leaks_no_title(self):
+        state = plan_state()
+        state["issues"][f"{HOME}#1"]["body"] = fm(f"{HOME}#1", blocked_by=[f"{ECHO}#5", f"{ECHO}#99"])
+        state["issues"][f"{ECHO}#99"] = issue(5099, "SECRET STRANGER TITLE", fm(f"{ECHO}#99"), state="closed", reason="not_planned", author=STRANGER, association="NONE")
+        p = self.run_dag(state, "--from-github", "--root", f"{HOME}#9")
+        self.assertEqual(p.returncode, 0, p.stdout[-400:])
+        self.assertNotIn("SECRET STRANGER TITLE", p.stdout)
+        self.assertEqual(self.out(p)["source"]["not_planned_parents"][0]["title"], "(untrusted issue)")
+
+    def test_add_edge_rolls_back_when_the_recompile_cannot_run(self):
+        state = plan_state()
+        state["fail_graphql_for"] = [f"{HOME}#1"]  # the child (#2) can be checked; the recompile fails on #1
+        before = state["issues"][f"{HOME}#2"]["body"]
+        p = self.run_dag(state, "--from-github", "--add-edge", f"{ECHO}#6->{HOME}#2")
+        r = self.out(p)
+        self.assertEqual(p.returncode, 2, r)
+        self.assertTrue(r["mutation"]["rolled_back"])
+        self.assertEqual(self.current()["issues"][f"{HOME}#2"]["body"], before)
+
+    def test_add_edge_aborts_when_a_trust_lookup_records_an_error(self):
+        state = plan_state()
+        state["contents_fail"] = True
+        before = state["issues"][f"{HOME}#2"]["body"]
+        p = self.run_dag(state, "--from-github", "--add-edge", f"{ECHO}#6->{HOME}#2", "--trust-codeowners")
+        self.assertEqual(p.returncode, 2, p.stdout)
+        self.assertEqual(self.current()["issues"][f"{HOME}#2"]["body"], before)
+        self.assertFalse(any("PATCH" in c for c in self.calls()))
+
+    def test_collaborator_check_that_cannot_run_exits_2(self):
+        state = plan_state()
+        state["issues"][f"{HOME}#1"]["editors"] = ["owner", "carol"]
+        state["collaborators_forbidden"] = True
+        p = self.run_dag(state, "--from-github", "--root", f"{HOME}#9")
+        self.assertEqual(p.returncode, 2, p.stdout)
+        self.assertIn("collaborators/carol/permission", p.stdout)
+
+    def test_codeowners_allowlists_per_repository(self):
+        state = plan_state()
+        state["issues"][f"{HOME}#1"]["editors"] = ["owner", "carol"]
+        state["codeowners"] = {HOME: {".github/CODEOWNERS": "# owners\n* @carol @flyingrobots/core\ndocs/ docs@example.com\n"}}
+        r = self.out(self.run_dag(state, "--from-github", "--root", f"{HOME}#9", "--trust-codeowners"))
+        self.assertEqual(self.untrusted_ids(r), [])
+        self.assertEqual(r["source"]["trust"]["codeowners"][HOME], ["carol"])
+        self.assertEqual(r["source"]["trust"]["codeowners_teams_not_expanded"], {HOME: ["flyingrobots/core"]})
+        # The allowlist is per repository: Carol owns nothing in ECHO.
+        state["issues"][f"{ECHO}#5"]["editors"] = ["owner", "carol"]
+        r = self.out(self.run_dag(state, "--from-github", "--root", f"{HOME}#9", "--trust-codeowners"))
+        self.assertIn(f"{ECHO}#5", self.untrusted_ids(r))
+        self.assertTrue(self.node(r, f"{ECHO}#5")["opaque"])
+
+    def test_bot_author_is_untrusted_unless_allowlisted(self):
+        state = plan_state()
+        state["issues"][f"{HOME}#77"] = issue(177, "Automated", fm(f"{HOME}#77"), author="deploy-bot", association="OWNER", author_type="Bot")
+        r = self.out(self.run_dag(state, "--from-github"))
+        self.assertIn(f"{HOME}#77", self.untrusted_ids(r))
+        r = self.out(self.run_dag(state, "--from-github", "--trust", "deploy-bot[bot]"))
+        self.assertNotIn(f"{HOME}#77", self.untrusted_ids(r))
+
+    def test_bot_editor_is_untrusted(self):
+        state = plan_state()
+        state["issues"][f"{HOME}#1"]["editors"] = ["owner", {"login": "deploy-bot", "type": "Bot"}]
+        state["collaborators"] = {HOME: ["deploy-bot"]}  # even write permission does not trust a bot
+        r = self.out(self.run_dag(state, "--from-github", "--root", f"{HOME}#9"))
+        self.assertIn(f"{HOME}#1", self.untrusted_ids(r))
+        self.assertTrue(any("bot actors" in why for u in r["source"]["untrusted_issues"] for why in u["reasons"]))
+
+    def test_null_edit_history_connection_exits_2(self):
+        state = plan_state()
+        state["graphql_null_edits"] = True
+        p = self.run_dag(state, "--from-github", "--root", f"{HOME}#9")
+        self.assertEqual(p.returncode, 2, p.stdout)
+
+    def test_wrong_shape_issue_response_exits_2(self):
+        state = plan_state()
+        state["issue_get_returns_list"] = True
+        p = self.run_dag(state, "--from-github", "--root", f"{HOME}#9")
+        self.assertEqual(p.returncode, 2, p.stdout)
+
+    def test_wrong_shape_listing_page_exits_2(self):
+        state = plan_state()
+        state["issues_list_returns_object"] = True
+        p = self.run_dag(state, "--from-github")
+        self.assertEqual(p.returncode, 2, p.stdout)
+
+    def test_bot_allowlist_matches_every_github_spelling(self):
+        state = plan_state()
+        state["issues"][f"{HOME}#77"] = issue(177, "Automated", fm(f"{HOME}#77"), author="deploy-bot[bot]", association="NONE", author_type="Bot")
+        for spelling in ("deploy-bot[bot]", "app/deploy-bot"):
+            r = self.out(self.run_dag(state, "--from-github", "--trust", spelling))
+            self.assertNotIn(f"{HOME}#77", self.untrusted_ids(r), spelling)
+        # The bare spelling names a human, not the app.
+        r = self.out(self.run_dag(state, "--from-github", "--trust", "deploy-bot"))
+        self.assertIn(f"{HOME}#77", self.untrusted_ids(r))
+
+    def test_bot_editor_sharing_the_authors_login_is_still_checked(self):
+        state = plan_state()
+        state["issues"][f"{HOME}#1"].update(author="ci-worker", association="OWNER", editors=["ci-worker", {"login": "ci-worker", "type": "Bot"}])
+        r = self.out(self.run_dag(state, "--from-github", "--root", f"{HOME}#9"))
+        self.assertIn(f"{HOME}#1", self.untrusted_ids(r))
+
+    def test_allowlisting_a_bot_does_not_trust_a_human_with_the_same_login(self):
+        state = plan_state()
+        state["issues"][f"{HOME}#78"] = issue(178, "Impostor", fm(f"{HOME}#78"), author="ci-worker", association="NONE", author_type="User")
+        r = self.out(self.run_dag(state, "--from-github", "--trust", "ci-worker[bot]"))
+        self.assertIn(f"{HOME}#78", self.untrusted_ids(r))
+        self.assertNotIn(f"{HOME}#78", [b["id"] for b in r["conflict_free_frontier_batch"]])
+
+    def test_stranger_seed_costs_no_permission_lookup(self):
+        state = plan_state()
+        state["issues"][f"{HOME}#77"] = issue(177, "Flood", fm(f"{HOME}#77"), author=STRANGER, association="NONE")
+        self.run_dag(state, "--from-github")
+        self.assertFalse(any("collaborators/mallory" in " ".join(c) for c in self.calls()))
+
+    def test_mis_cased_reference_is_not_reported_as_transferred(self):
+        state = plan_state()
+        state["issues"][f"{HOME}#1"]["body"] = fm(f"{HOME}#1", blocked_by=["FlyingRobots/Echo#5"])
+        state["issues"]["FlyingRobots/Echo#5"] = state["issues"].pop(f"{ECHO}#5")
+        p = self.run_dag(state, "--from-github", "--root", f"{HOME}#1")
+        r = self.out(p)
+        self.assertEqual(p.returncode, 0, r)
+        self.assertNotIn(f"{HOME}#1", r["frontmatter"]["violations"])
+
+    def test_add_edge_refuses_a_pull_request_child(self):
+        state = plan_state()
+        state["issues"][f"{HOME}#300"] = issue(300, "A pull request", fm(f"{HOME}#300"), is_pr=True)
+        p = self.run_dag(state, "--from-github", "--add-edge", f"{HOME}#1->{HOME}#300")
+        self.assertEqual(p.returncode, 1, p.stdout)
+        self.assertFalse(any("PATCH" in c for c in self.calls()))
+
+    def test_rendered_cells_escape_links_and_resource_pipes(self):
+        state = plan_state()
+        state["issues"][f"{HOME}#1"]["title"] = "[click](https://example.invalid)"
+        state["issues"][f"{ECHO}#5"]["body"] = fm(f"{ECHO}#5", blocked_by=[f"{BUNNY}#7"], extra=".holds: [a|b]")  # on the frontier, so its Resources cell renders
+        p = self.run_dag(state, "--from-github", "--root", f"{HOME}#9", "--emit-roadmap")
+        self.assertNotIn("[click](https://example.invalid)", p.stdout)
+        self.assertIn("a\\|b", p.stdout)
+
+    def test_compare_mode_fails_closed_on_a_gh_error(self):
+        state = plan_state()
+        state["blocked_by_fail"] = True
+        p = self.run_dag(state, "--from-github", "--root", f"{HOME}#9", "--compare-relationships")
+        self.assertEqual(p.returncode, 2, p.stdout)
+
+    def test_home_owner_with_capitals_compiles_and_links_prs(self):
+        state = plan_state()
+        state["home"] = "FlyingRobots/Geordi"
+        state["issues"] = {k.replace(HOME, "FlyingRobots/Geordi"): v for k, v in state["issues"].items()}
+        state["prs"] = [{"number": 8, "isDraft": False, "url": "u", "author": {"login": "owner"}, "isCrossRepository": False,
+                         "closingIssuesReferences": [{"number": 2, "repository": {"name": "Geordi", "owner": {"login": "FlyingRobots"}}}]}]
+        state["collaborators"] = {"FlyingRobots/Geordi": ["owner"]}
+        p = self.run_dag(state, "--from-github")
+        r = self.out(p)
+        self.assertEqual(p.returncode, 0, r)
+        self.assertEqual(r["frontmatter"]["violations"], {})
+        self.assertEqual(self.node(r, f"{HOME}#2")["status"], "in-progress")
+        self.assertEqual(len([i for i in self.ids(r) if i.endswith("#2")]), 1)
+
+    def test_add_edge_cycle_rolls_back_even_when_drift_lookup_fails(self):
+        state = plan_state()
+        state["blocked_by_fail"] = True
+        before = state["issues"][f"{ECHO}#5"]["body"]
+        p = self.run_dag(state, "--from-github", "--root", f"{HOME}#9", "--add-edge", f"{HOME}#2->{ECHO}#5", "--compare-relationships")
+        r = self.out(p)
+        self.assertEqual(p.returncode, 2, r)
+        self.assertTrue(r["mutation"]["rolled_back"])
+        self.assertEqual(self.current()["issues"][f"{ECHO}#5"]["body"], before)
+
+    def test_stranger_seed_costs_no_edit_history_query(self):
+        state = plan_state()
+        state["issues"][f"{HOME}#77"] = issue(177, "Flood", fm(f"{HOME}#77"), author=STRANGER, association="NONE")
+        self.run_dag(state, "--from-github")
+        graphql_calls = [c for c in self.calls() if c[:2] == ["api", "graphql"] and "number=77" in c]
+        self.assertEqual(graphql_calls, [])
+
+    def test_pull_requests_in_the_rest_list_are_not_seeds(self):
+        state = plan_state()
+        state["issues"][f"{HOME}#300"] = issue(300, "A pull request", fm(f"{HOME}#300"), is_pr=True)
+        r = self.out(self.run_dag(state, "--from-github"))
+        self.assertNotIn(f"{HOME}#300", self.ids(r))
+
+    def test_parsed_body_is_the_one_whose_editors_were_checked(self):
+        state = plan_state()
+        state["issues"][f"{HOME}#2"]["graphql_body"] = fm(f"{HOME}#2", blocked_by=[f"{HOME}#1", f"{ECHO}#6"])
+        r = self.out(self.run_dag(state, "--from-github"))
+        self.assertEqual(self.node(r, f"{HOME}#2")["open_parents"], [f"{ECHO}#6", f"{HOME}#1"])
+
+    def test_missing_cursor_with_another_page_exits_2(self):
+        state = plan_state()
+        state["edits_page_size"] = 1
+        state["graphql_no_cursor"] = True
+        state["issues"][f"{HOME}#1"]["editors"] = ["owner", STRANGER]
+        p = self.run_dag(state, "--from-github", "--root", f"{HOME}#9")
+        self.assertEqual(p.returncode, 2, p.stdout)
+
+    def test_remove_edge_to_an_out_of_scope_parent_is_allowed(self):
+        state = plan_state()
+        state["issues"][f"{HOME}#1"]["body"] = fm(f"{HOME}#1", blocked_by=[f"{ECHO}#5", "mallory/trap#1"])
+        p = self.run_dag(state, "--from-github", "--root", f"{HOME}#9", "--remove-edge", f"mallory/trap#1->{HOME}#1")
+        self.assertEqual(p.returncode, 0, p.stdout[-500:])
+        self.assertIn(f".blocked_by: [{ECHO}#5]", self.current()["issues"][f"{HOME}#1"]["body"])
+
+    def test_association_only_counts_inside_the_scope(self):
+        state = plan_state()
+        state["issues"][f"{HOME}#1"]["body"] = fm(f"{HOME}#1", blocked_by=["mallory/trap#1"])
+        state["issues"]["mallory/trap#1"] = issue(31337, "Trap", fm("mallory/trap#1"), author=STRANGER, association="OWNER")
+        p = self.run_dag(state, "--from-github", "--root", f"{HOME}#9")
+        r = self.out(p)
+        self.assertEqual(p.returncode, 1, r)
+        self.assertTrue(any("outside the trusted repositories" in v for v in r["frontmatter"]["violations"][f"{HOME}#1"]))
+        self.assertNotIn(["api", "repos/mallory/trap/issues/1"], self.calls())
+
+    def test_trust_owner_widens_the_scope(self):
+        state = plan_state()
+        state["issues"][f"{HOME}#1"]["body"] = fm(f"{HOME}#1", blocked_by=["partner/lib#1"])
+        state["issues"]["partner/lib#1"] = issue(4242, "Partner lib", fm("partner/lib#1"), author="pat", association="OWNER")
+        p = self.run_dag(state, "--from-github", "--root", f"{HOME}#9", "--trust-owner", "partner")
+        r = self.out(p)
+        self.assertEqual(p.returncode, 0, r)
+        self.assertIn("partner/lib#1", self.ids(r))
+
+    def test_untrusted_root_is_listed_not_a_node(self):
+        state = plan_state()
+        state["issues"][f"{HOME}#77"] = issue(177, "Stranger", fm(f"{HOME}#77"), author=STRANGER, association="NONE")
+        p = self.run_dag(state, "--from-github", "--root", f"{HOME}#77")
+        r = self.out(p)
+        self.assertEqual(p.returncode, 0, r)
+        self.assertEqual(self.ids(r), [])
+        self.assertEqual(self.untrusted_ids(r), [f"{HOME}#77"])
+
+    def test_root_outside_the_scope_is_refused(self):
+        p = self.run_dag(plan_state(), "--from-github", "--root", "mallory/trap#1")
+        self.assertEqual(p.returncode, 2, p.stdout)
+        self.assertNotIn(["api", "repos/mallory/trap/issues/1"], self.calls())
+
+    def test_untrusted_descendants_do_not_inflate_ranking(self):
+        base = self.out(self.run_dag(plan_state(), "--from-github"))
+        state = plan_state()
+        for n in range(50, 60):
+            state["issues"][f"{HOME}#{n}"] = issue(1000 + n, "Fake dependent", fm(f"{HOME}#{n}", blocked_by=[f"{HOME}#2"]), author=STRANGER, association="NONE")
+        r = self.out(self.run_dag(state, "--from-github"))
+        self.assertEqual(self.node(r, f"{HOME}#2")["priority_score"], self.node(base, f"{HOME}#2")["priority_score"])
+
+    def test_fork_pr_does_not_mark_a_task_in_flight(self):
+        state = plan_state()
+        state["prs"] = [{"number": 7, "isDraft": True, "url": "u", "author": {"login": STRANGER}, "isCrossRepository": True, "closingIssuesReferences": [closing(2)]}]
+        r = self.out(self.run_dag(state, "--from-github"))
+        self.assertEqual(self.node(r, f"{HOME}#2")["status"], "open")
+        self.assertEqual(self.node(r, f"{HOME}#2")["linked_open_prs"], [])
+        self.assertEqual(r["source"]["untrusted_linked_prs"][0]["closes"], [f"{HOME}#2"])
+
+    def test_same_repository_pr_by_a_trusted_author_marks_in_flight(self):
+        state = plan_state()
+        state["prs"] = [{"number": 8, "isDraft": False, "url": "u", "author": {"login": "owner"}, "isCrossRepository": False, "closingIssuesReferences": [closing(2)]}]
+        state["collaborators"] = {HOME: ["owner"]}
+        r = self.out(self.run_dag(state, "--from-github"))
+        self.assertEqual(self.node(r, f"{HOME}#2")["status"], "in-progress")
+        self.assertEqual(r["source"]["untrusted_linked_prs"], [])
+
+    def test_same_repository_pr_by_an_untrusted_or_missing_author_is_untrusted(self):
+        for author in ({"login": STRANGER}, None):
+            state = plan_state()
+            pr = {"number": 8, "isDraft": False, "url": "u", "isCrossRepository": False, "closingIssuesReferences": [closing(2)]}
+            if author:
+                pr["author"] = author
+            state["prs"] = [pr]
+            r = self.out(self.run_dag(state, "--from-github"))
+            self.assertEqual(self.node(r, f"{HOME}#2")["status"], "open", author)
+            self.assertEqual(self.node(r, f"{HOME}#2")["linked_open_prs"], [])
+            self.assertEqual(len(r["source"]["untrusted_linked_prs"]), 1)
+
+    def test_pr_without_trust_fields_is_untrusted(self):
+        state = plan_state()
+        state["prs"] = [{"number": 9, "isDraft": False, "url": "u", "closingIssuesReferences": [closing(2)]}]
+        r = self.out(self.run_dag(state, "--from-github"))
+        self.assertEqual(self.node(r, f"{HOME}#2")["status"], "open")
+        self.assertEqual(len(r["source"]["untrusted_linked_prs"]), 1)
+
+    def test_add_edge_refuses_an_untrusted_child_without_writing(self):
+        state = plan_state()
+        state["issues"][f"{HOME}#2"].update(author=STRANGER, association="NONE")
+        before = state["issues"][f"{HOME}#2"]["body"]
+        p = self.run_dag(state, "--from-github", "--add-edge", f"{ECHO}#6->{HOME}#2")
+        self.assertEqual(p.returncode, 1, p.stdout)
+        self.assertEqual(self.current()["issues"][f"{HOME}#2"]["body"], before)
+        self.assertFalse(any("PATCH" in c for c in self.calls()))
+
+    def test_add_edge_refuses_a_parent_outside_the_scope(self):
+        p = self.run_dag(plan_state(), "--from-github", "--add-edge", f"mallory/trap#1->{HOME}#2")
+        self.assertEqual(p.returncode, 1, p.stdout)
+        self.assertFalse(any("PATCH" in c for c in self.calls()))
+
+    def test_trust_lookup_failure_fails_closed(self):
+        state = plan_state()
+        state["fail_graphql"] = True
+        p = self.run_dag(state, "--from-github")
+        self.assertEqual(p.returncode, 2, p.stdout)
+
+    def test_edit_history_is_paginated(self):
+        state = plan_state()
+        state["edits_page_size"] = 2
+        state["issues"][f"{HOME}#1"]["editors"] = ["owner", "owner", "owner", STRANGER]
+        r = self.out(self.run_dag(state, "--from-github", "--root", f"{HOME}#9"))
+        self.assertIn(f"{HOME}#1", self.untrusted_ids(r))
+
+    def test_untrusted_titles_never_render(self):
+        state = plan_state()
+        state["issues"][f"{HOME}#1"]["editors"] = ["owner", STRANGER]
+        state["issues"][f"{HOME}#1"]["title"] = "<img src=x onerror=alert(1)> PWNED"
+        p = self.run_dag(state, "--from-github", "--root", f"{HOME}#9", "--emit-roadmap")
+        self.assertEqual(p.returncode, 0, p.stdout[-400:])
+        self.assertNotIn("PWNED", p.stdout)
+
+    def test_rendered_cells_escape_html(self):
+        state = plan_state()
+        state["issues"][f"{HOME}#1"]["title"] = "Home <one>"
+        p = self.run_dag(state, "--from-github", "--root", f"{HOME}#9", "--emit-roadmap")
+        self.assertIn("Home &lt;one&gt;", p.stdout)
+        self.assertNotIn("Home <one>", p.stdout)
+
+    def test_trust_flags_require_from_github(self):
+        p = self.run_dag(plan_state(), "--trust", STRANGER)
+        self.assertNotEqual(p.returncode, 0)
 
 
 if __name__ == "__main__":

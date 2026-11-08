@@ -120,6 +120,19 @@ run. Those run-time locks do not belong in `.holds`.
 
 There is no default resource.
 
+## Trust
+
+The frontmatter carries **no trust**. No `.` key may claim approval, a
+signature, or an identity, because the person who writes the attack writes the
+frontmatter. Whether an issue may become a node is decided outside the
+document: by its repository (the trusted scope) and by who authored and edited
+it (GitHub's edit history). Being a node is admission to the graph, not
+permission to execute: a tool that runs tasks needs a separate approval bound
+to the hash of the body it will act on, and the frontmatter cannot express
+that either. A tool that reads this format must apply such gates before it
+acts on any issue; `docs/threat-model.md` specifies the ones Taskalisk
+applies. A proposal to add a trust-bearing key is rejected.
+
 ## GitHub relationships
 
 GitHub sub-issues and `blocked_by` relationships are optional mirrors for the
