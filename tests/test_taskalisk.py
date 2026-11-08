@@ -498,6 +498,12 @@ class Trust(Harness):
         r = self.out(self.run_dag(state, "--from-github", "--trust", "deploy-bot"))
         self.assertIn(f"{HOME}#77", self.untrusted_ids(r))
 
+    def test_bot_editor_sharing_the_authors_login_is_still_checked(self):
+        state = plan_state()
+        state["issues"][f"{HOME}#1"].update(author="ci-worker", association="OWNER", editors=["ci-worker", {"login": "ci-worker", "type": "Bot"}])
+        r = self.out(self.run_dag(state, "--from-github", "--root", f"{HOME}#9"))
+        self.assertIn(f"{HOME}#1", self.untrusted_ids(r))
+
     def test_allowlisting_a_bot_does_not_trust_a_human_with_the_same_login(self):
         state = plan_state()
         state["issues"][f"{HOME}#78"] = issue(178, "Impostor", fm(f"{HOME}#78"), author="ci-worker", association="NONE", author_type="User")

@@ -757,13 +757,14 @@ class TrustPolicy:
         ok, why = self.login_trusted(slug, meta.get("author"), meta.get("association"), meta.get("author_type"))
         return ok, [] if ok else [f"author {meta.get('author') or '(none)'}: {why}"]
 
-    def editors_trusted(self, slug: str, author: str | None, editors: list[dict[str, Any]]) -> tuple[bool, list[str]]:
-        """Every body editor other than the (already trusted) author must be trusted."""
+    def editors_trusted(self, slug: str, author: str | None, editors: list[dict[str, Any]], author_type: str | None = None) -> tuple[bool, list[str]]:
+        """Every body editor other than the (already trusted) author must be trusted.
+        Identities are compared with their actor type, so a bot sharing the author's login is still checked."""
         reasons: list[str] = []
-        seen: set[str | None] = {(author or "").lower() or None}
+        seen: set[str | None] = {normalize_login(author, author_type) if author else None}
         for editor in editors:
             login = editor.get("login")
-            key = (login or "").lower() or None
+            key = normalize_login(login, editor.get("type")) if login else None
             if key in seen:
                 continue
             seen.add(key)
@@ -913,7 +914,7 @@ def collect_frontmatter_dag(repo: str, roots: list[str], errors: list[dict[str, 
             if history is None:
                 break
             meta["body"] = history["body"]  # the body whose editors were checked
-            trusted, reasons = policy.editors_trusted(ref[0], meta.get("author"), history["editors"])
+            trusted, reasons = policy.editors_trusted(ref[0], meta.get("author"), history["editors"], meta.get("author_type"))
         if errors:
             break
         if not trusted:
@@ -1416,7 +1417,7 @@ def mutate_edge(repo: str, home: str, parent: IssueRef, child: IssueRef, add: bo
         if history is None:
             return None
         body = history["body"]
-        trusted, reasons = policy.editors_trusted(child[0], meta.get("author"), history["editors"])
+        trusted, reasons = policy.editors_trusted(child[0], meta.get("author"), history["editors"], meta.get("author_type"))
     if errors:
         # A trust lookup that recorded an error (for example a failed CODEOWNERS fetch) never permits a write.
         return None
