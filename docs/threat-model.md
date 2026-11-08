@@ -109,13 +109,18 @@ control and whether it exists.
 An issue is **trusted** only when all of the following hold:
 
 - Its repository is in the trusted scope (C2).
-- Its author is trusted: `authorAssociation` in `OWNER`, `MEMBER`,
-  `COLLABORATOR` inside the scope, or the login is on the allowlist
-  (`--trust <login>`, or CODEOWNERS with `--trust-codeowners`, see C18).
-- **Every editor** in the issue's body edit history is trusted: the author
-  (already trusted), an allowlisted login, or a login that the GitHub
-  collaborator check (`repos/{slug}/collaborators/{login}`) confirms. A deleted
-  user, a bot, or a check that cannot be made is untrusted.
+- Its author is trusted: `authorAssociation` `OWNER` inside the scope; or
+  `write`, `maintain` or `admin` permission on that repository
+  (`repos/{slug}/collaborators/{login}/permission`); or the login is on the
+  allowlist (`--trust <login>`, or CODEOWNERS with `--trust-codeowners`, see
+  C18). `MEMBER` and `COLLABORATOR` associations are not enough by
+  themselves: both include read- and triage-level people.
+- **Every editor** in the issue's body edit history is trusted by the same
+  rule: the author (already trusted), an allowlisted login, or a login with
+  `write` or higher permission. A deleted user, a bot, a `read` or `triage`
+  collaborator, or a check that cannot be made is untrusted.
+- Owner, repository and login names compare case-insensitively, as GitHub
+  treats them.
 
 The check reads GitHub's edit history (GraphQL `userContentEdits`). If that
 query fails (network, permissions), the run exits `2`: no graph is compiled.
@@ -147,8 +152,10 @@ owners explicitly; the flags are the declaration.
   it is closed, is never dispatched, and contributes no edges, holds, meters
   or title. It is listed with the reason.
 
-Nothing from an untrusted issue reaches the graph, the batch, the ranking, or
-any rendered output.
+Nothing an untrusted author wrote reaches the graph, the batch, the ranking,
+or any rendered output, including the `not_planned_parents` report. An
+untrusted blocker appears only as the placeholder `(untrusted issue)` with
+its reference, so a dependent's blocked state stays visible.
 
 ### C4. Linked PRs count only when trusted — implemented
 

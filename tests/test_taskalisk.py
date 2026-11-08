@@ -379,6 +379,48 @@ class Trust(Harness):
         state["collaborators"] = {HOME: ["carol"]}
         self.assertEqual(self.untrusted_ids(self.out(self.run_dag(state, "--from-github", "--root", f"{HOME}#9"))), [])
 
+    def test_triage_collaborator_is_not_trusted(self):
+        state = plan_state()
+        state["issues"][f"{HOME}#1"]["editors"] = ["owner", "carol"]
+        state["collaborators"] = {HOME: {"carol": "triage"}}
+        r = self.out(self.run_dag(state, "--from-github", "--root", f"{HOME}#9"))
+        self.assertIn(f"{HOME}#1", self.untrusted_ids(r))
+        self.assertTrue(any("below write" in why for u in r["source"]["untrusted_issues"] for why in u["reasons"]))
+
+    def test_member_association_alone_is_not_trusted(self):
+        state = plan_state()
+        state["issues"][f"{HOME}#77"] = issue(177, "Org member", fm(f"{HOME}#77"), author="pat", association="MEMBER")
+        r = self.out(self.run_dag(state, "--from-github"))
+        self.assertIn(f"{HOME}#77", self.untrusted_ids(r))
+
+    def test_names_compare_case_insensitively(self):
+        state = plan_state()
+        state["issues"][f"{HOME}#1"]["editors"] = ["owner", "Carol"]
+        state["issues"][f"{HOME}#1"]["body"] = fm(f"{HOME}#1", blocked_by=["Partner/Lib#1"])
+        state["issues"]["Partner/Lib#1"] = issue(4242, "Partner lib", fm("Partner/Lib#1"), author="pat", association="OWNER")
+        p = self.run_dag(state, "--from-github", "--root", f"{HOME}#9", "--trust", "carol", "--trust-owner", "partner")
+        r = self.out(p)
+        self.assertEqual(p.returncode, 0, r)
+        self.assertEqual(self.untrusted_ids(r), [])
+
+    def test_closed_not_planned_untrusted_blocker_leaks_no_title(self):
+        state = plan_state()
+        state["issues"][f"{HOME}#1"]["body"] = fm(f"{HOME}#1", blocked_by=[f"{ECHO}#5", f"{ECHO}#99"])
+        state["issues"][f"{ECHO}#99"] = issue(5099, "SECRET STRANGER TITLE", fm(f"{ECHO}#99"), state="closed", reason="not_planned", author=STRANGER, association="NONE")
+        p = self.run_dag(state, "--from-github", "--root", f"{HOME}#9")
+        self.assertEqual(p.returncode, 0, p.stdout[-400:])
+        self.assertNotIn("SECRET STRANGER TITLE", p.stdout)
+        self.assertEqual(self.out(p)["source"]["not_planned_parents"][0]["title"], "(untrusted issue)")
+
+    def test_add_edge_aborts_when_a_trust_lookup_records_an_error(self):
+        state = plan_state()
+        state["contents_fail"] = True
+        before = state["issues"][f"{HOME}#2"]["body"]
+        p = self.run_dag(state, "--from-github", "--add-edge", f"{ECHO}#6->{HOME}#2", "--trust-codeowners")
+        self.assertEqual(p.returncode, 2, p.stdout)
+        self.assertEqual(self.current()["issues"][f"{HOME}#2"]["body"], before)
+        self.assertFalse(any("PATCH" in c for c in self.calls()))
+
     def test_collaborator_check_that_cannot_run_is_untrusted(self):
         state = plan_state()
         state["issues"][f"{HOME}#1"]["editors"] = ["owner", "carol"]

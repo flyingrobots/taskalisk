@@ -111,15 +111,20 @@ def main(argv):
     if args[:1] == ["-X"]:
         method, args = args[1], args[2:]
     path = args[0]
-    m = re.fullmatch(r"repos/([^/]+/[^/]+)/collaborators/([^/]+)", path)
+    m = re.fullmatch(r"repos/([^/]+/[^/]+)/collaborators/([^/]+)/permission", path)
     if m:
-        if m.group(2) in state.get("collaborators", {}).get(m.group(1), []):
-            return
+        # collaborators: {slug: [login, ...]} means write; {slug: {login: "triage"}} sets the level.
+        table = state.get("collaborators", {}).get(m.group(1), [])
+        perms = table if isinstance(table, dict) else {login: "write" for login in table}
+        if m.group(2) in perms:
+            print(perms[m.group(2)]); return
         if state.get("collaborators_forbidden"):
             fail("gh: Must have push access to view repository collaborators (HTTP 403)")
         fail("gh: Not Found (HTTP 404)")
     m = re.fullmatch(r"repos/([^/]+/[^/]+)/contents/(.+)", path)
     if m:
+        if state.get("contents_fail"):
+            fail("gh: Internal Server Error (HTTP 500)")
         text = state.get("codeowners", {}).get(m.group(1), {}).get(m.group(2))
         if text is None:
             fail("gh: Not Found (HTTP 404)")

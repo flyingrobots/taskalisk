@@ -570,7 +570,11 @@ def branches_for_issue(number: int, branches: list[str]) -> list[str]:
 # Trust (docs/threat-model.md, controls C1-C4 and C18)
 # --------------------------------------------------------------------------- #
 
-TRUSTED_ASSOCIATIONS = {"OWNER", "MEMBER", "COLLABORATOR"}
+# OWNER is the only association that implies write access by itself. MEMBER and
+# COLLABORATOR include read- and triage-level people, so they go through the
+# permission check like everyone else.
+TRUSTED_ASSOCIATIONS = {"OWNER"}
+TRUSTED_PERMISSIONS = {"admin", "maintain", "write"}
 CODEOWNERS_PATHS = (".github/CODEOWNERS", "CODEOWNERS", "docs/CODEOWNERS")
 UNTRUSTED_TITLE = "(untrusted issue)"
 OWNER_RE = re.compile(r"[A-Za-z0-9_.-]+")
@@ -635,10 +639,11 @@ class TrustPolicy:
     """Who may be a node. Association counts only inside the repository scope (C2)."""
 
     def __init__(self, repo: str, home_slug: str, owners: list[str], repos: list[str], logins: list[str], codeowners: bool, errors: list[dict[str, str]]):
+        # GitHub owner, repository and login names are case-insensitive; compare them folded.
         self.repo = repo
-        self.owners = {home_slug.split("/", 1)[0], *owners}
-        self.repos = set(repos)
-        self.logins = set(logins)
+        self.owners = {home_slug.split("/", 1)[0].lower(), *(o.lower() for o in owners)}
+        self.repos = {r.lower() for r in repos}
+        self.logins = {l.lower() for l in logins}
         self.codeowners = codeowners
         self.errors = errors
         self._repo_logins: dict[str, set[str]] = defaultdict(set)
@@ -647,7 +652,7 @@ class TrustPolicy:
         self._collaborator_cache: dict[tuple[str, str], tuple[bool, str]] = {}
 
     def in_scope(self, slug: str) -> bool:
-        return slug in self.repos or slug.split("/", 1)[0] in self.owners
+        return slug.lower() in self.repos or slug.split("/", 1)[0].lower() in self.owners
 
     def describe(self) -> dict[str, Any]:
         return {
@@ -661,12 +666,13 @@ class TrustPolicy:
     def login_trusted(self, slug: str, login: str | None, association: str | None = None) -> tuple[bool, str]:
         if not login:
             return False, "no login (deleted user or bot)"
-        if login in self.logins:
+        login_key = login.lower()
+        if login_key in self.logins:
             return True, "allowlisted"
         if not self.in_scope(slug):
             return False, f"{slug} is outside the trusted repositories"
         self._load_codeowners(slug)
-        if login in self._repo_logins.get(slug, set()):
+        if login_key in self._repo_logins.get(slug.lower(), set()):
             return True, "CODEOWNERS"
         if association in TRUSTED_ASSOCIATIONS:
             return True, f"association {association}"
@@ -690,11 +696,14 @@ class TrustPolicy:
         return not reasons, reasons
 
     def _collaborator(self, slug: str, login: str) -> tuple[bool, str]:
-        key = (slug, login)
+        """Trusted only with write, maintain or admin permission; read and triage are not enough to edit others' issues safely."""
+        key = (slug.lower(), login.lower())
         if key not in self._collaborator_cache:
-            ok, _, err = run_cmd_checked(["gh", "api", f"repos/{slug}/collaborators/{login}", "--silent"], cwd=self.repo)
-            if ok:
-                self._collaborator_cache[key] = (True, "collaborator")
+            ok, raw, err = run_cmd_checked(["gh", "api", f"repos/{slug}/collaborators/{login}/permission", "--jq", ".permission"], cwd=self.repo)
+            if ok and raw in TRUSTED_PERMISSIONS:
+                self._collaborator_cache[key] = (True, f"permission {raw}")
+            elif ok:
+                self._collaborator_cache[key] = (False, f"permission {raw or 'none'} on {slug} is below write")
             elif "HTTP 404" in err:
                 self._collaborator_cache[key] = (False, f"not a collaborator of {slug}")
             else:
@@ -703,17 +712,18 @@ class TrustPolicy:
 
     def _load_codeowners(self, slug: str) -> None:
         """Read CODEOWNERS from the default branch of a scope repository (C18)."""
-        if not self.codeowners or slug in self._codeowners_loaded:
+        slug_key = slug.lower()
+        if not self.codeowners or slug_key in self._codeowners_loaded:
             return
-        self._codeowners_loaded.add(slug)
+        self._codeowners_loaded.add(slug_key)
         for path in CODEOWNERS_PATHS:
             source = f"gh api repos/{slug}/contents/{path}"
             ok, raw, err = run_cmd_checked(["gh", "api", f"repos/{slug}/contents/{path}", "-H", "Accept: application/vnd.github.raw+json"], cwd=self.repo)
             if ok:
                 logins, teams = parse_codeowners(raw)
-                self._repo_logins[slug] |= logins
+                self._repo_logins[slug_key] |= {l.lower() for l in logins}
                 if teams:
-                    self._teams[slug] = teams
+                    self._teams[slug_key] = teams
                 return
             if "HTTP 404" not in err:
                 self.errors.append({"source": source, "error": err or "command failed"})
@@ -873,7 +883,9 @@ def collect_frontmatter_dag(repo: str, roots: list[str], errors: list[dict[str, 
             bmeta = fetched.get(blk, {})
             evidence = f"frontmatter: {nid} .blocked_by {bid}"
             if bmeta.get("state") == "closed" and str(bmeta.get("state_reason") or "") == "not_planned":
-                not_planned.append({"parent": bid, "child": nid, "title": bmeta.get("title", "")})
+                # A closed untrusted blocker still contributes no title (C3).
+                btitle = UNTRUSTED_TITLE if (brec or {}).get("untrusted") else bmeta.get("title", "")
+                not_planned.append({"parent": bid, "child": nid, "title": btitle})
             depends_on.append({"from": bid, "type": "frontmatter", "isHard": True, "confidence": 1.0, "evidence": evidence})
         untrusted_node = bool(rec.get("untrusted"))
         linked = prs_by_issue.get(ref, []) if ref[0] == slug and not untrusted_node else []
@@ -1307,6 +1319,9 @@ def mutate_edge(repo: str, home: str, parent: IssueRef, child: IssueRef, add: bo
     if info is None:
         return None
     trusted, reasons = policy.issue_trust(child[0], info)
+    if errors:
+        # A trust lookup that recorded an error (for example a failed CODEOWNERS fetch) never permits a write.
+        return None
     if not trusted:
         # Never write into a stranger's issue, even with the permission to do so (C3).
         errors.append({"source": f"frontmatter of {node_id(child[0], child[1], home)}", "error": "child is untrusted: " + "; ".join(reasons)})

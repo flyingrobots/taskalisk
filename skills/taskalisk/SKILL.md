@@ -149,12 +149,14 @@ area: free-form notes have no prefix
      A reference outside the scope is a violation; the issue is never
      fetched. `authorAssociation` is relative to a repository, so it counts
      only inside the scope.
-   - **An issue is a node only when trusted:** its author is `OWNER`,
-     `MEMBER` or `COLLABORATOR` in a scope repository, or allowlisted
-     (`--trust <login>`, or CODEOWNERS of the default branch with
-     `--trust-codeowners`), **and every editor in its body edit history** is
-     trusted (the author, an allowlisted login, or a confirmed collaborator).
-     A bot, a deleted user, or a check that cannot be made is untrusted.
+   - **An issue is a node only when trusted:** its author is `OWNER` of a
+     scope repository, has `write`, `maintain` or `admin` permission there,
+     or is allowlisted (`--trust <login>`, or CODEOWNERS of the default
+     branch with `--trust-codeowners`), **and every editor in its body edit
+     history** is trusted by the same rule. `MEMBER` and `COLLABORATOR`
+     associations, `read` and `triage` permission, a bot, a deleted user, or
+     a check that cannot be made are untrusted. Names compare
+     case-insensitively.
    - **Untrusted issues contribute nothing.** An untrusted seed is listed in
      `source.untrusted_issues` and is not a node. An untrusted referenced
      issue is an opaque blocker: it blocks its dependents until it closes,
