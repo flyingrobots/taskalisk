@@ -39,8 +39,10 @@ absolute paths in tracked documentation.
 **Security.** The repositories are public, so anyone can open an issue with
 valid frontmatter or a fork PR that says `Closes owner/repo#N`. The threat
 model and the binding policy are `docs/threat-model.md` in this skill's
-repository. Doctrine 9 below is its summary. Every executor issue (#9, #10,
-#13, #14, #15) implements the controls that name it, with tests.
+repository. Doctrine 9 below is its summary. Controls marked *implemented*
+are in the compiler with tests; controls marked *planned* or *policy* name
+the executor issue that owes them (#9, #10, #13, #14 or #15), and that issue
+is not done until the control has a test.
 
 This is the T.A.S.K.S. + S.L.A.P.S. model mapped onto GitHub: the issue set
 is the task list, `.blocked_by` entries are the dependencies, `.holds` and
@@ -124,7 +126,9 @@ area: free-form notes have no prefix
 5. **Discovery Across Repositories**
    - Seeds are the open issues of the home repository (the one `--repo`
      resolves to), or the `--root` references. The closure follows
-     `.blocked_by` and `.children` into any repository.
+     `.blocked_by` and `.children` into any repository **inside the trusted
+     scope** (doctrine 9); a reference outside it is a violation, and a
+     `--root` outside it exits `2`.
    - A home issue without frontmatter is listed as unmodeled and is not a node.
      A referenced issue without frontmatter is an opaque node: it blocks its
      dependents until it closes, and it is never dispatched.
@@ -214,7 +218,12 @@ area: free-form notes have no prefix
    `source.opaque_nodes`, `source.not_planned_parents`,
    `frontmatter.violations` and `frontmatter.warnings`, `batch_skipped` with
    reasons, `edges` with evidence, and an `artifact_hash` of the canonical
-   result. Read `source.untrusted_issues` on every run: a legitimate
+   result. Read `source.untrusted_linked_prs` too: a fork PR that closes a
+   task is never adopted, so if the work is wanted a maintainer with write
+   access brings it onto a same-repository branch under their own name. PR
+   authors are trusted by the same rule as issue authors, so the token needs
+   push access to the home repository for the permission lookups to run.
+   Read `source.untrusted_issues` on every run: a legitimate
    contribution there needs triage by a trusted person, never frontmatter
    added on the stranger's behalf.
 

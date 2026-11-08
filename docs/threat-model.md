@@ -9,7 +9,11 @@ all of them were implemented.
 The policy sections ("must", "never") are binding on the script, on
 `SKILL.md`, and on every executor issue. A control marked *implemented* has a
 test. A control marked *planned* names the issue that must implement it; that
-issue is not done until the control has a test.
+issue is not done until the control has a test. A control marked *policy*
+binds operators and executor issues through review rather than through
+code: C8 and C14 are owed by #13 (the runner enforces the sandbox, the
+allowlist and the scoped token, and refuses to start without them), C17 by
+every change to `docs/frontmatter-model.md`.
 
 ## 1. The execution path
 
