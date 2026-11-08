@@ -105,7 +105,7 @@ def main(argv):
         print(state["home"]); return
     if argv[:2] == ["issue", "list"]:
         out = [dict(issue_obj(state, k), url=issue_obj(state, k)["html_url"]) for k, v in state["issues"].items()
-               if k.startswith(state["home"] + "#") and v["state"] == "open"]
+               if k.lower().startswith(state["home"].lower() + "#") and v["state"] == "open"]
         print(json.dumps(out)); return
     if argv[:2] == ["pr", "list"]:
         # Like the real gh, return only the requested --json fields.
@@ -137,12 +137,12 @@ def main(argv):
     m = re.fullmatch(r"repos/([^/]+/[^/]+)/issues\?state=open&per_page=\d+", path)
     if m:
         # The REST list: open issues of that repository, pull requests included, like GitHub.
-        out = [issue_obj(state, k) for k, v in state["issues"].items() if k.startswith(m.group(1) + "#") and v["state"] == "open"]
+        out = [issue_obj(state, k) for k, v in state["issues"].items() if k.lower().startswith(m.group(1).lower() + "#") and v["state"] == "open"]
         print(json.dumps(out)); return
     m = re.fullmatch(r"repos/([^/]+/[^/]+)/collaborators/([^/]+)/permission", path)
     if m:
         # collaborators: {slug: [login, ...]} means write; {slug: {login: "triage"}} sets the level.
-        table = state.get("collaborators", {}).get(m.group(1), [])
+        table = next((v for k, v in state.get("collaborators", {}).items() if k.lower() == m.group(1).lower()), [])
         perms = table if isinstance(table, dict) else {login: "write" for login in table}
         if m.group(2) in perms:
             print(perms[m.group(2)]); return
@@ -153,7 +153,7 @@ def main(argv):
     if m:
         if state.get("contents_fail"):
             fail("gh: Internal Server Error (HTTP 500)")
-        text = state.get("codeowners", {}).get(m.group(1), {}).get(m.group(2))
+        text = next((v for k, v in state.get("codeowners", {}).items() if k.lower() == m.group(1).lower()), {}).get(m.group(2))
         if text is None:
             fail("gh: Not Found (HTTP 404)")
         print(text); return

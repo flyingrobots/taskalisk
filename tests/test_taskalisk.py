@@ -525,6 +525,30 @@ class Trust(Harness):
         p = self.run_dag(state, "--from-github", "--root", f"{HOME}#9", "--compare-relationships")
         self.assertEqual(p.returncode, 2, p.stdout)
 
+    def test_home_owner_with_capitals_compiles_and_links_prs(self):
+        state = plan_state()
+        state["home"] = "FlyingRobots/Geordi"
+        state["issues"] = {k.replace(HOME, "FlyingRobots/Geordi"): v for k, v in state["issues"].items()}
+        state["prs"] = [{"number": 8, "isDraft": False, "url": "u", "author": {"login": "owner"}, "isCrossRepository": False,
+                         "closingIssuesReferences": [{"number": 2, "repository": {"name": "Geordi", "owner": {"login": "FlyingRobots"}}}]}]
+        state["collaborators"] = {"FlyingRobots/Geordi": ["owner"]}
+        p = self.run_dag(state, "--from-github")
+        r = self.out(p)
+        self.assertEqual(p.returncode, 0, r)
+        self.assertEqual(r["frontmatter"]["violations"], {})
+        self.assertEqual(self.node(r, f"{HOME}#2")["status"], "in-progress")
+        self.assertEqual(len([i for i in self.ids(r) if i.endswith("#2")]), 1)
+
+    def test_add_edge_cycle_rolls_back_even_when_drift_lookup_fails(self):
+        state = plan_state()
+        state["blocked_by_fail"] = True
+        before = state["issues"][f"{ECHO}#5"]["body"]
+        p = self.run_dag(state, "--from-github", "--root", f"{HOME}#9", "--add-edge", f"{HOME}#2->{ECHO}#5", "--compare-relationships")
+        r = self.out(p)
+        self.assertEqual(p.returncode, 2, r)
+        self.assertTrue(r["mutation"]["rolled_back"])
+        self.assertEqual(self.current()["issues"][f"{ECHO}#5"]["body"], before)
+
     def test_stranger_seed_costs_no_edit_history_query(self):
         state = plan_state()
         state["issues"][f"{HOME}#77"] = issue(177, "Flood", fm(f"{HOME}#77"), author=STRANGER, association="NONE")

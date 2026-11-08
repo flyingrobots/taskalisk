@@ -288,7 +288,8 @@ def gh_repo_slug(repo: str, errors: list[dict[str, str]]) -> str | None:
     if not ok or not raw:
         errors.append({"source": "gh repo view", "error": err or "command failed"})
         return None
-    return raw
+    # The same canonical spelling as parsed references (parse_issue_ref), or the home issues never match their own .id.
+    return raw.lower()
 
 
 def parse_paginated_arrays(raw: str, source: str, errors: list[dict[str, str]]) -> list[dict[str, Any]]:
@@ -841,7 +842,7 @@ def collect_frontmatter_dag(repo: str, roots: list[str], errors: list[dict[str, 
             if isinstance(ref, dict) and "number" in ref:
                 repo_info = ref.get("repository") or {}
                 owner = (repo_info.get("owner") or {}).get("login")
-                ref_slug = f"{owner}/{repo_info['name']}" if owner and repo_info.get("name") else slug
+                ref_slug = f"{owner}/{repo_info['name']}".lower() if owner and repo_info.get("name") else slug
                 closes.append((ref_slug, int(ref["number"])))
         if not closes:
             continue
@@ -1494,24 +1495,26 @@ def compile_from_github(repo: str, roots: list[str], min_confidence: float, emit
     if source["violations"] and result.get("ok"):
         result["ok"] = False
         result["error"] = f"{len(source['violations'])} issue(s) have invalid frontmatter"
+    rel_errors: list[dict[str, str]] = []
     if compare:
-        rel_errors: list[dict[str, str]] = []
         result["relationship_drift"] = compare_relationships(repo, source, rel_errors)
-        if rel_errors:
-            # A failed gh call is never an empty drift report (doctrine 4).
-            print(json.dumps({"ok": False, "error": "GitHub relationship lookup failed", "github_errors": rel_errors, "relationship_drift": result["relationship_drift"]}, indent=2))
-            return 2
+    if rel_errors:
+        # A failed gh call is never an empty drift report (doctrine 4); the run fails below, after any rollback.
+        result["ok"] = False
+        result["error"] = "GitHub relationship lookup failed"
+        result["github_errors"] = rel_errors
     if mutation:
         result["mutation"] = mutation
 
     if not result.get("ok") and mutation and mutation["type"] == "add_blocked_by" and undo and undo["changed"]:
-        # Restore the child's body so a cycle never persists in the truth source.
+        # Restore the child's body so a cycle never persists in the truth source, whatever made the run fail.
         rb_errors: list[dict[str, str]] = []
         result["mutation"]["rolled_back"] = gh_patch_body(repo, undo["child"], undo["old_body"], rb_errors)
         if rb_errors:
             result["mutation"]["rollback_errors"] = rb_errors
 
-    return emit(with_artifact_hash(result), emit_mermaid, emit_roadmap)
+    code = emit(with_artifact_hash(result), emit_mermaid, emit_roadmap)
+    return 2 if rel_errors else code
 
 
 def parse_capacities(items: list[str]) -> dict[str, int] | None:
