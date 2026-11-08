@@ -230,7 +230,8 @@ def collect_unmerged_branches(repo: str, errors: list[dict[str, str]]) -> dict[s
 def gh_list_open_prs(repo: str, errors: list[dict[str, str]]) -> list[dict[str, Any]]:
     cmd = [
         "gh", "pr", "list", "--state", "open", "--limit", str(GH_PR_LIST_LIMIT),
-        "--json", "number,title,headRefName,isDraft,url,closingIssuesReferences",
+        # author and isCrossRepository feed the PR trust check (C4); without them every PR is untrusted.
+        "--json", "number,title,headRefName,isDraft,url,closingIssuesReferences,author,isCrossRepository",
     ]
     ok, raw, err = run_cmd_checked(cmd, cwd=repo)
     if not ok:
@@ -819,8 +820,8 @@ def collect_frontmatter_dag(repo: str, roots: list[str], errors: list[dict[str, 
         if not trusted:
             # No title: nothing an untrusted author wrote reaches any output (C3).
             untrusted.append({"id": nid, "url": meta["html_url"], "state": meta["state"], "author": info.get("author"), "reasons": reasons, "referenced_by": referenced_by[ref]})
-            if ref in seeds and not roots:
-                continue
+            # Always an opaque record: a trusted issue that references it must stay blocked (C3).
+            # Unreferenced untrusted seeds are dropped after discovery, below.
             records[ref] = {"kind": "opaque", "untrusted": True, "blocked_by": [], "children": [], "holds": [], "meters": [], "status": "blocked", "size_hours": None, "type": None}
             continue
         fields, problems = parse_frontmatter(meta["body"])
@@ -846,6 +847,9 @@ def collect_frontmatter_dag(repo: str, roots: list[str], errors: list[dict[str, 
             queue.append(blk)
     if errors:
         return empty
+    # An untrusted seed that no trusted issue references is listed only, never a node.
+    for ref in [r for r, rec in records.items() if rec.get("untrusted") and r in seeds and not roots and not referenced_by.get(r)]:
+        del records[ref]
 
     merged: set[str] = set()
     nodes: dict[str, dict[str, Any]] = {}

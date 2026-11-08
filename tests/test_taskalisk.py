@@ -337,6 +337,24 @@ class Trust(Harness):
         self.assertEqual(entry["author"], STRANGER)
         self.assertNotIn("title", entry)
 
+    def test_untrusted_seed_referenced_by_a_trusted_task_blocks_it(self):
+        state = plan_state()
+        state["issues"][f"{HOME}#77"] = issue(177, "Stranger", fm(f"{HOME}#77"), author=STRANGER, association="NONE")
+        state["issues"][f"{HOME}#2"]["body"] = fm(f"{HOME}#2", blocked_by=[f"{HOME}#1", f"{HOME}#77"])
+        p = self.run_dag(state, "--from-github")
+        r = self.out(p)
+        self.assertEqual(p.returncode, 0, r)
+        self.assertIn(f"{HOME}#77", self.node(r, f"{HOME}#2")["open_parents"])
+        self.assertTrue(self.node(r, f"{HOME}#77")["untrusted"])
+        self.assertNotIn(f"{HOME}#77", [b["id"] for b in r["conflict_free_frontier_batch"]])
+
+    def test_pr_inventory_requests_the_trust_fields(self):
+        self.run_dag(plan_state(), "--from-github")
+        call = next(c for c in self.calls() if c[:2] == ["pr", "list"])
+        fields = call[call.index("--json") + 1].split(",")
+        self.assertIn("author", fields)
+        self.assertIn("isCrossRepository", fields)
+
     def test_untrusted_editor_makes_a_trusted_issue_an_opaque_blocker(self):
         state = plan_state()
         state["issues"][f"{HOME}#1"]["editors"] = ["owner", STRANGER]
