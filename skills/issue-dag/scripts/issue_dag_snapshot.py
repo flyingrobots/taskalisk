@@ -301,7 +301,7 @@ def gh_blocked_by(repo: str, slug: str, number: int, errors: list[dict[str, str]
         ["gh", "api", "--paginate", f"repos/{slug}/issues/{number}/dependencies/blocked_by"], cwd=repo
     )
     if not ok:
-        errors.append({"source": f"gh api issues/{number}/dependencies/blocked_by", "error": err or "command failed"})
+        errors.append({"source": f"gh api repos/{slug}/issues/{number}/dependencies/blocked_by", "error": err or "command failed"})
         return []
     # --paginate concatenates arrays as separate JSON documents; split them.
     items: list[dict[str, Any]] = []
@@ -312,7 +312,7 @@ def gh_blocked_by(repo: str, slug: str, number: int, errors: list[dict[str, str]
         try:
             obj, end = decoder.raw_decode(text, idx)
         except json.JSONDecodeError as exc:
-            errors.append({"source": f"gh api issues/{number}/dependencies/blocked_by", "error": f"Unparseable JSON: {exc}"})
+            errors.append({"source": f"gh api repos/{slug}/issues/{number}/dependencies/blocked_by", "error": f"Unparseable JSON: {exc}"})
             return []
         if isinstance(obj, list):
             items.extend(obj)
@@ -325,21 +325,49 @@ def gh_blocked_by(repo: str, slug: str, number: int, errors: list[dict[str, str]
 def gh_issue_database_id(repo: str, slug: str, number: int, errors: list[dict[str, str]]) -> int | None:
     ok, raw, err = run_cmd_checked(["gh", "api", f"repos/{slug}/issues/{number}", "--jq", ".id"], cwd=repo)
     if not ok or not raw:
-        errors.append({"source": f"gh api issues/{number}", "error": err or "command failed"})
+        errors.append({"source": f"gh api repos/{slug}/issues/{number}", "error": err or "command failed"})
         return None
     return int(raw)
 
 
-def node_id(number: int) -> str:
-    return f"#{number}"
+IssueRef = tuple[str, int]  # (owner/repo slug, issue number)
+ISSUE_REF_RE = re.compile(r"\s*(?:(?P<slug>[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)#|#?)(?P<num>\d+)\s*")
+REPOSITORY_URL_RE = re.compile(r"/repos/([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)/?$")
 
 
-def parse_edge_arg(arg: str) -> tuple[int, int] | None:
-    """'#1080->#1052' means #1080 blocks #1052 (parent -> child)."""
-    m = re.fullmatch(r"\s*#?(\d+)\s*->\s*#?(\d+)\s*", arg)
+def node_id(slug: str, number: int, home: str) -> str:
+    """Canonical node id: '#123' in the home repository, 'owner/repo#123' elsewhere."""
+    return f"#{number}" if slug == home else f"{slug}#{number}"
+
+
+def parse_issue_ref(text: str, home: str) -> IssueRef | None:
+    """Parse '#123' or '123' (home repository) or 'owner/repo#123' (any repository)."""
+    m = ISSUE_REF_RE.fullmatch(text)
     if not m:
         return None
-    return int(m.group(1)), int(m.group(2))
+    return (m.group("slug") or home, int(m.group("num")))
+
+
+def parse_edge_arg(arg: str, home: str) -> tuple[IssueRef, IssueRef] | None:
+    """'#1080->owner/repo#1052' means #1080 blocks owner/repo#1052 (parent -> child)."""
+    parts = arg.split("->")
+    if len(parts) != 2:
+        return None
+    parent, child = parse_issue_ref(parts[0], home), parse_issue_ref(parts[1], home)
+    if parent is None or child is None:
+        return None
+    return parent, child
+
+
+def slug_from_repository_url(url: str) -> str | None:
+    m = REPOSITORY_URL_RE.search(url or "")
+    return m.group(1) if m else None
+
+
+def id_sort_key(nid: str) -> tuple[str, int]:
+    """Home ids ('#12') sort first, then other repositories by slug, each by number."""
+    slug, _, num = nid.rpartition("#")
+    return (slug, int(num) if num.isdigit() else 0)
 
 
 def lock_keys_from_labels(labels: list[str]) -> tuple[list[str], str]:
@@ -428,61 +456,75 @@ def collect_github_dag(repo: str, milestone: str | None, errors: list[dict[str, 
     if errors:
         return {"merged": set(), "nodes": {}, "containers": [], "external_open_blockers": [], "not_planned_parents": [], "in_flight_prs": {}}
 
-    prs_by_issue: dict[int, list[dict[str, Any]]] = defaultdict(list)
+    prs_by_issue: dict[IssueRef, list[dict[str, Any]]] = defaultdict(list)
     for pr in prs:
         for ref in pr.get("closingIssuesReferences", []) or []:
             if isinstance(ref, dict) and "number" in ref:
-                prs_by_issue[int(ref["number"])].append({"number": pr["number"], "isDraft": pr.get("isDraft", False), "url": pr.get("url")})
+                repo_info = ref.get("repository") or {}
+                owner = (repo_info.get("owner") or {}).get("login")
+                ref_slug = f"{owner}/{repo_info['name']}" if owner and repo_info.get("name") else slug
+                prs_by_issue[(ref_slug, int(ref["number"]))].append({"number": pr["number"], "isDraft": pr.get("isDraft", False), "url": pr.get("url")})
 
     containers: list[dict[str, Any]] = []
-    seed: dict[int, dict[str, Any]] = {}
+    seed: dict[IssueRef, dict[str, Any]] = {}
     for iss in issues:
         labels = [lbl.get("name", "") for lbl in iss.get("labels", [])]
         if CONTAINER_LABEL in labels:
-            containers.append({"number": iss["number"], "title": iss["title"]})
+            containers.append({"id": node_id(slug, int(iss["number"]), slug), "number": iss["number"], "title": iss["title"]})
             continue
-        seed[int(iss["number"])] = {"title": iss["title"], "labels": labels, "url": iss.get("url"), "milestone": (iss.get("milestone") or {}).get("title"), "in_filter": True, "body": iss.get("body") or ""}
+        seed[(slug, int(iss["number"]))] = {"title": iss["title"], "labels": labels, "url": iss.get("url"), "milestone": (iss.get("milestone") or {}).get("title"), "in_filter": True, "body": iss.get("body") or ""}
 
     nodes: dict[str, dict[str, Any]] = {}
     merged: set[str] = set()
     not_planned_parents: list[dict[str, Any]] = []
     external_open_blockers: list[dict[str, Any]] = []
     container_blockers: list[dict[str, Any]] = []
-    queue: deque[int] = deque(sorted(seed))
-    known: dict[int, dict[str, Any]] = dict(seed)
+    queue: deque[IssueRef] = deque(sorted(seed))
+    known: dict[IssueRef, dict[str, Any]] = dict(seed)
 
     while queue:
-        number = queue.popleft()
-        meta = known[number]
-        blockers = gh_blocked_by(repo, slug, number, errors)
+        ref = queue.popleft()
+        ref_slug, number = ref
+        nid = node_id(ref_slug, number, slug)
+        meta = known[ref]
+        blockers = gh_blocked_by(repo, ref_slug, number, errors)
         if errors:
             break
         depends_on: list[dict[str, Any]] = []
         for blk in blockers:
             b_num = int(blk["number"])
+            b_slug = slug_from_repository_url(str(blk.get("repository_url") or ""))
+            if b_slug is None:
+                # Without the repository, the blocker id is ambiguous; fail closed.
+                errors.append({"source": f"gh api repos/{ref_slug}/issues/{number}/dependencies/blocked_by", "error": f"Blocker #{b_num} has no parseable repository_url"})
+                break
+            b_ref = (b_slug, b_num)
+            bid = node_id(b_slug, b_num, slug)
             b_labels = [lbl.get("name", "") for lbl in blk.get("labels", [])]
             b_state = str(blk.get("state", "")).lower()
-            evidence = f"GitHub dependency: #{b_num} blocks #{number} ({blk.get('html_url') or 'issues/' + str(number) + '/dependencies/blocked_by'})"
+            evidence = f"GitHub dependency: {bid} blocks {nid} ({blk.get('html_url') or 'repos/' + ref_slug + '/issues/' + str(number) + '/dependencies/blocked_by'})"
             if b_state == "closed":
-                merged.add(node_id(b_num))
+                merged.add(bid)
                 reason = str(blk.get("state_reason") or "completed")
                 if reason == "not_planned":
-                    not_planned_parents.append({"parent": node_id(b_num), "child": node_id(number), "title": blk.get("title", "")})
-                depends_on.append({"from": f"{node_id(b_num)} {MERGED_HINT}", "type": "recorded", "isHard": True, "confidence": 1.0, "evidence": f"{evidence}; closed as {reason}"})
+                    not_planned_parents.append({"parent": bid, "child": nid, "title": blk.get("title", "")})
+                depends_on.append({"from": f"{bid} {MERGED_HINT}", "type": "recorded", "isHard": True, "confidence": 1.0, "evidence": f"{evidence}; closed as {reason}"})
                 continue
             if CONTAINER_LABEL in b_labels:
                 # A container never blocks anything structurally, so the edge
                 # leaves the DAG; record it so the drop is visible, not silent.
-                container_blockers.append({"container": node_id(b_num), "blocks": node_id(number), "title": blk.get("title", "")})
+                container_blockers.append({"container": bid, "blocks": nid, "title": blk.get("title", "")})
                 continue
-            depends_on.append({"from": node_id(b_num), "type": "recorded", "isHard": True, "confidence": 1.0, "evidence": evidence})
-            if b_num not in known:
-                known[b_num] = {"title": blk.get("title", ""), "labels": b_labels, "url": blk.get("html_url"), "milestone": (blk.get("milestone") or {}).get("title"), "in_filter": False, "body": blk.get("body") or ""}
-                external_open_blockers.append({"number": b_num, "title": blk.get("title", ""), "milestone": known[b_num]["milestone"], "blocks": node_id(number)})
-                queue.append(b_num)
+            depends_on.append({"from": bid, "type": "recorded", "isHard": True, "confidence": 1.0, "evidence": evidence})
+            if b_ref not in known:
+                known[b_ref] = {"title": blk.get("title", ""), "labels": b_labels, "url": blk.get("html_url"), "milestone": (blk.get("milestone") or {}).get("title"), "in_filter": False, "body": blk.get("body") or ""}
+                external_open_blockers.append({"id": bid, "number": b_num, "repository": b_slug, "title": blk.get("title", ""), "milestone": known[b_ref]["milestone"], "blocks": nid})
+                queue.append(b_ref)
+        if errors:
+            break
 
         labels = meta["labels"]
-        linked = prs_by_issue.get(number, [])
+        linked = prs_by_issue.get(ref, [])
         if ACTIVE_LABEL in labels or linked:
             status = "in-progress"
         elif PARKED_LABEL in labels:
@@ -496,7 +538,7 @@ def collect_github_dag(repo: str, milestone: str | None, errors: list[dict[str, 
         open_blockers = sum(1 for d in depends_on if MERGED_HINT not in str(d.get("from", "")))
         label_status = sorted(lbl for lbl in labels if lbl.startswith("status:"))
         locks, lock_source = lock_keys_from_labels(labels)
-        nodes[node_id(number)] = {
+        nodes[nid] = {
             "title": meta["title"],
             "type": first_label(labels, TYPE_LABEL_PREFIX) or "untyped",
             "workstream": first_label(labels, AREA_LABEL_PREFIX) or "unassigned",
@@ -505,7 +547,7 @@ def collect_github_dag(repo: str, milestone: str | None, errors: list[dict[str, 
             "resources": locks,
             "resource_source": lock_source,
             "linked_open_prs": linked,
-            "recoverable_branches": branches_for_issue(number, branches),
+            "recoverable_branches": branches_for_issue(number, branches) if ref_slug == slug else [],
             "house_format_violations": house_format_violations(meta.get("body", "")),
             "label_axis_violations": label_axis_violations(labels),
             "status_labels": label_status,
@@ -824,7 +866,7 @@ def render_roadmap_block(result: dict[str, Any]) -> str:
         f"| Max parallel width | {m['max_parallel_width']} |",
         f"| Critical path ({m['critical_path_length']}) | {' → '.join(m['critical_path'])} |",
         f"| Isolated nodes | {m['isolated_open_node_count']} |",
-        f"| Containers excluded | {', '.join('#' + str(c['number']) for c in src.get('containers_excluded', [])) or 'none'} |",
+        f"| Containers excluded | {', '.join(c.get('id') or '#' + str(c['number']) for c in src.get('containers_excluded', [])) or 'none'} |",
         "",
         "## Ranked Open Frontier (Wave 0)",
         "",
@@ -852,7 +894,7 @@ def render_roadmap_block(result: dict[str, Any]) -> str:
         streams[n.get("workstream") or "unassigned"].append(n)
     for ws in sorted(streams):
         out += [f"### {ws}", ""]
-        for n in sorted(streams[ws], key=lambda x: int(x["id"].lstrip("#"))):
+        for n in sorted(streams[ws], key=lambda x: id_sort_key(x["id"])):
             out.append(f"- [ ] {_issue_link(n['id'], n.get('url'))} {_md_cell(n['title'])}")
         out.append("")
     out += ["## Transitively-Reduced Dependency DAG", "", "```mermaid", render_mermaid_flowchart(result), "```", ""]
@@ -902,15 +944,16 @@ def verify_and_layer_dag(dag_path: str, min_confidence: float, emit_mermaid: boo
     return emit(with_artifact_hash(result), emit_mermaid)
 
 
-def mutate_edge(repo: str, slug: str, parent: int, child: int, add: bool, errors: list[dict[str, str]]) -> bool:
-    """Record or remove 'parent blocks child' on GitHub. Returns True on success."""
-    parent_db_id = gh_issue_database_id(repo, slug, parent, errors)
+def mutate_edge(repo: str, parent: IssueRef, child: IssueRef, add: bool, errors: list[dict[str, str]]) -> bool:
+    """Record or remove 'parent blocks child' on GitHub, across repositories. Returns True on success."""
+    parent_db_id = gh_issue_database_id(repo, parent[0], parent[1], errors)
     if parent_db_id is None:
         return False
+    child_slug, child_num = child
     if add:
-        cmd = ["gh", "api", "-X", "POST", f"repos/{slug}/issues/{child}/dependencies/blocked_by", "-F", f"issue_id={parent_db_id}"]
+        cmd = ["gh", "api", "-X", "POST", f"repos/{child_slug}/issues/{child_num}/dependencies/blocked_by", "-F", f"issue_id={parent_db_id}"]
     else:
-        cmd = ["gh", "api", "-X", "DELETE", f"repos/{slug}/issues/{child}/dependencies/blocked_by/{parent_db_id}"]
+        cmd = ["gh", "api", "-X", "DELETE", f"repos/{child_slug}/issues/{child_num}/dependencies/blocked_by/{parent_db_id}"]
     ok, _, err = run_cmd_checked(cmd, cwd=repo)
     if not ok:
         errors.append({"source": " ".join(cmd[:4]), "error": err or "command failed"})
@@ -922,22 +965,24 @@ def compile_from_github(repo: str, milestone: str | None, min_confidence: float,
     mutation: dict[str, Any] | None = None
 
     if add_edge or remove_edge:
-        parsed = parse_edge_arg(add_edge or remove_edge or "")
-        if parsed is None:
-            print(json.dumps({"ok": False, "error": f"Invalid edge syntax (expected '#parent->#child'): {add_edge or remove_edge}"}))
+        if parse_edge_arg(add_edge or remove_edge or "", "home/home") is None:
+            print(json.dumps({"ok": False, "error": f"Invalid edge syntax (expected '#parent->#child' or 'owner/repo#parent->owner/repo#child'): {add_edge or remove_edge}"}))
             return 1
         slug = gh_repo_slug(repo, errors)
         if slug is None:
             print(json.dumps({"ok": False, "error": "GitHub mutation failed", "github_errors": errors}, indent=2))
             return 2
+        parsed = parse_edge_arg(add_edge or remove_edge or "", slug)
+        assert parsed is not None
         parent, child = parsed
         if parent == child:
-            print(json.dumps({"ok": False, "error": f"Self-edge rejected: #{child}"}))
+            print(json.dumps({"ok": False, "error": f"Self-edge rejected: {node_id(child[0], child[1], slug)}"}))
             return 1
-        if not mutate_edge(repo, slug, parent, child, add=bool(add_edge), errors=errors):
+        if not mutate_edge(repo, parent, child, add=bool(add_edge), errors=errors):
             print(json.dumps({"ok": False, "error": "GitHub mutation failed", "github_errors": errors}, indent=2))
             return 2
-        mutation = {"type": "add_blocked_by" if add_edge else "remove_blocked_by", "parent": node_id(parent), "child": node_id(child), "reason": reason, "recorded_in": f"GitHub issue #{child} dependencies (timeline is the ledger)"}
+        child_id = node_id(child[0], child[1], slug)
+        mutation = {"type": "add_blocked_by" if add_edge else "remove_blocked_by", "parent": node_id(parent[0], parent[1], slug), "child": child_id, "reason": reason, "recorded_in": f"GitHub issue {child_id} dependencies (timeline is the ledger)"}
 
     source = collect_github_dag(repo, milestone, errors)
     if errors:
@@ -973,8 +1018,9 @@ def compile_from_github(repo: str, milestone: str | None, min_confidence: float,
     if not result.get("ok") and mutation and mutation["type"] == "add_blocked_by":
         # Roll the GitHub write back so a cycle never persists in the truth source.
         rb_errors: list[dict[str, str]] = []
-        parent, child = parse_edge_arg(add_edge or "") or (0, 0)
-        rolled = mutate_edge(repo, source.get("slug") or "", parent, child, add=False, errors=rb_errors)
+        home = source.get("slug") or ""
+        parent, child = parse_edge_arg(add_edge or "", home) or ((home, 0), (home, 0))
+        rolled = mutate_edge(repo, parent, child, add=False, errors=rb_errors)
         result["mutation"]["rolled_back"] = rolled
         if rb_errors:
             result["mutation"]["rollback_errors"] = rb_errors
@@ -990,8 +1036,8 @@ def main() -> int:
     parser.add_argument("--verify-dag", default=None, help="Path to a hand-written DAG JSON specification to verify and layer")
     parser.add_argument("--min-confidence", type=float, default=DEFAULT_MIN_CONFIDENCE, help=f"Minimum confidence for hard edges in --verify-dag specs (default {DEFAULT_MIN_CONFIDENCE})")
     parser.add_argument("--emit-mermaid", action="store_true", help="Output a transitively-reduced Mermaid flowchart TD")
-    parser.add_argument("--add-edge", default=None, help="Record '#parent->#child' as a GitHub blocked_by dependency, then recompile (rolls back on cycle)")
-    parser.add_argument("--remove-edge", default=None, help="Remove the '#parent->#child' GitHub blocked_by dependency, then recompile")
+    parser.add_argument("--add-edge", default=None, help="Record '#parent->#child' as a GitHub blocked_by dependency, then recompile (rolls back on cycle). Use 'owner/repo#N' for an issue in another repository.")
+    parser.add_argument("--remove-edge", default=None, help="Remove the '#parent->#child' GitHub blocked_by dependency, then recompile. Use 'owner/repo#N' for an issue in another repository.")
     parser.add_argument("--reason", default="issue-dag edge update", help="Rationale echoed in the output for the mutation (GitHub timeline is the ledger)")
     parser.add_argument("--emit-roadmap", action="store_true", help="With --from-github: print the generated ROADMAP.md block (between BEGIN/END markers)")
     parser.add_argument("--require-house-format", action="store_true", help="Fail (exit 1) when any open issue body misses the house card standard")

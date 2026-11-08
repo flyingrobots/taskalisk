@@ -94,6 +94,15 @@ because GitHub's timeline is.
 
 ## CLI Tooling (`scripts/issue_dag_snapshot.py`)
 
+**Issue ids.** `#123` (or `123`) names an issue in the home repository, the
+one that `--repo` resolves to. `owner/repo#123` (the path after `github.com`,
+for example `flyingrobots/echo#965`) names an issue in any other repository.
+Compiled node ids use the same form, so `#110` and `flyingrobots/bunny#110` are
+two different nodes. Blockers are read from each issue's own repository, and
+an edge write goes to the child's repository. A blocker without a parseable
+`repository_url` fails the run closed. Linked open PRs and recoverable
+branches are detected for home-repository issues only.
+
 1. **GitHub-native DAG (read-only):**
    ```bash
    python3 <this-skill>/scripts/issue_dag_snapshot.py --from-github [--milestone v21.0.0] [--emit-mermaid]
