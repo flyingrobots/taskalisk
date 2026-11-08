@@ -615,14 +615,22 @@ COLLABORATOR_ASSOCIATIONS = {"OWNER", "MEMBER", "COLLABORATOR"}
 TRUSTED_PERMISSIONS = {"admin", "maintain", "write"}
 
 
-def normalize_login(login: str) -> str:
-    """One spelling for a login across GitHub surfaces: REST says `x[bot]`, GraphQL `x`, `gh pr list` `app/x`."""
+BOT_KEY_PREFIX = "bot:"
+
+
+def normalize_login(login: str, actor_type: str | None = None) -> str:
+    """One key per identity across GitHub surfaces, keeping bots and humans apart.
+
+    REST names a bot `x[bot]`, GraphQL `x` with `__typename: Bot`, `gh pr list` `app/x`;
+    all three become `bot:x`. A human `x` stays `x`, so allowlisting `x[bot]` never
+    trusts a person who happens to own the login `x`. Allowlist a bot as `x[bot]` or `app/x`."""
     key = login.lower()
+    is_bot = actor_type == BOT_TYPENAME
     if key.startswith("app/"):
-        key = key[len("app/"):]
+        key, is_bot = key[len("app/"):], True
     if key.endswith("[bot]"):
-        key = key[: -len("[bot]")]
-    return key
+        key, is_bot = key[: -len("[bot]")], True
+    return BOT_KEY_PREFIX + key if is_bot else key
 CODEOWNERS_PATHS = (".github/CODEOWNERS", "CODEOWNERS", "docs/CODEOWNERS")
 UNTRUSTED_TITLE = "(untrusted issue)"
 OWNER_RE = re.compile(r"[A-Za-z0-9_.-]+")
@@ -727,11 +735,11 @@ class TrustPolicy:
         """A bot is trusted only by explicit allowlist; a person by allowlist, CODEOWNERS, OWNER association, or write permission."""
         if not login:
             return False, "no login (deleted user)"
-        login_key = normalize_login(login)
+        login_key = normalize_login(login, actor_type)
         if login_key in self.logins:
             return True, "allowlisted"
-        if actor_type == BOT_TYPENAME or login_key != login.lower():
-            return False, "bot actors are trusted only by --trust"
+        if login_key.startswith(BOT_KEY_PREFIX):
+            return False, "bot actors are trusted only by --trust <login>[bot]"
         if not self.in_scope(slug):
             return False, f"{slug} is outside the trusted repositories"
         self._load_codeowners(slug)

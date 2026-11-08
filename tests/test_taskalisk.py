@@ -459,7 +459,7 @@ class Trust(Harness):
         state["issues"][f"{HOME}#77"] = issue(177, "Automated", fm(f"{HOME}#77"), author="deploy-bot", association="OWNER", author_type="Bot")
         r = self.out(self.run_dag(state, "--from-github"))
         self.assertIn(f"{HOME}#77", self.untrusted_ids(r))
-        r = self.out(self.run_dag(state, "--from-github", "--trust", "deploy-bot"))
+        r = self.out(self.run_dag(state, "--from-github", "--trust", "deploy-bot[bot]"))
         self.assertNotIn(f"{HOME}#77", self.untrusted_ids(r))
 
     def test_bot_editor_is_untrusted(self):
@@ -491,9 +491,19 @@ class Trust(Harness):
     def test_bot_allowlist_matches_every_github_spelling(self):
         state = plan_state()
         state["issues"][f"{HOME}#77"] = issue(177, "Automated", fm(f"{HOME}#77"), author="deploy-bot[bot]", association="NONE", author_type="Bot")
-        for spelling in ("deploy-bot", "deploy-bot[bot]", "app/deploy-bot"):
+        for spelling in ("deploy-bot[bot]", "app/deploy-bot"):
             r = self.out(self.run_dag(state, "--from-github", "--trust", spelling))
             self.assertNotIn(f"{HOME}#77", self.untrusted_ids(r), spelling)
+        # The bare spelling names a human, not the app.
+        r = self.out(self.run_dag(state, "--from-github", "--trust", "deploy-bot"))
+        self.assertIn(f"{HOME}#77", self.untrusted_ids(r))
+
+    def test_allowlisting_a_bot_does_not_trust_a_human_with_the_same_login(self):
+        state = plan_state()
+        state["issues"][f"{HOME}#78"] = issue(178, "Impostor", fm(f"{HOME}#78"), author="ci-worker", association="NONE", author_type="User")
+        r = self.out(self.run_dag(state, "--from-github", "--trust", "ci-worker[bot]"))
+        self.assertIn(f"{HOME}#78", self.untrusted_ids(r))
+        self.assertNotIn(f"{HOME}#78", [b["id"] for b in r["conflict_free_frontier_batch"]])
 
     def test_stranger_seed_costs_no_permission_lookup(self):
         state = plan_state()

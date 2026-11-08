@@ -133,7 +133,7 @@ discovery already holds. An author whose association is not `OWNER`,
 `MEMBER` or `COLLABORATOR` has no collaborator standing by GitHub's own
 account, so a stranger's issue costs no further query (see C15); a `MEMBER`
 or `COLLABORATOR` author costs one cached permission lookup per login.
-Bot logins are compared in one normalised spelling (`x`, `x[bot]`, `app/x`). Only an issue whose author passes is looked up in GitHub's edit history
+Bot logins are compared in one normalised spelling (`x[bot]`, `app/x`, GraphQL `x` typed Bot), distinct from any human `x`. Only an issue whose author passes is looked up in GitHub's edit history
 (GraphQL `userContentEdits`), and that query also returns the body, so the
 editors checked are the editors of the body that is parsed.
 
@@ -145,8 +145,10 @@ cannot administer, name its editors with `--trust`; allowlisted logins are
 never looked up.
 
 Bots: a Bot actor (a GitHub App or integration) is trusted only by explicit
-`--trust`. Association and permission never trust a bot, because an
-installation's permissions are not the operator's.
+`--trust <name>[bot]` (or `app/<name>`). Association and permission never
+trust a bot, because an installation's permissions are not the operator's.
+Bot and human identities never share a key: allowlisting `x[bot]` does not
+trust a person whose login is `x`, and `--trust x` does not trust the app.
 
 Titles are not covered. GitHub's edit history records body edits only, and a
 `triage` collaborator can rename an issue. A title is therefore untrusted
