@@ -1436,6 +1436,12 @@ def compile_from_github(repo: str, roots: list[str], min_confidence: float, emit
 
     source = collect_frontmatter_dag(repo, roots, errors, trust)
     if errors:
+        if mutation and mutation["type"] == "add_blocked_by" and undo and undo["changed"]:
+            # The recompile that would have caught a cycle did not run; do not leave the unchecked edge on GitHub.
+            rb_errors: list[dict[str, str]] = []
+            mutation["rolled_back"] = gh_patch_body(repo, undo["child"], undo["old_body"], rb_errors)
+            if rb_errors:
+                mutation["rollback_errors"] = rb_errors
         print(json.dumps({"ok": False, "error": "GitHub inventory failed; refusing to compile a partial graph", "github_errors": errors, "mutation": mutation}, indent=2))
         return 2
 

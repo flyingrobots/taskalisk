@@ -18,6 +18,7 @@ State shape:
    "codeowners": {"owner/repo": {".github/CODEOWNERS": "text"}},
    "contents_fail": bool,                             # 500 from the contents endpoint
    "fail_graphql": bool,
+   "fail_graphql_for": ["owner/repo#N", ...],         # GraphQL fails for these issues only
    "graphql_no_cursor": bool,                         # hasNextPage true without endCursor
    "edits_page_size": int}
 """
@@ -72,6 +73,8 @@ def graphql(state, args):
         else:
             i += 1
     key = f"{variables['owner']}/{variables['name']}#{variables['number']}"
+    if key in state.get("fail_graphql_for", []):
+        fail(f"gh: GraphQL unavailable for {key} (fake)")
     it = state["issues"].get(key)
     if it is None:
         print(json.dumps({"data": {"repository": {"issue": None}}, "errors": [{"message": "Could not resolve to an Issue"}]}))

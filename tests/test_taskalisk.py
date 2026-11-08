@@ -413,6 +413,16 @@ class Trust(Harness):
         self.assertNotIn("SECRET STRANGER TITLE", p.stdout)
         self.assertEqual(self.out(p)["source"]["not_planned_parents"][0]["title"], "(untrusted issue)")
 
+    def test_add_edge_rolls_back_when_the_recompile_cannot_run(self):
+        state = plan_state()
+        state["fail_graphql_for"] = [f"{HOME}#1"]  # the child (#2) can be checked; the recompile fails on #1
+        before = state["issues"][f"{HOME}#2"]["body"]
+        p = self.run_dag(state, "--from-github", "--add-edge", f"{ECHO}#6->{HOME}#2")
+        r = self.out(p)
+        self.assertEqual(p.returncode, 2, r)
+        self.assertTrue(r["mutation"]["rolled_back"])
+        self.assertEqual(self.current()["issues"][f"{HOME}#2"]["body"], before)
+
     def test_add_edge_aborts_when_a_trust_lookup_records_an_error(self):
         state = plan_state()
         state["contents_fail"] = True
