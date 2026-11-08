@@ -470,6 +470,61 @@ class Trust(Harness):
         self.assertIn(f"{HOME}#1", self.untrusted_ids(r))
         self.assertTrue(any("bot actors" in why for u in r["source"]["untrusted_issues"] for why in u["reasons"]))
 
+    def test_null_edit_history_connection_exits_2(self):
+        state = plan_state()
+        state["graphql_null_edits"] = True
+        p = self.run_dag(state, "--from-github", "--root", f"{HOME}#9")
+        self.assertEqual(p.returncode, 2, p.stdout)
+
+    def test_wrong_shape_issue_response_exits_2(self):
+        state = plan_state()
+        state["issue_get_returns_list"] = True
+        p = self.run_dag(state, "--from-github", "--root", f"{HOME}#9")
+        self.assertEqual(p.returncode, 2, p.stdout)
+
+    def test_bot_allowlist_matches_every_github_spelling(self):
+        state = plan_state()
+        state["issues"][f"{HOME}#77"] = issue(177, "Automated", fm(f"{HOME}#77"), author="deploy-bot[bot]", association="NONE", author_type="Bot")
+        for spelling in ("deploy-bot", "deploy-bot[bot]", "app/deploy-bot"):
+            r = self.out(self.run_dag(state, "--from-github", "--trust", spelling))
+            self.assertNotIn(f"{HOME}#77", self.untrusted_ids(r), spelling)
+
+    def test_stranger_seed_costs_no_permission_lookup(self):
+        state = plan_state()
+        state["issues"][f"{HOME}#77"] = issue(177, "Flood", fm(f"{HOME}#77"), author=STRANGER, association="NONE")
+        self.run_dag(state, "--from-github")
+        self.assertFalse(any("collaborators/mallory" in " ".join(c) for c in self.calls()))
+
+    def test_mis_cased_reference_is_not_reported_as_transferred(self):
+        state = plan_state()
+        state["issues"][f"{HOME}#1"]["body"] = fm(f"{HOME}#1", blocked_by=["FlyingRobots/Echo#5"])
+        state["issues"]["FlyingRobots/Echo#5"] = state["issues"].pop(f"{ECHO}#5")
+        p = self.run_dag(state, "--from-github", "--root", f"{HOME}#1")
+        r = self.out(p)
+        self.assertEqual(p.returncode, 0, r)
+        self.assertNotIn(f"{HOME}#1", r["frontmatter"]["violations"])
+
+    def test_add_edge_refuses_a_pull_request_child(self):
+        state = plan_state()
+        state["issues"][f"{HOME}#300"] = issue(300, "A pull request", fm(f"{HOME}#300"), is_pr=True)
+        p = self.run_dag(state, "--from-github", "--add-edge", f"{HOME}#1->{HOME}#300")
+        self.assertEqual(p.returncode, 1, p.stdout)
+        self.assertFalse(any("PATCH" in c for c in self.calls()))
+
+    def test_rendered_cells_escape_links_and_resource_pipes(self):
+        state = plan_state()
+        state["issues"][f"{HOME}#1"]["title"] = "[click](https://example.invalid)"
+        state["issues"][f"{ECHO}#5"]["body"] = fm(f"{ECHO}#5", blocked_by=[f"{BUNNY}#7"], extra=".holds: [a|b]")  # on the frontier, so its Resources cell renders
+        p = self.run_dag(state, "--from-github", "--root", f"{HOME}#9", "--emit-roadmap")
+        self.assertNotIn("[click](https://example.invalid)", p.stdout)
+        self.assertIn("a\\|b", p.stdout)
+
+    def test_compare_mode_fails_closed_on_a_gh_error(self):
+        state = plan_state()
+        state["blocked_by_fail"] = True
+        p = self.run_dag(state, "--from-github", "--root", f"{HOME}#9", "--compare-relationships")
+        self.assertEqual(p.returncode, 2, p.stdout)
+
     def test_stranger_seed_costs_no_edit_history_query(self):
         state = plan_state()
         state["issues"][f"{HOME}#77"] = issue(177, "Flood", fm(f"{HOME}#77"), author=STRANGER, association="NONE")

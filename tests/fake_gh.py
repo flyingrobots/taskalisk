@@ -73,6 +73,8 @@ def graphql(state, args):
         else:
             i += 1
     key = f"{variables['owner']}/{variables['name']}#{variables['number']}"
+    folded = {k.lower(): k for k in state["issues"]}
+    key = folded.get(key.lower(), key)
     if key in state.get("fail_graphql_for", []):
         fail(f"gh: GraphQL unavailable for {key} (fake)")
     it = state["issues"].get(key)
@@ -89,10 +91,10 @@ def graphql(state, args):
         if isinstance(e, dict):
             return {"editor": {"login": e.get("login"), "__typename": e.get("type", "User")}}
         return {"editor": {"login": e, "__typename": "User"} if e else None}
-    out = {"data": {"repository": {"issue": {
-        "body": it.get("graphql_body", it.get("body", "")),
-        "userContentEdits": {"pageInfo": {"hasNextPage": has_next, "endCursor": None if state.get("graphql_no_cursor") else str(start + page)},
-                             "nodes": [node(e) for e in chunk]}}}}}
+    edits = None if state.get("graphql_null_edits") else {
+        "pageInfo": {"hasNextPage": has_next, "endCursor": None if state.get("graphql_no_cursor") else str(start + page)},
+        "nodes": [node(e) for e in chunk]}
+    out = {"data": {"repository": {"issue": {"body": it.get("graphql_body", it.get("body", "")), "userContentEdits": edits}}}}
     print(json.dumps(out))
 
 def main(argv):
@@ -161,8 +163,16 @@ def main(argv):
     key = f"{m.group(1)}#{m.group(2)}"
     key = state.get("moved", {}).get(key, key)
     if key not in state["issues"]:
+        # GitHub names are case-insensitive; find the issue under any spelling.
+        folded = {k.lower(): k for k in state["issues"]}
+        key = folded.get(key.lower(), key)
+    if key not in state["issues"]:
         fail("gh: Not Found (HTTP 404)")
+    if m.group(3) and state.get("blocked_by_fail"):
+        fail("gh: Internal Server Error (HTTP 500)")
     if not m.group(3):
+        if method == "GET" and state.get("issue_get_returns_list"):
+            print("[]"); return
         if method == "PATCH":
             payload = json.loads(sys.stdin.read())
             state["issues"][key]["body"] = payload["body"]

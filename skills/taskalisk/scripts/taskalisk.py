@@ -303,8 +303,10 @@ def parse_paginated_arrays(raw: str, source: str, errors: list[dict[str, str]]) 
         except json.JSONDecodeError as exc:
             errors.append({"source": source, "error": f"Unparseable JSON: {exc}"})
             return []
-        if isinstance(obj, list):
-            items.extend(obj)
+        if not isinstance(obj, list):
+            errors.append({"source": source, "error": "Expected a JSON array page"})
+            return []
+        items.extend(obj)
         idx = end
         while idx < len(text) and text[idx].isspace():
             idx += 1
@@ -369,7 +371,8 @@ def parse_issue_ref(text: str, home: str = "") -> IssueRef | None:
     m = ISSUE_REF_RE.fullmatch(text)
     if not m:
         return None
-    return (m.group("slug"), int(m.group("num")))
+    # GitHub owner and repository names are case-insensitive; one canonical spelling per issue.
+    return (m.group("slug").lower(), int(m.group("num")))
 
 
 def parse_edge_arg(arg: str, home: str = "") -> tuple[IssueRef, IssueRef] | None:
@@ -385,7 +388,7 @@ def parse_edge_arg(arg: str, home: str = "") -> tuple[IssueRef, IssueRef] | None
 
 def slug_from_repository_url(url: str) -> str | None:
     m = REPOSITORY_URL_RE.search(url or "")
-    return m.group(1) if m else None
+    return m.group(1).lower() if m else None
 
 
 def id_sort_key(nid: str) -> tuple[str, int]:
@@ -558,8 +561,13 @@ def gh_get_issue(repo: str, ref: IssueRef, errors: list[dict[str, str]]) -> dict
     if not ok:
         errors.append({"source": f"gh api repos/{ref[0]}/issues/{ref[1]}", "error": err or "command failed"})
         return None
-    obj = parse_json(raw, f"gh api repos/{ref[0]}/issues/{ref[1]}", errors)
-    return obj if isinstance(obj, dict) else None
+    source = f"gh api repos/{ref[0]}/issues/{ref[1]}"
+    obj = parse_json(raw, source, errors)
+    if not isinstance(obj, dict):
+        if not any(e["source"] == source for e in errors):
+            errors.append({"source": source, "error": "Expected a JSON object"})
+        return None
+    return obj
 
 
 def gh_patch_body(repo: str, ref: IssueRef, body: str, errors: list[dict[str, str]]) -> bool:
@@ -600,7 +608,20 @@ def branches_for_issue(number: int, branches: list[str]) -> list[str]:
 # COLLABORATOR include read- and triage-level people, so they go through the
 # permission check like everyone else.
 TRUSTED_ASSOCIATIONS = {"OWNER"}
+# Associations under which a permission lookup can still say "write"; any other
+# association means GitHub already reports no collaborator standing.
+COLLABORATOR_ASSOCIATIONS = {"OWNER", "MEMBER", "COLLABORATOR"}
 TRUSTED_PERMISSIONS = {"admin", "maintain", "write"}
+
+
+def normalize_login(login: str) -> str:
+    """One spelling for a login across GitHub surfaces: REST says `x[bot]`, GraphQL `x`, `gh pr list` `app/x`."""
+    key = login.lower()
+    if key.startswith("app/"):
+        key = key[len("app/"):]
+    if key.endswith("[bot]"):
+        key = key[: -len("[bot]")]
+    return key
 CODEOWNERS_PATHS = (".github/CODEOWNERS", "CODEOWNERS", "docs/CODEOWNERS")
 UNTRUSTED_TITLE = "(untrusted issue)"
 OWNER_RE = re.compile(r"[A-Za-z0-9_.-]+")
@@ -656,8 +677,12 @@ def gh_issue_edit_history(repo: str, ref: IssueRef, errors: list[dict[str, str]]
             return None
         if body is None:
             body = issue.get("body") or ""
-        edits = issue.get("userContentEdits") or {}
-        for node in edits.get("nodes") or []:
+        edits = issue.get("userContentEdits")
+        if not isinstance(edits, dict) or not isinstance(edits.get("nodes"), list):
+            # A missing connection is not "no editors"; it is an answer we cannot read.
+            errors.append({"source": source, "error": "GraphQL response has no readable userContentEdits connection"})
+            return None
+        for node in edits["nodes"]:
             editor = (node or {}).get("editor") or {}
             editors.append({"login": editor.get("login"), "type": editor.get("__typename")})
         page = edits.get("pageInfo") or {}
@@ -677,7 +702,7 @@ class TrustPolicy:
         self.repo = repo
         self.owners = {home_slug.split("/", 1)[0].lower(), *(o.lower() for o in owners)}
         self.repos = {r.lower() for r in repos}
-        self.logins = {l.lower() for l in logins}
+        self.logins = {normalize_login(l) for l in logins}
         self.codeowners = codeowners
         self.errors = errors
         self._repo_logins: dict[str, set[str]] = defaultdict(set)
@@ -701,10 +726,10 @@ class TrustPolicy:
         """A bot is trusted only by explicit allowlist; a person by allowlist, CODEOWNERS, OWNER association, or write permission."""
         if not login:
             return False, "no login (deleted user)"
-        login_key = login.lower()
+        login_key = normalize_login(login)
         if login_key in self.logins:
             return True, "allowlisted"
-        if actor_type == BOT_TYPENAME:
+        if actor_type == BOT_TYPENAME or login_key != login.lower():
             return False, "bot actors are trusted only by --trust"
         if not self.in_scope(slug):
             return False, f"{slug} is outside the trusted repositories"
@@ -713,6 +738,9 @@ class TrustPolicy:
             return True, "CODEOWNERS"
         if association in TRUSTED_ASSOCIATIONS:
             return True, f"association {association}"
+        if association is not None and association not in COLLABORATOR_ASSOCIATIONS:
+            # GitHub already says this person has no collaborator standing here; no lookup needed.
+            return False, f"association {association}"
         return self._collaborator(slug, login)
 
     def author_trusted(self, slug: str, meta: dict[str, Any]) -> tuple[bool, list[str]]:
@@ -862,7 +890,7 @@ def collect_frontmatter_dag(repo: str, roots: list[str], errors: list[dict[str, 
             if actual is None:
                 errors.append({"source": f"gh api repos/{ref[0]}/issues/{ref[1]}", "error": "issue has no parseable repository_url"})
                 break
-            if actual != ref:
+            if actual[0].lower() != ref[0].lower() or actual[1] != ref[1]:
                 moved = node_id(*actual)
                 for who in referenced_by[ref] or [nid]:
                     violations.setdefault(who, []).append(f"reference {nid} moved to {moved} (transferred); update the frontmatter")
@@ -1229,7 +1257,7 @@ def render_mermaid_flowchart(dag_result: dict[str, Any]) -> str:
             title = item.get("title", "")
             if len(title) > MERMAID_TITLE_MAX:
                 title = title[: MERMAID_TITLE_MAX - 3] + "..."
-            safe_label = f"{nid}: {title}".replace('"', "'").replace("<", "(").replace(">", ")")
+            safe_label = f"{nid}: {title}".replace('"', "'").replace("<", "(").replace(">", ")").replace("[", "(").replace("]", ")")
             lines.append(f'    {safe_id(nid)}["{safe_label}"]')
             for child in item.get("directly_unlocks", []):
                 edges.append((safe_id(nid), safe_id(child)))
@@ -1248,13 +1276,13 @@ def _issue_link(nid: str, url: str | None) -> str:
 
 
 def _resources_cell(holds: list[str], meters: list[dict[str, Any]], empty: str) -> str:
-    cells = [f"`{k}`" for k in holds] + ["`" + str(m["name"]) + "*" + str(m["slots"]) + "`" for m in meters]
+    cells = [f"`{_md_cell(k)}`" for k in holds] + ["`" + _md_cell(str(m["name"])) + "*" + str(m["slots"]) + "`" for m in meters]
     return ", ".join(cells) or empty
 
 
 def _md_cell(text: str) -> str:
-    """Issue text in a rendered table cell: no pipes, no HTML, no line breaks (C5)."""
-    return str(text).replace("|", "\\|").replace("<", "&lt;").replace(">", "&gt;").replace("\n", " ")
+    """Issue text in a rendered table cell: no pipes, no HTML, no links, no line breaks (C5)."""
+    return str(text).replace("|", "\\|").replace("<", "&lt;").replace(">", "&gt;").replace("[", "\\[").replace("]", "\\]").replace("\n", " ")
 
 
 def render_roadmap_block(result: dict[str, Any]) -> str:
@@ -1368,6 +1396,9 @@ def mutate_edge(repo: str, home: str, parent: IssueRef, child: IssueRef, add: bo
     obj = gh_get_issue(repo, child, errors)
     if obj is None:
         return None
+    if obj.get("pull_request"):
+        errors.append({"source": f"edge {node_id(*parent)}->{node_id(*child)}", "error": f"{node_id(*child)} is a pull request, not an issue"})
+        return None
     meta = issue_meta(obj)
     trusted, reasons = policy.author_trusted(child[0], meta)
     body = meta["body"]
@@ -1467,7 +1498,9 @@ def compile_from_github(repo: str, roots: list[str], min_confidence: float, emit
         rel_errors: list[dict[str, str]] = []
         result["relationship_drift"] = compare_relationships(repo, source, rel_errors)
         if rel_errors:
-            result["relationship_drift"]["errors"] = rel_errors
+            # A failed gh call is never an empty drift report (doctrine 4).
+            print(json.dumps({"ok": False, "error": "GitHub relationship lookup failed", "github_errors": rel_errors, "relationship_drift": result["relationship_drift"]}, indent=2))
+            return 2
     if mutation:
         result["mutation"] = mutation
 

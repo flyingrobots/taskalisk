@@ -129,8 +129,11 @@ An issue is **trusted** only when all of the following hold:
   treats them.
 
 Order and cost: the author is checked first, from the REST issue object that
-discovery already holds, so a stranger's issue costs no further query (see
-C15). Only an issue whose author passes is looked up in GitHub's edit history
+discovery already holds. An author whose association is not `OWNER`,
+`MEMBER` or `COLLABORATOR` has no collaborator standing by GitHub's own
+account, so a stranger's issue costs no further query (see C15); a `MEMBER`
+or `COLLABORATOR` author costs one cached permission lookup per login.
+Bot logins are compared in one normalised spelling (`x`, `x[bot]`, `app/x`). Only an issue whose author passes is looked up in GitHub's edit history
 (GraphQL `userContentEdits`), and that query also returns the body, so the
 editors checked are the editors of the body that is parsed.
 
@@ -383,8 +386,10 @@ With `--trust-codeowners`, the script reads `.github/CODEOWNERS`,
 `CODEOWNERS` or `docs/CODEOWNERS` from the **default branch** of every
 repository in the scope and adds each `@login` it finds to the allowlist for
 that repository. Team entries (`@org/team`) are reported and not expanded.
-This narrows trust only when a ruleset requires code-owner review for changes
-to the file; otherwise it equals write access. It never widens the scope (C2).
+It only ever **adds** logins to the allowlist; it does not remove anyone that
+write permission already trusts. Its value is that the list is reviewed
+alongside the code when a ruleset requires code-owner review for changes to
+the file. It never widens the scope (C2).
 
 ## 7. Mechanisms considered and where they fit
 
