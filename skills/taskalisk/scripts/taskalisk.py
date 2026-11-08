@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-issue_dag_snapshot.py
+taskalisk.py
 
-Zero-local-state DAG compiler for the `issue-dag` skill. Issue frontmatter
+Taskalisk: zero-local-state DAG compiler for issue frontmatter. Issue frontmatter
 (`issue-dag/2`, see docs/frontmatter-model.md) is the single source of truth:
 each issue's first fenced `yaml` block declares its kind, its `.blocked_by`
 edges, its container `.children`, and the resources it holds. Labels,
@@ -971,7 +971,7 @@ def render_mermaid_flowchart(dag_result: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-ROADMAP_BEGIN = "<!-- BEGIN GENERATED ISSUE DAG (issue-dag --emit-roadmap; do not edit by hand) -->"
+ROADMAP_BEGIN = "<!-- BEGIN GENERATED ISSUE DAG (taskalisk --emit-roadmap; do not edit by hand) -->"
 ROADMAP_END = "<!-- END GENERATED ISSUE DAG -->"
 
 
@@ -998,7 +998,7 @@ def render_roadmap_block(result: dict[str, Any]) -> str:
     out += [
         f"Compiled from issue frontmatter (`{src.get('schema', '')}`), home `{src.get('repository', '')}`, roots `{', '.join(src.get('roots') or []) or 'all open home issues'}`. "
         f"Artifact hash `{result.get('meta', {}).get('artifact_hash', '')[:16]}`. "
-        "Regenerate with `issue_dag_snapshot.py --from-github [--root <ref>] --emit-roadmap`.",
+        "Regenerate with `taskalisk.py --from-github [--root <ref>] --emit-roadmap`.",
         "",
         "## DAG Structural Health",
         "",
@@ -1191,7 +1191,7 @@ def parse_capacities(items: list[str]) -> dict[str, int] | None:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Zero-local-state issue DAG compiler, frontier ranker, and inventory for issue-dag.")
+    parser = argparse.ArgumentParser(description="Taskalisk: zero-local-state issue DAG compiler, frontier ranker, and inventory.")
     parser.add_argument("--repo", default=".", help="Path inside the git repository (gh resolves the GitHub repo from it)")
     parser.add_argument("--milestone", default=None, help="Inventory mode only: optional GitHub milestone title filter")
     parser.add_argument("--root", action="append", default=[], help="With --from-github: start discovery at this issue, as owner/repo#N (repeatable); default is every open home issue")
@@ -1203,7 +1203,7 @@ def main() -> int:
     parser.add_argument("--emit-mermaid", action="store_true", help="Output a transitively-reduced Mermaid flowchart TD")
     parser.add_argument("--add-edge", default=None, help="Add 'owner/repo#parent->owner/repo#child' to the child's frontmatter .blocked_by, then recompile (rolls back on cycle).")
     parser.add_argument("--remove-edge", default=None, help="Remove 'owner/repo#parent->owner/repo#child' from the child's frontmatter .blocked_by, then recompile.")
-    parser.add_argument("--reason", default="issue-dag edge update", help="Rationale echoed in the output for the mutation (GitHub timeline is the ledger)")
+    parser.add_argument("--reason", default="taskalisk edge update", help="Rationale echoed in the output for the mutation (GitHub timeline is the ledger)")
     parser.add_argument("--emit-roadmap", action="store_true", help="With --from-github: print the generated ROADMAP.md block (between BEGIN/END markers)")
     args = parser.parse_args()
 

@@ -1,5 +1,5 @@
 ---
-name: issue-dag
+name: taskalisk
 description: >-
   Compile GitHub issues into a minimal, transitively-reduced precedence DAG
   from their frontmatter (issue-dag/2: `.blocked_by` edges and container
@@ -12,7 +12,10 @@ description: >-
   identify and prioritize open frontier nodes.
 ---
 
-# issue-dag
+# Taskalisk
+
+Taskalisk reads the `issue-dag/2` frontmatter format. The format is named for what the
+data is, not for the tool, so renaming the tool never rewrites an issue.
 
 Issue frontmatter is the single source of truth. Each issue's first fenced
 `yaml` block declares what the issue is (`.kind`, `.type`), which issues must
@@ -29,7 +32,7 @@ GitHub interface; `--compare-relationships` reports drift, and the frontmatter
 wins.
 
 Resolve the helper script relative to this skill's directory
-(`<this-skill>/scripts/issue_dag_snapshot.py`). Never hardcode machine-local
+(`<this-skill>/scripts/taskalisk.py`). Never hardcode machine-local
 absolute paths in tracked documentation.
 
 This is the T.A.S.K.S. + S.L.A.P.S. model mapped onto GitHub: the issue set
@@ -136,11 +139,11 @@ area: free-form notes have no prefix
 
 ---
 
-## CLI Tooling (`scripts/issue_dag_snapshot.py`)
+## CLI Tooling (`scripts/taskalisk.py`)
 
 1. **Frontmatter DAG (read-only):**
    ```bash
-   python3 <this-skill>/scripts/issue_dag_snapshot.py --from-github [--root "flyingrobots/geordi#149"] [--sem-capacity gpu=2] [--emit-mermaid]
+   python3 <this-skill>/scripts/taskalisk.py --from-github [--root "flyingrobots/geordi#149"] [--sem-capacity gpu=2] [--emit-mermaid]
    ```
    Discovers the closure, validates every frontmatter, compiles the reduced
    DAG, ranks the frontier, and proposes a batch. An issue whose `.status` is
@@ -155,9 +158,9 @@ area: free-form notes have no prefix
 
 2. **Edit an edge in frontmatter:**
    ```bash
-   python3 <this-skill>/scripts/issue_dag_snapshot.py --from-github \
+   python3 <this-skill>/scripts/taskalisk.py --from-github \
      --add-edge "flyingrobots/geordi#1080->flyingrobots/echo#1052" --reason "Coordinate contract must land before Optic reads"
-   python3 <this-skill>/scripts/issue_dag_snapshot.py --from-github --remove-edge "flyingrobots/geordi#1080->flyingrobots/geordi#1052"
+   python3 <this-skill>/scripts/taskalisk.py --from-github --remove-edge "flyingrobots/geordi#1080->flyingrobots/geordi#1052"
    ```
    `parent->child` means *parent blocks child*. The script rewrites only the
    child's `.blocked_by` line, recompiles, and restores the old body on a
@@ -165,12 +168,12 @@ area: free-form notes have no prefix
 
 3. **Drift against GitHub relationships (read-only):**
    ```bash
-   python3 <this-skill>/scripts/issue_dag_snapshot.py --from-github --root "flyingrobots/geordi#149" --compare-relationships
+   python3 <this-skill>/scripts/taskalisk.py --from-github --root "flyingrobots/geordi#149" --compare-relationships
    ```
 
 4. **Render the ROADMAP block (read-only):**
    ```bash
-   python3 <this-skill>/scripts/issue_dag_snapshot.py --from-github --root "flyingrobots/geordi#149" --emit-roadmap
+   python3 <this-skill>/scripts/taskalisk.py --from-github --root "flyingrobots/geordi#149" --emit-roadmap
    ```
    Prints the generated section between
    `<!-- BEGIN GENERATED ISSUE DAG ... -->` and `<!-- END GENERATED ISSUE DAG -->`.
@@ -179,13 +182,13 @@ area: free-form notes have no prefix
 
 5. **Verify a hand-written DAG specification (read-only):**
    ```bash
-   python3 <this-skill>/scripts/issue_dag_snapshot.py --verify-dag dag.json [--min-confidence 0.7] [--emit-mermaid]
+   python3 <this-skill>/scripts/taskalisk.py --verify-dag dag.json [--min-confidence 0.7] [--emit-mermaid]
    ```
    For what-if planning. The spec is input, not state.
 
 6. **Full-spectrum inventory (read-only, fail-closed):**
    ```bash
-   python3 <this-skill>/scripts/issue_dag_snapshot.py --repo /path/to/repo [--milestone v21.0.0]
+   python3 <this-skill>/scripts/taskalisk.py --repo /path/to/repo [--milestone v21.0.0]
    ```
    Worktrees (dirty, ahead/behind, missing checkouts), unmerged local and
    remote branches, open PRs with the issues they close, open issues.

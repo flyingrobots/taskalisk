@@ -1,9 +1,9 @@
-# issue-dag
+# Taskalisk
 
-The `issue-dag` agent skill: compile GitHub issues into a transitively reduced
+Taskalisk, an agent skill: compile GitHub issues into a transitively reduced
 precedence DAG from their frontmatter (`docs/frontmatter-model.md`), across
 repositories, rank the open frontier, and edit edges in frontmatter. The skill itself is in
-`skills/issue-dag/`; agent skill folders link to it.
+`skills/taskalisk/`; agent skill folders link to it.
 
 ## Test
 

@@ -1,11 +1,11 @@
-"""Offline tests for issue_dag_snapshot.py (frontmatter model issue-dag/1).
+"""Offline tests for taskalisk.py (frontmatter model issue-dag/1).
 
 Run: python3 -m unittest discover -s tests
 """
 import json, os, pathlib, shutil, subprocess, sys, tempfile, unittest
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-SCRIPT = ROOT / "skills" / "issue-dag" / "scripts" / "issue_dag_snapshot.py"
+SCRIPT = ROOT / "skills" / "taskalisk" / "scripts" / "taskalisk.py"
 FAKE_GH = pathlib.Path(__file__).resolve().parent / "fake_gh.py"
 HOME = "flyingrobots/geordi"
 ECHO = "flyingrobots/echo"
@@ -45,7 +45,7 @@ def plan_state():
 
 class Harness(unittest.TestCase):
     def setUp(self):
-        self.tmp = pathlib.Path(tempfile.mkdtemp(prefix="issue-dag-test-"))
+        self.tmp = pathlib.Path(tempfile.mkdtemp(prefix="taskalisk-test-"))
         self.bin = self.tmp / "bin"; self.bin.mkdir()
         (self.bin / "gh").write_text(f"#!/bin/sh\nexec {sys.executable} {FAKE_GH} \"$@\"\n")
         (self.bin / "gh").chmod(0o755)

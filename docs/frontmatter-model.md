@@ -2,6 +2,9 @@
 
 **Status**: Accepted on 2026-11-08. Version 2 replaced version 1 on the same day.
 
+Taskalisk reads this format. The format name (`issue-dag`) describes the data and
+is independent of the tool's name, so a tool rename never rewrites an issue.
+
 The frontmatter of each issue is the only input to the DAG. The skill does not
 read labels, milestones, body sections, or GitHub issue relationships.
 
