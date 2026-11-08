@@ -82,7 +82,8 @@ def graphql(state, args):
         print(json.dumps({"data": {"repository": {"issue": None}}, "errors": [{"message": "Could not resolve to an Issue"}]}))
         sys.exit(1)
     author = author_of(state, it)
-    editors = it.get("editors", [author])
+    # The creation edit is by the author actor, with the author's own type.
+    editors = it.get("editors", [{"login": author, "type": it.get("author_type", "User")}])
     page = int(state.get("edits_page_size", 1000))
     start = int(variables.get("after") or 0)
     chunk = editors[start:start + page]
