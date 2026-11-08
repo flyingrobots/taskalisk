@@ -137,6 +137,8 @@ def main(argv):
     m = re.fullmatch(r"repos/([^/]+/[^/]+)/issues\?state=open&per_page=\d+", path)
     if m:
         # The REST list: open issues of that repository, pull requests included, like GitHub.
+        if state.get("issues_list_returns_object"):
+            print("{}"); return
         out = [issue_obj(state, k) for k, v in state["issues"].items() if k.lower().startswith(m.group(1).lower() + "#") and v["state"] == "open"]
         print(json.dumps(out)); return
     m = re.fullmatch(r"repos/([^/]+/[^/]+)/collaborators/([^/]+)/permission", path)

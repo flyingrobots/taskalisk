@@ -482,6 +482,12 @@ class Trust(Harness):
         p = self.run_dag(state, "--from-github", "--root", f"{HOME}#9")
         self.assertEqual(p.returncode, 2, p.stdout)
 
+    def test_wrong_shape_listing_page_exits_2(self):
+        state = plan_state()
+        state["issues_list_returns_object"] = True
+        p = self.run_dag(state, "--from-github")
+        self.assertEqual(p.returncode, 2, p.stdout)
+
     def test_bot_allowlist_matches_every_github_spelling(self):
         state = plan_state()
         state["issues"][f"{HOME}#77"] = issue(177, "Automated", fm(f"{HOME}#77"), author="deploy-bot[bot]", association="NONE", author_type="Bot")
