@@ -1,6 +1,8 @@
 # Threat model and security policy
 
-**Status**: Accepted on 2026-11-08. Covers the compiler as built and the
+**Status**: Proposed on 2026-11-08; binding when the user accepts it, which
+the merge of flyingrobots/taskalisk#16 records. Decisions the user has
+already taken are marked *decided*. Covers the compiler as built and the
 executor as planned in flyingrobots/taskalisk#9, #10, #13, #14 and #15, as if
 all of them were implemented.
 
@@ -122,14 +124,28 @@ An issue is **trusted** only when all of the following hold:
 - Owner, repository and login names compare case-insensitively, as GitHub
   treats them.
 
-The check reads GitHub's edit history (GraphQL `userContentEdits`). If that
-query fails (network, permissions), the run exits `2`: no graph is compiled.
-The collaborator check behaves differently on purpose: when it cannot run
-(HTTP 403 because the token lacks push access to that repository, or a
-network error), the login in question is **untrusted** and the run continues
-with the reason recorded in `source.untrusted_issues`. A repository the
-operator cannot administer therefore needs explicit `--trust` entries for its
-editors, or its issues stay out of the graph.
+Order and cost: the author is checked first, from the REST issue object that
+discovery already holds, so a stranger's issue costs no further query (see
+C15). Only an issue whose author passes is looked up in GitHub's edit history
+(GraphQL `userContentEdits`), and that query also returns the body, so the
+editors checked are the editors of the body that is parsed.
+
+Any trust lookup that cannot run (the edit-history query, the permission
+endpoint, a CODEOWNERS fetch that is not a 404) exits `2` and no graph is
+compiled: a silently untrusted collaborator would hide trusted work behind
+opaque blockers while the run reported success. For a repository the operator
+cannot administer, name its editors with `--trust`; allowlisted logins are
+never looked up.
+
+Bots: a Bot actor (a GitHub App or integration) is trusted only by explicit
+`--trust`. Association and permission never trust a bot, because an
+installation's permissions are not the operator's.
+
+Titles are not covered. GitHub's edit history records body edits only, and a
+`triage` collaborator can rename an issue. A title is therefore untrusted
+display text everywhere: escaped when rendered (C5), never an instruction,
+and excluded from executor prompts (C7). Checking the actors of
+`RenamedTitleEvent`s on the timeline is a follow-up, not a precondition.
 
 ### C2. Repository scope — implemented
 
@@ -178,20 +194,25 @@ a list, never a shell string. A repository file cannot supply a command (test).
 
 ### C7. Issue text is data, never instructions — planned (#10, #15)
 
-The prompt builder wraps every string that came from GitHub (body, title,
-comments, PR descriptions, review text) in a clearly delimited data block and
-states, outside that block, that the agent must not follow instructions found
-inside it. The rules the agent must follow are the executor's, not the
-issue's.
+The prompt builder wraps every string that came from GitHub (body, comments,
+PR descriptions, review text) in a clearly delimited data block and states,
+outside that block, that the agent must not follow instructions found inside
+it. Titles never enter a prompt (C1). The rules the agent must follow are the
+executor's, not the issue's.
 
-### C8. No permission bypass for runs fed from GitHub content — policy
+### C8. Bounded authority for agent runs — policy
 
-An agent run whose prompt contains GitHub content runs with its normal
-permission checks. A flag that bypasses them is never set by the executor and
-never documented as a way to run tasks. If the operator insists, the executor
-refuses tasks whose issue or linked PR is not trusted *and* approved (C9).
+Every executor prompt contains GitHub content, so "run with the interactive
+permission checks" would stop a headless agent from editing a file or running
+a test. The rule is bounded authority instead: an agent runs **inside a
+sandbox** that limits the filesystem to its worktree and owned temporary
+storage, limits the network to GitHub and the registries the repository's
+build needs, and uses a scoped token (C14); within that sandbox it runs with
+an **explicit tool allowlist**. A flag that disables permission checks is
+permitted only inside such a sandbox, never on the operator's bare machine.
+Without a sandbox the executor refuses to run.
 
-### C9. Explicit execution approval bound to the body — planned (#9, #10)
+### C9. Explicit execution approval bound to the body — planned (#9, #10), decided: staged
 
 Being a trusted node lets an issue into the graph. It does not by itself let
 the executor run it. The executor runs a task only when **this body** has been
@@ -200,7 +221,19 @@ endings normalised to LF before hashing). A body edit after approval
 invalidates it: the hash no longer matches, and the task is listed as *needs
 re-approval*.
 
-Approvals live in an **approval ledger on a git ref**, not in issue text:
+**Decided on 2026-11-08 (user):** Stage 1 is required for #9 and #10. Stage 2
+is deferred until a repository has more than one approver or sets
+`merge = true`.
+
+**Stage 1 — run-time approval, no keys.** The operator approves at run time
+with `--approve owner/repo#N` after reading the issue. The executor records
+`Issue:` and `Body-SHA256:` trailers on its first, empty commit of the task
+branch and mirrors them in the PR body marker. That still catches a body
+edited after approval, costs no key management, and the trust gate already
+limits who can author a runnable task to people with write access.
+
+**Stage 2 — the approval ledger.** Approvals live in an **approval ledger on
+a git ref**, not in issue text:
 
 - The ref is `refs/heads/issue-dag/approvals` in the issue's own repository.
   A ledger approves only issues of its own repository; an entry for another
@@ -262,32 +295,36 @@ learn by finding the defect:
   expired, revoked, deleted ref, non-fast-forward) is the executable
   specification and blocks CI.
 
-### C10. Never check out a branch the executor did not create — planned (#10, #15)
+### C10. Never check out a branch the executor did not create — planned (#10, #15), staged with C9
 
-The executor's first commit on a task branch (#10 already plans an empty
-first commit) is **signed with the agent key** and carries the trailers
-`Issue: owner/repo#N`, `Body-SHA256:` of the approved body, and `Approval:`
-with the object ID of the ledger commit that approved it (Shiplog's
-`trust_oid` pattern). That commit is the PR's provenance, and it links the
-branch to the exact approval it executes.
+**Stage 1.** The executor's first commit on a task branch (#10 already plans
+an empty first commit) carries the trailers `Issue: owner/repo#N` and
+`Body-SHA256:` of the approved body, mirrored in the PR body marker. Resume
+applies only to a PR that is trusted (C4) and whose root commit carries that
+provenance for this task. A branch whose root commit does not is parked and
+reported, never resumed. A rebase by a person rewrites the root commit, so a
+branch a human has taken over is parked for that human; that is the intended
+outcome, not a defect.
 
-Resume applies only to a PR that is trusted (C4), whose root commit is a
-verified executor commit for that task, and whose every later commit verifies
-against the allowed-signers file. A branch that fails any test is parked and
-reported, never resumed. Agents sign with a dedicated agent key, so human and
-agent commits are distinguishable in the audit trail. No GitHub metadata is
-needed for this decision.
+**Stage 2.** The first commit is **signed with the agent key** and adds
+`Approval:` with the object ID of the ledger commit that approved it
+(Shiplog's `trust_oid` pattern). Resume then also requires every later commit
+to verify against the allowed-signers file. Agents sign with a dedicated agent
+key, so human and agent commits are distinguishable in the audit trail, and
+no GitHub metadata is needed for the decision.
 
 Optionally, leases become refs too: `refs/issue-dag/leases/<owner>/<repo>/<N>`
 pointing at a signed empty commit with an `Expires:` trailer, claimed with
 `git push --force-with-lease`. That gives an atomic claim visible from every
 machine, which the machine-local `git-locks` lease cannot.
 
-### C11. Checkouts run no hooks; agent instructions come from `main` — planned (#10, #15)
+### C11. Agent instructions come from `main` — planned (#10, #15)
 
-Worktree creation and checkout run with `-c core.hooksPath=<empty dir>`. The
-prompt builder reads `CLAUDE.md` and `AGENTS.md` from `main`, never from the
-task branch.
+The prompt builder reads `CLAUDE.md` and `AGENTS.md` from `main`, never from
+the task branch. Hooks are **not** disabled: skipping them would contradict
+the repository rule never to bypass hooks, and the threat (hooks tracked on a
+branch the executor did not create) is already closed by C10, which refuses
+to check such a branch out.
 
 ### C12. Gate predicates bind identity — planned (#14)
 
@@ -313,14 +350,16 @@ only for same-repository heads.
 - `merge = false` is the default. `merge = true` is a per-repository decision
   in the operator's settings.
 
-### C15. Availability under a seed flood — documented, decision pending
+### C15. Availability under a seed flood — implemented in part, decision pending
 
-A flood of issues fills `GH_ISSUE_LIST_LIMIT` and the run exits `2`. The
-mitigation is to seed from a write-gated signal instead of "every open issue":
-a label that needs triage to apply, or `--author` queries per trusted login.
-flyingrobots/taskalisk#11 rejected labels as a *state tracker*; a seed filter
-is a different role. This is a decision for the operator, recorded here as
-open.
+Implemented: a stranger's issue is rejected from the REST listing alone and
+costs no further query, so a flood costs one listing page per hundred issues
+and nothing else. Open: a flood that reaches `GH_ISSUE_LIST_LIMIT` still exits
+`2`. The remaining mitigation is to seed from a write-gated signal instead of
+"every open issue": a label that needs triage to apply, or `--author` queries
+per trusted login. flyingrobots/taskalisk#11 rejected labels as a *state
+tracker*; a seed filter is a different role. This is a decision for the
+operator, recorded here as open.
 
 ### C16. Prompt files in owned temporary storage — planned (#13)
 
@@ -350,9 +389,10 @@ to the file; otherwise it equals write access. It never widens the scope (C2).
 | `authorAssociation` | Baseline for C1. Only meaningful inside the scope (C2). |
 | Body edit history | Required by C1; a trusted author's body edited by anyone else is untrusted. |
 | CODEOWNERS | A reviewed allowlist of people (C18). Not a scope mechanism. |
-| Approval ledger: signed empty commits on a git ref | The execution authorization step (C9). Write-gated by push access, verified locally, append-only. Recommended. |
-| Approval comment bound to body hash | A display mirror of C9 for people. Anyone can comment, so never the truth. |
-| Signed empty first commit with `Issue:` and `Body-SHA256:` trailers | PR provenance for the resume guard (C10). Needs no GitHub metadata. |
+| Run-time `--approve` with `Issue:`/`Body-SHA256:` trailers on the first commit | Stage 1 of C9 and C10 (required for #9, #10). Catches edit-after-approval without keys. |
+| Approval ledger: signed empty commits on a git ref | Stage 2 of C9 (deferred until more than one approver or `merge = true`). Write-gated, verified locally, append-only. |
+| Approval comment bound to body hash | A display mirror for people. Anyone can comment, so never the truth. |
+| Signed first commit with `Approval:` trailer | Stage 2 of C10. Needs no GitHub metadata. |
 | Signed commits on `main` | A ruleset (C14). Agents get their own key. |
 | Lease refs claimed with `--force-with-lease` | Optional cross-machine lease (C10). `git-locks` stays machine-local. |
 | Labels | A write-gated seed filter (C15). Never state, never edges. |
@@ -371,18 +411,20 @@ to the file; otherwise it equals write access. It never widens the scope (C2).
 
 ## 9. Residual risks and open decisions
 
-- **C15** needs a decision: which write-gated signal seeds discovery.
-- **Collaborator checks need push access.** For a scope repository the
-  operator cannot administer, editors must be allowlisted explicitly or the
-  issue stays untrusted. The output says which.
-- **One GraphQL query per issue** for edit history. flyingrobots/taskalisk#7
-  batches reads once a real graph is measured slow; the trust query must be
-  batched with it, with identical fail-closed behavior.
-- **C9 approvals are git pushes** by a human or by the executor on the
-  operator's behalf, to the executor's own ref. When the executor lands,
-  SKILL.md doctrine 8 must say so: the compiler's only GitHub write stays the
-  `.blocked_by` edit; the executor adds pushes to its own refs (approvals,
-  leases, task branches), draft PRs and status comments, and nothing else.
-- **Key management** for C9 and C10: an allowed-signers file per operator, an
-  agent key per machine, and a documented rotation. Without it, the two
-  controls fall back to GitHub attribution (C4) and are weaker.
+- **C15** needs a decision: which write-gated signal seeds discovery once a
+  flood reaches the list limit.
+- **Repositories the operator cannot administer.** The permission endpoint
+  needs push access on that repository; without it the run exits `2`.
+  Allowlist that repository's editors with `--trust`, which skips the lookup.
+- **Titles** are outside the edit-history gate (C1). A `RenamedTitleEvent`
+  actor check is a follow-up.
+- **One GraphQL query per trusted issue** for edit history (none for a
+  stranger's). flyingrobots/taskalisk#7 batches reads once a real graph is
+  measured slow; the batched query must keep the same fail-closed behavior.
+- **Executor writes.** When the executor lands, SKILL.md doctrine 8 must say
+  so: the compiler's only GitHub write stays the `.blocked_by` edit; the
+  executor adds pushes to its own task branches (and, in Stage 2, its approval
+  and lease refs), draft PRs and status comments, and nothing else.
+- **Key management** applies to Stage 2 only: an allowed-signers file per
+  operator, an agent key per machine, and a documented rotation. Stage 1
+  relies on GitHub attribution (C4) and the trust gate (C1), and says so.

@@ -49,9 +49,8 @@ Guarantees:
    repository is in the trusted scope and its author and every body editor
    are trusted. A linked PR counts only from a same-repository branch by a
    trusted author. Untrusted issues and PRs are listed, never dispatched, and
-   contribute nothing to the graph or to rendered output. A failed GraphQL
-   trust lookup exits 2; a collaborator check that cannot run marks that
-   login untrusted and the run continues with the reason recorded.
+   contribute nothing to the graph or to rendered output. Any trust lookup
+   that cannot run (edit history, permission, CODEOWNERS) exits 2.
 """
 
 from __future__ import annotations
@@ -292,15 +291,8 @@ def gh_repo_slug(repo: str, errors: list[dict[str, str]]) -> str | None:
     return raw
 
 
-def gh_blocked_by(repo: str, slug: str, number: int, errors: list[dict[str, str]]) -> list[dict[str, Any]]:
-    """Return the issues that block `number`, via GitHub's native dependency API."""
-    ok, raw, err = run_cmd_checked(
-        ["gh", "api", "--paginate", f"repos/{slug}/issues/{number}/dependencies/blocked_by"], cwd=repo
-    )
-    if not ok:
-        errors.append({"source": f"gh api repos/{slug}/issues/{number}/dependencies/blocked_by", "error": err or "command failed"})
-        return []
-    # --paginate concatenates arrays as separate JSON documents; split them.
+def parse_paginated_arrays(raw: str, source: str, errors: list[dict[str, str]]) -> list[dict[str, Any]]:
+    """`gh api --paginate` concatenates arrays as separate JSON documents; split them."""
     items: list[dict[str, Any]] = []
     decoder = json.JSONDecoder()
     idx = 0
@@ -309,7 +301,7 @@ def gh_blocked_by(repo: str, slug: str, number: int, errors: list[dict[str, str]
         try:
             obj, end = decoder.raw_decode(text, idx)
         except json.JSONDecodeError as exc:
-            errors.append({"source": f"gh api repos/{slug}/issues/{number}/dependencies/blocked_by", "error": f"Unparseable JSON: {exc}"})
+            errors.append({"source": source, "error": f"Unparseable JSON: {exc}"})
             return []
         if isinstance(obj, list):
             items.extend(obj)
@@ -317,6 +309,40 @@ def gh_blocked_by(repo: str, slug: str, number: int, errors: list[dict[str, str]
         while idx < len(text) and text[idx].isspace():
             idx += 1
     return items
+
+
+def gh_blocked_by(repo: str, slug: str, number: int, errors: list[dict[str, str]]) -> list[dict[str, Any]]:
+    """Return the issues that block `number`, via GitHub's native dependency API."""
+    source = f"gh api repos/{slug}/issues/{number}/dependencies/blocked_by"
+    ok, raw, err = run_cmd_checked(["gh", "api", "--paginate", f"repos/{slug}/issues/{number}/dependencies/blocked_by"], cwd=repo)
+    if not ok:
+        errors.append({"source": source, "error": err or "command failed"})
+        return []
+    return parse_paginated_arrays(raw, source, errors)
+
+
+def gh_list_open_issues_rest(repo: str, slug: str, errors: list[dict[str, str]]) -> list[dict[str, Any]]:
+    """Open issues of `slug` with author login, actor type and association, so the trust gate
+    can reject a stranger's issue before any further query (C1, C15). Pull requests are dropped."""
+    source = f"gh api repos/{slug}/issues"
+    ok, raw, err = run_cmd_checked(["gh", "api", "--paginate", f"repos/{slug}/issues?state=open&per_page=100"], cwd=repo)
+    if not ok:
+        errors.append({"source": source, "error": err or "command failed"})
+        return []
+    items = [it for it in parse_paginated_arrays(raw, source, errors) if isinstance(it, dict) and not it.get("pull_request")]
+    if len(items) >= GH_ISSUE_LIST_LIMIT:
+        errors.append({"source": source, "error": f"Result reached {GH_ISSUE_LIST_LIMIT} issues; refusing a possibly truncated seed set"})
+    return items
+
+
+def issue_meta(obj: dict[str, Any]) -> dict[str, Any]:
+    """The fields discovery keeps from a REST issue object."""
+    user = obj.get("user") or {}
+    return {
+        "title": obj.get("title", ""), "state": str(obj.get("state", "open")).lower(), "state_reason": obj.get("state_reason"),
+        "body": obj.get("body") or "", "html_url": obj.get("html_url"),
+        "author": user.get("login"), "author_type": user.get("type"), "association": obj.get("author_association"),
+    }
 
 
 def gh_issue_database_id(repo: str, slug: str, number: int, errors: list[dict[str, str]]) -> int | None:
@@ -579,12 +605,13 @@ CODEOWNERS_PATHS = (".github/CODEOWNERS", "CODEOWNERS", "docs/CODEOWNERS")
 UNTRUSTED_TITLE = "(untrusted issue)"
 OWNER_RE = re.compile(r"[A-Za-z0-9_.-]+")
 SLUG_RE = re.compile(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+")
-# Author, association and the login of every body edit (the first edit is the creation).
-TRUST_QUERY = (
+BOT_TYPENAME = "Bot"
+# The body and the actor of every body edit (the first edit is the creation), in one
+# query, so the editors checked are the editors of the body that is parsed.
+EDIT_HISTORY_QUERY = (
     "query($owner:String!,$name:String!,$number:Int!,$after:String){"
-    "repository(owner:$owner,name:$name){issue(number:$number){"
-    "author{login} authorAssociation "
-    "userContentEdits(first:100,after:$after){pageInfo{hasNextPage endCursor} nodes{editor{login}}}}}}"
+    "repository(owner:$owner,name:$name){issue(number:$number){body "
+    "userContentEdits(first:100,after:$after){pageInfo{hasNextPage endCursor} nodes{editor{login __typename}}}}}}"
 )
 
 
@@ -606,14 +633,16 @@ def parse_codeowners(text: str) -> tuple[set[str], list[str]]:
     return logins, teams
 
 
-def gh_issue_trust_info(repo: str, ref: IssueRef, errors: list[dict[str, str]]) -> dict[str, Any] | None:
-    """Author, author association and every body editor of an issue, from GitHub's edit history."""
+def gh_issue_edit_history(repo: str, ref: IssueRef, errors: list[dict[str, str]]) -> dict[str, Any] | None:
+    """The current body and every body editor of an issue: {"body": str, "editors": [{"login", "type"}]}.
+    Every page is read; a page that claims a next page without a cursor fails the lookup (exit 2)."""
     owner, name = ref[0].split("/", 1)
-    source = f"gh api graphql (trust of {node_id(*ref)})"
-    editors: list[str | None] = []
+    source = f"gh api graphql (edit history of {node_id(*ref)})"
+    editors: list[dict[str, Any]] = []
+    body: str | None = None
     after: str | None = None
     while True:
-        cmd = ["gh", "api", "graphql", "-f", f"query={TRUST_QUERY}", "-f", f"owner={owner}", "-f", f"name={name}", "-F", f"number={ref[1]}"]
+        cmd = ["gh", "api", "graphql", "-f", f"query={EDIT_HISTORY_QUERY}", "-f", f"owner={owner}", "-f", f"name={name}", "-F", f"number={ref[1]}"]
         if after:
             cmd += ["-f", f"after={after}"]
         ok, raw, err = run_cmd_checked(cmd, cwd=repo)
@@ -625,14 +654,19 @@ def gh_issue_trust_info(repo: str, ref: IssueRef, errors: list[dict[str, str]]) 
         if not isinstance(issue, dict):
             errors.append({"source": source, "error": "GraphQL response has no issue"})
             return None
+        if body is None:
+            body = issue.get("body") or ""
         edits = issue.get("userContentEdits") or {}
         for node in edits.get("nodes") or []:
-            editors.append(((node or {}).get("editor") or {}).get("login"))
+            editor = (node or {}).get("editor") or {}
+            editors.append({"login": editor.get("login"), "type": editor.get("__typename")})
         page = edits.get("pageInfo") or {}
-        if page.get("hasNextPage") and page.get("endCursor"):
-            after = str(page["endCursor"])
-            continue
-        return {"author": (issue.get("author") or {}).get("login"), "association": issue.get("authorAssociation"), "editors": editors}
+        if not page.get("hasNextPage"):
+            return {"body": body, "editors": editors}
+        if not page.get("endCursor"):
+            errors.append({"source": source, "error": "edit history reports another page but no cursor; refusing a partial editor list"})
+            return None
+        after = str(page["endCursor"])
 
 
 class TrustPolicy:
@@ -663,12 +697,15 @@ class TrustPolicy:
             "codeowners_teams_not_expanded": dict(sorted(self._teams.items())),
         }
 
-    def login_trusted(self, slug: str, login: str | None, association: str | None = None) -> tuple[bool, str]:
+    def login_trusted(self, slug: str, login: str | None, association: str | None = None, actor_type: str | None = None) -> tuple[bool, str]:
+        """A bot is trusted only by explicit allowlist; a person by allowlist, CODEOWNERS, OWNER association, or write permission."""
         if not login:
-            return False, "no login (deleted user or bot)"
+            return False, "no login (deleted user)"
         login_key = login.lower()
         if login_key in self.logins:
             return True, "allowlisted"
+        if actor_type == BOT_TYPENAME:
+            return False, "bot actors are trusted only by --trust"
         if not self.in_scope(slug):
             return False, f"{slug} is outside the trusted repositories"
         self._load_codeowners(slug)
@@ -678,27 +715,32 @@ class TrustPolicy:
             return True, f"association {association}"
         return self._collaborator(slug, login)
 
-    def issue_trust(self, slug: str, info: dict[str, Any]) -> tuple[bool, list[str]]:
-        """(trusted, reasons). The author and every editor must be trusted."""
+    def author_trusted(self, slug: str, meta: dict[str, Any]) -> tuple[bool, list[str]]:
+        """The author check needs only the REST issue object, so a stranger's issue costs no further query."""
+        ok, why = self.login_trusted(slug, meta.get("author"), meta.get("association"), meta.get("author_type"))
+        return ok, [] if ok else [f"author {meta.get('author') or '(none)'}: {why}"]
+
+    def editors_trusted(self, slug: str, author: str | None, editors: list[dict[str, Any]]) -> tuple[bool, list[str]]:
+        """Every body editor other than the (already trusted) author must be trusted."""
         reasons: list[str] = []
-        author = info.get("author")
-        ok, why = self.login_trusted(slug, author, info.get("association"))
-        if not ok:
-            reasons.append(f"author {author or '(none)'}: {why}")
-        seen: set[str | None] = {author}
-        for editor in info.get("editors") or []:
-            if editor in seen:
+        seen: set[str | None] = {(author or "").lower() or None}
+        for editor in editors:
+            login = editor.get("login")
+            key = (login or "").lower() or None
+            if key in seen:
                 continue
-            seen.add(editor)
-            ok_e, why_e = self.login_trusted(slug, editor)
-            if not ok_e:
-                reasons.append(f"editor {editor or '(none)'}: {why_e}")
+            seen.add(key)
+            ok, why = self.login_trusted(slug, login, None, editor.get("type"))
+            if not ok:
+                reasons.append(f"editor {login or '(none)'}: {why}")
         return not reasons, reasons
 
     def _collaborator(self, slug: str, login: str) -> tuple[bool, str]:
-        """Trusted only with write, maintain or admin permission; read and triage are not enough to edit others' issues safely."""
+        """Trusted only with write, maintain or admin permission. A lookup that cannot run is a run error (exit 2):
+        a silently untrusted collaborator would hide trusted work as opaque blockers."""
         key = (slug.lower(), login.lower())
         if key not in self._collaborator_cache:
+            source = f"gh api repos/{slug}/collaborators/{login}/permission"
             ok, raw, err = run_cmd_checked(["gh", "api", f"repos/{slug}/collaborators/{login}/permission", "--jq", ".permission"], cwd=self.repo)
             if ok and raw in TRUSTED_PERMISSIONS:
                 self._collaborator_cache[key] = (True, f"permission {raw}")
@@ -707,7 +749,8 @@ class TrustPolicy:
             elif "HTTP 404" in err:
                 self._collaborator_cache[key] = (False, f"not a collaborator of {slug}")
             else:
-                self._collaborator_cache[key] = (False, f"collaborator check failed ({err or 'command failed'})")
+                self.errors.append({"source": source, "error": err or "command failed"})
+                self._collaborator_cache[key] = (False, "permission lookup failed; see github_errors")
         return self._collaborator_cache[key]
 
     def _load_codeowners(self, slug: str) -> None:
@@ -753,9 +796,9 @@ def collect_frontmatter_dag(repo: str, roots: list[str], errors: list[dict[str, 
             else:
                 seeds.add(r)
     else:
-        for iss in gh_list_open_issues(repo, None, errors):
+        for iss in gh_list_open_issues_rest(repo, slug, errors):
             r = (slug, int(iss["number"]))
-            fetched[r] = {"title": iss.get("title", ""), "state": "open", "state_reason": None, "body": iss.get("body") or "", "html_url": iss.get("url")}
+            fetched[r] = issue_meta(iss)
             seeds.add(r)
     if errors:
         return empty
@@ -776,7 +819,9 @@ def collect_frontmatter_dag(repo: str, roots: list[str], errors: list[dict[str, 
             continue
         author = (pr.get("author") or {}).get("login")
         cross = pr.get("isCrossRepository")
-        ok, why = (False, "head is not a branch of this repository") if cross is not False else policy.login_trusted(slug, author)
+        ok, why = (False, "head is not a branch of this repository") if cross is not False else policy.login_trusted(slug, author, None, "Bot" if (pr.get("author") or {}).get("is_bot") else None)
+        if errors:
+            return empty
         if not ok:
             untrusted_prs.append({"number": pr.get("number"), "url": pr.get("url"), "author": author, "cross_repository": cross, "closes": [node_id(*c) for c in closes], "reason": why})
             continue
@@ -822,15 +867,21 @@ def collect_frontmatter_dag(repo: str, roots: list[str], errors: list[dict[str, 
                 for who in referenced_by[ref] or [nid]:
                     violations.setdefault(who, []).append(f"reference {nid} moved to {moved} (transferred); update the frontmatter")
                 continue
-            fetched[ref] = {"title": obj.get("title", ""), "state": str(obj.get("state", "")).lower(), "state_reason": obj.get("state_reason"), "body": obj.get("body") or "", "html_url": obj.get("html_url")}
+            fetched[ref] = issue_meta(obj)
         meta = fetched[ref]
-        info = gh_issue_trust_info(repo, ref, errors)
-        if info is None:
+        # Author first, from the REST object: a stranger's issue costs no further query (C1, C15).
+        trusted, reasons = policy.author_trusted(ref[0], meta)
+        if trusted:
+            history = gh_issue_edit_history(repo, ref, errors)
+            if history is None:
+                break
+            meta["body"] = history["body"]  # the body whose editors were checked
+            trusted, reasons = policy.editors_trusted(ref[0], meta.get("author"), history["editors"])
+        if errors:
             break
-        trusted, reasons = policy.issue_trust(ref[0], info)
         if not trusted:
             # No title: nothing an untrusted author wrote reaches any output (C3).
-            untrusted.append({"id": nid, "url": meta["html_url"], "state": meta["state"], "author": info.get("author"), "reasons": reasons, "referenced_by": referenced_by[ref]})
+            untrusted.append({"id": nid, "url": meta["html_url"], "state": meta["state"], "author": meta.get("author"), "reasons": reasons, "referenced_by": referenced_by[ref]})
             # Always an opaque record: a trusted issue that references it must stay blocked (C3).
             # Unreferenced untrusted seeds are dropped after discovery, below.
             records[ref] = {"kind": "opaque", "untrusted": True, "blocked_by": [], "children": [], "holds": [], "meters": [], "status": "blocked", "size_hours": None, "type": None}
@@ -1308,17 +1359,24 @@ def verify_and_layer_dag(dag_path: str, min_confidence: float, emit_mermaid: boo
 
 def mutate_edge(repo: str, home: str, parent: IssueRef, child: IssueRef, add: bool, errors: list[dict[str, str]], policy: TrustPolicy) -> dict[str, Any] | None:
     """Edit the child's frontmatter .blocked_by. Returns {"child": ref, "old_body": str} or None."""
-    for ref in (parent, child):
+    # The child is always checked. The parent's scope matters only when an edge is added:
+    # removing a reference to an out-of-scope issue is how an operator repairs such a reference.
+    for ref in ((parent, child) if add else (child,)):
         if not policy.in_scope(ref[0]):
             errors.append({"source": f"edge {node_id(*parent)}->{node_id(*child)}", "error": f"{node_id(*ref)} is outside the trusted repositories"})
             return None
     obj = gh_get_issue(repo, child, errors)
     if obj is None:
         return None
-    info = gh_issue_trust_info(repo, child, errors)
-    if info is None:
-        return None
-    trusted, reasons = policy.issue_trust(child[0], info)
+    meta = issue_meta(obj)
+    trusted, reasons = policy.author_trusted(child[0], meta)
+    body = meta["body"]
+    if trusted:
+        history = gh_issue_edit_history(repo, child, errors)
+        if history is None:
+            return None
+        body = history["body"]
+        trusted, reasons = policy.editors_trusted(child[0], meta.get("author"), history["editors"])
     if errors:
         # A trust lookup that recorded an error (for example a failed CODEOWNERS fetch) never permits a write.
         return None
@@ -1326,7 +1384,6 @@ def mutate_edge(repo: str, home: str, parent: IssueRef, child: IssueRef, add: bo
         # Never write into a stranger's issue, even with the permission to do so (C3).
         errors.append({"source": f"frontmatter of {node_id(child[0], child[1], home)}", "error": "child is untrusted: " + "; ".join(reasons)})
         return None
-    body = obj.get("body") or ""
     fields, problems = parse_frontmatter(body)
     if fields is None or problems:
         errors.append({"source": f"frontmatter of {node_id(child[0], child[1], home)}", "error": "missing or unparseable frontmatter"})

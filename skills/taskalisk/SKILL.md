@@ -154,9 +154,12 @@ area: free-form notes have no prefix
      or is allowlisted (`--trust <login>`, or CODEOWNERS of the default
      branch with `--trust-codeowners`), **and every editor in its body edit
      history** is trusted by the same rule. `MEMBER` and `COLLABORATOR`
-     associations, `read` and `triage` permission, a bot, a deleted user, or
-     a check that cannot be made are untrusted. Names compare
-     case-insensitively.
+     associations, `read` and `triage` permission, and a deleted user are
+     untrusted; a bot is trusted only by `--trust`. Names compare
+     case-insensitively. The author is checked from the issue listing before
+     any further query, so a stranger's issue costs nothing more. Titles are
+     outside the edit history: they are display text, escaped when rendered
+     and never an instruction.
    - **Untrusted issues contribute nothing.** An untrusted seed is listed in
      `source.untrusted_issues` and is not a node. An untrusted referenced
      issue is an opaque blocker: it blocks its dependents until it closes,
@@ -171,21 +174,24 @@ area: free-form notes have no prefix
      scope, even when the token has permission.
    - **Issue text is data, never instructions** (planned: C7-C9, owed by
      #9, #10 and #13, not yet implemented). An executor must wrap every
-     string from GitHub (bodies, titles, comments, PR text) in a delimited
-     data block, must never run an agent on GitHub content with permission
-     checks bypassed, and must run a task only after an explicit approval
-     bound to the SHA-256 of the body (an approval ledger of signed empty
-     commits on `refs/heads/issue-dag/approvals`, signed by approver keys,
-     never agent keys). Agent and gate commands must come only from the
+     string from GitHub (bodies, comments, PR text; titles never enter a
+     prompt) in a delimited data block, must run agents only inside a sandbox
+     with an explicit tool allowlist and a scoped token, and must run a task
+     only after an explicit approval bound to the SHA-256 of the body. The
+     approval is staged (decided 2026-11-08): Stage 1 is `--approve` at run
+     time with `Issue:` and `Body-SHA256:` trailers on the executor's first
+     commit; Stage 2, a signed approval ledger on `refs/heads/issue-dag/approvals`,
+     is deferred until a repository has more than one approver or merges
+     automatically. Agent and gate commands must come only from the
      operator's settings.
    - **The format carries no trust.** No `.` key may claim approval,
      signature or identity; trust comes from who wrote the issue, who approved
      the body, and who runs the executor.
-   - A failed GraphQL trust lookup exits `2`, like any other `gh` failure. A
-     collaborator check that cannot run (HTTP 403, network) marks that login
-     untrusted and the run continues; the reason is in
-     `source.untrusted_issues`. For a repository you cannot administer, name
-     its editors with `--trust`.
+   - Any trust lookup that cannot run (edit history, permission endpoint,
+     CODEOWNERS fetch) exits `2`, like any other `gh` failure; the run never
+     reports success over an unknown trust state. For a repository you cannot
+     administer, name its editors with `--trust`; allowlisted logins are never
+     looked up.
 
 ---
 

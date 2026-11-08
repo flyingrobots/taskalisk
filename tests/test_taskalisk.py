@@ -24,7 +24,7 @@ def fm(id_, kind="task", type_="feature", blocked_by=(), children=None, extra=""
     return "```yaml\n" + "\n".join(lines) + "\n```\n\n# Feature\n\nBody text.\n"
 
 
-def issue(i, title, body, state="open", reason=None, author=None, association=None, editors=None):
+def issue(i, title, body, state="open", reason=None, author=None, association=None, editors=None, **extra):
     out = {"id": i, "title": title, "state": state, "labels": [], "body": body, "state_reason": reason}
     if author is not None:
         out["author"] = author
@@ -32,6 +32,7 @@ def issue(i, title, body, state="open", reason=None, author=None, association=No
         out["association"] = association
     if editors is not None:
         out["editors"] = editors
+    out.update(extra)
     return out
 
 
@@ -421,12 +422,13 @@ class Trust(Harness):
         self.assertEqual(self.current()["issues"][f"{HOME}#2"]["body"], before)
         self.assertFalse(any("PATCH" in c for c in self.calls()))
 
-    def test_collaborator_check_that_cannot_run_is_untrusted(self):
+    def test_collaborator_check_that_cannot_run_exits_2(self):
         state = plan_state()
         state["issues"][f"{HOME}#1"]["editors"] = ["owner", "carol"]
         state["collaborators_forbidden"] = True
-        r = self.out(self.run_dag(state, "--from-github", "--root", f"{HOME}#9"))
-        self.assertTrue(any("collaborator check failed" in why for u in r["source"]["untrusted_issues"] for why in u["reasons"]))
+        p = self.run_dag(state, "--from-github", "--root", f"{HOME}#9")
+        self.assertEqual(p.returncode, 2, p.stdout)
+        self.assertIn("collaborators/carol/permission", p.stdout)
 
     def test_codeowners_allowlists_per_repository(self):
         state = plan_state()
@@ -436,6 +438,61 @@ class Trust(Harness):
         self.assertEqual(self.untrusted_ids(r), [])
         self.assertEqual(r["source"]["trust"]["codeowners"][HOME], ["carol"])
         self.assertEqual(r["source"]["trust"]["codeowners_teams_not_expanded"], {HOME: ["flyingrobots/core"]})
+        # The allowlist is per repository: Carol owns nothing in ECHO.
+        state["issues"][f"{ECHO}#5"]["editors"] = ["owner", "carol"]
+        r = self.out(self.run_dag(state, "--from-github", "--root", f"{HOME}#9", "--trust-codeowners"))
+        self.assertIn(f"{ECHO}#5", self.untrusted_ids(r))
+        self.assertTrue(self.node(r, f"{ECHO}#5")["opaque"])
+
+    def test_bot_author_is_untrusted_unless_allowlisted(self):
+        state = plan_state()
+        state["issues"][f"{HOME}#77"] = issue(177, "Automated", fm(f"{HOME}#77"), author="deploy-bot", association="OWNER", author_type="Bot")
+        r = self.out(self.run_dag(state, "--from-github"))
+        self.assertIn(f"{HOME}#77", self.untrusted_ids(r))
+        r = self.out(self.run_dag(state, "--from-github", "--trust", "deploy-bot"))
+        self.assertNotIn(f"{HOME}#77", self.untrusted_ids(r))
+
+    def test_bot_editor_is_untrusted(self):
+        state = plan_state()
+        state["issues"][f"{HOME}#1"]["editors"] = ["owner", {"login": "deploy-bot", "type": "Bot"}]
+        state["collaborators"] = {HOME: ["deploy-bot"]}  # even write permission does not trust a bot
+        r = self.out(self.run_dag(state, "--from-github", "--root", f"{HOME}#9"))
+        self.assertIn(f"{HOME}#1", self.untrusted_ids(r))
+        self.assertTrue(any("bot actors" in why for u in r["source"]["untrusted_issues"] for why in u["reasons"]))
+
+    def test_stranger_seed_costs_no_edit_history_query(self):
+        state = plan_state()
+        state["issues"][f"{HOME}#77"] = issue(177, "Flood", fm(f"{HOME}#77"), author=STRANGER, association="NONE")
+        self.run_dag(state, "--from-github")
+        graphql_calls = [c for c in self.calls() if c[:2] == ["api", "graphql"] and "number=77" in c]
+        self.assertEqual(graphql_calls, [])
+
+    def test_pull_requests_in_the_rest_list_are_not_seeds(self):
+        state = plan_state()
+        state["issues"][f"{HOME}#300"] = issue(300, "A pull request", fm(f"{HOME}#300"), is_pr=True)
+        r = self.out(self.run_dag(state, "--from-github"))
+        self.assertNotIn(f"{HOME}#300", self.ids(r))
+
+    def test_parsed_body_is_the_one_whose_editors_were_checked(self):
+        state = plan_state()
+        state["issues"][f"{HOME}#2"]["graphql_body"] = fm(f"{HOME}#2", blocked_by=[f"{HOME}#1", f"{ECHO}#6"])
+        r = self.out(self.run_dag(state, "--from-github"))
+        self.assertEqual(self.node(r, f"{HOME}#2")["open_parents"], [f"{ECHO}#6", f"{HOME}#1"])
+
+    def test_missing_cursor_with_another_page_exits_2(self):
+        state = plan_state()
+        state["edits_page_size"] = 1
+        state["graphql_no_cursor"] = True
+        state["issues"][f"{HOME}#1"]["editors"] = ["owner", STRANGER]
+        p = self.run_dag(state, "--from-github", "--root", f"{HOME}#9")
+        self.assertEqual(p.returncode, 2, p.stdout)
+
+    def test_remove_edge_to_an_out_of_scope_parent_is_allowed(self):
+        state = plan_state()
+        state["issues"][f"{HOME}#1"]["body"] = fm(f"{HOME}#1", blocked_by=[f"{ECHO}#5", "mallory/trap#1"])
+        p = self.run_dag(state, "--from-github", "--root", f"{HOME}#9", "--remove-edge", f"mallory/trap#1->{HOME}#1")
+        self.assertEqual(p.returncode, 0, p.stdout[-500:])
+        self.assertIn(f".blocked_by: [{ECHO}#5]", self.current()["issues"][f"{HOME}#1"]["body"])
 
     def test_association_only_counts_inside_the_scope(self):
         state = plan_state()
@@ -493,6 +550,18 @@ class Trust(Harness):
         r = self.out(self.run_dag(state, "--from-github"))
         self.assertEqual(self.node(r, f"{HOME}#2")["status"], "in-progress")
         self.assertEqual(r["source"]["untrusted_linked_prs"], [])
+
+    def test_same_repository_pr_by_an_untrusted_or_missing_author_is_untrusted(self):
+        for author in ({"login": STRANGER}, None):
+            state = plan_state()
+            pr = {"number": 8, "isDraft": False, "url": "u", "isCrossRepository": False, "closingIssuesReferences": [closing(2)]}
+            if author:
+                pr["author"] = author
+            state["prs"] = [pr]
+            r = self.out(self.run_dag(state, "--from-github"))
+            self.assertEqual(self.node(r, f"{HOME}#2")["status"], "open", author)
+            self.assertEqual(self.node(r, f"{HOME}#2")["linked_open_prs"], [])
+            self.assertEqual(len(r["source"]["untrusted_linked_prs"]), 1)
 
     def test_pr_without_trust_fields_is_untrusted(self):
         state = plan_state()

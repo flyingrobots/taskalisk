@@ -6,14 +6,19 @@ State shape:
    "default_author": "owner",             # author of issues that do not name one (association OWNER)
    "issues": {"owner/repo#N": {"id": int, "title": str, "state": "open"|"closed", "labels": [str], "body": str,
                                "state_reason": str|null,
-                               "author": str|null, "association": str, "editors": [str|null, ...]}},
+                               "author": str|null, "author_type": "User"|"Bot", "association": str,
+                               "editors": [str|null|{"login": str, "type": "Bot"}, ...],
+                               "is_pr": bool,                  # listed by the REST issues endpoint as a pull request
+                               "graphql_body": str}},          # body returned by GraphQL when it differs from REST
    "blocked_by": {"owner/repo#N": ["owner/repo#M", ...]},
    "prs": [{"number": int, "isDraft": bool, "url": str, "author": {"login": str}, "isCrossRepository": bool,
             "closingIssuesReferences": [{"number": int, "repository": {"name": str, "owner": {"login": str}}}]}],
-   "collaborators": {"owner/repo": ["login", ...]},   # 204 from the collaborator check
+   "collaborators": {"owner/repo": ["login", ...] | {"login": "write"|"triage"|...}},
    "collaborators_forbidden": bool,                   # 403 instead of 404
    "codeowners": {"owner/repo": {".github/CODEOWNERS": "text"}},
+   "contents_fail": bool,                             # 500 from the contents endpoint
    "fail_graphql": bool,
+   "graphql_no_cursor": bool,                         # hasNextPage true without endCursor
    "edits_page_size": int}
 """
 import json, os, re, sys
@@ -26,14 +31,23 @@ def save(state):
     with open(os.environ["FAKE_GH_STATE"], "w") as f:
         json.dump(state, f)
 
+def author_of(state, it):
+    return it.get("author", state.get("default_author", "owner"))
+
 def issue_obj(state, key):
     slug, num = key.split("#")
     it = state["issues"][key]
-    return {"number": int(num), "id": it["id"], "title": it["title"], "state": it["state"],
-            "state_reason": it.get("state_reason"), "labels": [{"name": n} for n in it.get("labels", [])],
-            "body": it.get("body", ""), "milestone": None,
-            "html_url": f"https://github.com/{slug}/issues/{num}",
-            "repository_url": f"https://api.github.com/repos/{slug}"}
+    author = author_of(state, it)
+    obj = {"number": int(num), "id": it["id"], "title": it["title"], "state": it["state"],
+           "state_reason": it.get("state_reason"), "labels": [{"name": n} for n in it.get("labels", [])],
+           "body": it.get("body", ""), "milestone": None,
+           "html_url": f"https://github.com/{slug}/issues/{num}",
+           "repository_url": f"https://api.github.com/repos/{slug}",
+           "user": {"login": author, "type": it.get("author_type", "User")} if author else None,
+           "author_association": it.get("association", "OWNER")}
+    if it.get("is_pr"):
+        obj["pull_request"] = {"url": f"https://api.github.com/repos/{slug}/pulls/{num}"}
+    return obj
 
 def strip(state, obj):
     if state.get("strip_repository_url"):
@@ -45,7 +59,7 @@ def fail(msg):
     sys.exit(1)
 
 def graphql(state, args):
-    """The trust query: author, association and paginated body editors."""
+    """The edit-history query: body and paginated body editors."""
     if state.get("fail_graphql"):
         fail("gh: GraphQL unavailable (fake)")
     variables = {}
@@ -62,16 +76,20 @@ def graphql(state, args):
     if it is None:
         print(json.dumps({"data": {"repository": {"issue": None}}, "errors": [{"message": "Could not resolve to an Issue"}]}))
         sys.exit(1)
-    author = it.get("author", state.get("default_author", "owner"))
+    author = author_of(state, it)
     editors = it.get("editors", [author])
     page = int(state.get("edits_page_size", 1000))
     start = int(variables.get("after") or 0)
     chunk = editors[start:start + page]
+    has_next = start + page < len(editors)
+    def node(e):
+        if isinstance(e, dict):
+            return {"editor": {"login": e.get("login"), "__typename": e.get("type", "User")}}
+        return {"editor": {"login": e, "__typename": "User"} if e else None}
     out = {"data": {"repository": {"issue": {
-        "author": {"login": author} if author else None,
-        "authorAssociation": it.get("association", "OWNER"),
-        "userContentEdits": {"pageInfo": {"hasNextPage": start + page < len(editors), "endCursor": str(start + page)},
-                             "nodes": [{"editor": {"login": e} if e else None} for e in chunk]}}}}}
+        "body": it.get("graphql_body", it.get("body", "")),
+        "userContentEdits": {"pageInfo": {"hasNextPage": has_next, "endCursor": None if state.get("graphql_no_cursor") else str(start + page)},
+                             "nodes": [node(e) for e in chunk]}}}}}
     print(json.dumps(out))
 
 def main(argv):
@@ -111,6 +129,11 @@ def main(argv):
     if args[:1] == ["-X"]:
         method, args = args[1], args[2:]
     path = args[0]
+    m = re.fullmatch(r"repos/([^/]+/[^/]+)/issues\?state=open&per_page=\d+", path)
+    if m:
+        # The REST list: open issues of that repository, pull requests included, like GitHub.
+        out = [issue_obj(state, k) for k, v in state["issues"].items() if k.startswith(m.group(1) + "#") and v["state"] == "open"]
+        print(json.dumps(out)); return
     m = re.fullmatch(r"repos/([^/]+/[^/]+)/collaborators/([^/]+)/permission", path)
     if m:
         # collaborators: {slug: [login, ...]} means write; {slug: {login: "triage"}} sets the level.
