@@ -3,11 +3,12 @@
 issue_dag_snapshot.py
 
 Zero-local-state DAG compiler for the `issue-dag` skill. Issue frontmatter
-(`issue-dag/1`, see docs/frontmatter-model.md) is the single source of truth:
+(`issue-dag/2`, see docs/frontmatter-model.md) is the single source of truth:
 each issue's first fenced `yaml` block declares its kind, its `.blocked_by`
 edges, its container `.children`, and the resources it holds. Labels,
 milestones, body sections, and GitHub relationships never create edges.
-Issue references are `#N` (same repository) or `owner/repo#N`. Nothing is
+Every issue reference is `owner/repo#N`; a bare `#N` is invalid,
+because transferring an issue would silently re-point it. Nothing is
 cached or written on disk.
 
 Modes:
@@ -16,11 +17,11 @@ Modes:
       roots) through `.blocked_by` and `.children`, across repositories,
       compiles the transitively-reduced DAG, ranks the Open Frontier, and
       proposes a batch that respects `.holds` and `.meters`.
-  --from-github --add-edge "#1080->owner/repo#1052" [--reason "..."]
+  --from-github --add-edge "owner/repo#1080->owner/repo#1052" [--reason "..."]
       Adds the parent to the child's frontmatter `.blocked_by`, then
       recompiles. If the edge creates a cycle the old body is restored and
       the run fails.
-  --from-github --remove-edge "#1080->#1052"
+  --from-github --remove-edge "owner/repo#1080->owner/repo#1052"
       Removes the parent from the child's `.blocked_by`.
   --from-github --compare-relationships
       Also reports drift between frontmatter edges and GitHub blocked_by
@@ -317,29 +318,30 @@ def gh_issue_database_id(repo: str, slug: str, number: int, errors: list[dict[st
 
 
 IssueRef = tuple[str, int]  # (owner/repo slug, issue number)
-ISSUE_REF_RE = re.compile(r"\s*(?:(?P<slug>[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)#|#?)(?P<num>\d+)\s*")
+ISSUE_REF_RE = re.compile(r"\s*(?P<slug>[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)#(?P<num>[1-9][0-9]*)\s*")
 REPOSITORY_URL_RE = re.compile(r"/repos/([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)/?$")
 
 
-def node_id(slug: str, number: int, home: str) -> str:
-    """Canonical node id: '#123' in the home repository, 'owner/repo#123' elsewhere."""
-    return f"#{number}" if slug == home else f"{slug}#{number}"
+def node_id(slug: str, number: int, home: str = "") -> str:
+    """Canonical node id: always 'owner/repo#123'. A bare '#123' is never produced or accepted,
+    because a transferred issue would silently re-point a repository-relative reference."""
+    return f"{slug}#{number}"
 
 
-def parse_issue_ref(text: str, home: str) -> IssueRef | None:
-    """Parse '#123' or '123' (home repository) or 'owner/repo#123' (any repository)."""
+def parse_issue_ref(text: str, home: str = "") -> IssueRef | None:
+    """Parse 'owner/repo#123'. A bare '#123' or '123' is invalid."""
     m = ISSUE_REF_RE.fullmatch(text)
     if not m:
         return None
-    return (m.group("slug") or home, int(m.group("num")))
+    return (m.group("slug"), int(m.group("num")))
 
 
-def parse_edge_arg(arg: str, home: str) -> tuple[IssueRef, IssueRef] | None:
-    """'#1080->owner/repo#1052' means #1080 blocks owner/repo#1052 (parent -> child)."""
+def parse_edge_arg(arg: str, home: str = "") -> tuple[IssueRef, IssueRef] | None:
+    """'owner/repo#1080->owner/repo#1052' means the first blocks the second (parent -> child)."""
     parts = arg.split("->")
     if len(parts) != 2:
         return None
-    parent, child = parse_issue_ref(parts[0], home), parse_issue_ref(parts[1], home)
+    parent, child = parse_issue_ref(parts[0]), parse_issue_ref(parts[1])
     if parent is None or child is None:
         return None
     return parent, child
@@ -351,16 +353,17 @@ def slug_from_repository_url(url: str) -> str | None:
 
 
 def id_sort_key(nid: str) -> tuple[str, int]:
-    """Home ids ('#12') sort first, then other repositories by slug, each by number."""
+    """Sort by repository slug, then by number."""
     slug, _, num = nid.rpartition("#")
     return (slug, int(num) if num.isdigit() else 0)
 
 
 # --------------------------------------------------------------------------- #
-# Frontmatter model (issue-dag/1). See docs/frontmatter-model.md.
+# Frontmatter model (issue-dag/2). See docs/frontmatter-model.md.
 # --------------------------------------------------------------------------- #
 
-FM_SCHEMA = "issue-dag/1"
+FM_SCHEMA = "issue-dag/2"
+FM_RETIRED_SCHEMAS = {"issue-dag/1": "issue-dag/1 allowed repository-relative references; rewrite every reference as owner/repo#N and set .dag: issue-dag/2"}
 FM_PREFIX = "."
 FM_KEYS = {".dag", ".id", ".kind", ".type", ".blocked_by", ".children", ".size_hours", ".holds", ".meters", ".status"}
 FM_KINDS = {"task", "container"}
@@ -422,11 +425,16 @@ def validate_frontmatter(fields: dict[str, Any], self_ref: IssueRef) -> tuple[di
     slug = self_ref[0]
     for key in sorted(k for k in fields if k.startswith(FM_PREFIX) and k not in FM_KEYS):
         v.append(f"unknown key {key}")
-    if fields.get(".dag") != FM_SCHEMA:
+    dag = fields.get(".dag")
+    if dag in FM_RETIRED_SCHEMAS:
+        v.append(f".dag {dag} is retired: {FM_RETIRED_SCHEMAS[dag]}")
+    elif dag != FM_SCHEMA:
         v.append(f".dag must be {FM_SCHEMA}")
-    own = parse_issue_ref(str(fields.get(".id", "")), slug)
-    if own != self_ref:
-        v.append(f".id {fields.get('.id')!r} does not name this issue")
+    own = parse_issue_ref(str(fields.get(".id", "")))
+    if own is None:
+        v.append(f".id {fields.get('.id')!r} must be owner/repo#N")
+    elif own != self_ref:
+        v.append(f".id {fields.get('.id')} does not name this issue ({node_id(*self_ref)}); was it transferred or copied?")
     kind = fields.get(".kind")
     if kind not in FM_KINDS:
         v.append(".kind must be task or container")
@@ -438,9 +446,9 @@ def validate_frontmatter(fields: dict[str, Any], self_ref: IssueRef) -> tuple[di
             return []
         out: list[IssueRef] = []
         for item in raw:
-            r = parse_issue_ref(item, slug)
+            r = parse_issue_ref(item)
             if r is None:
-                v.append(f"{key}: invalid reference {item!r}")
+                v.append(f"{key}: invalid reference {item!r} (use owner/repo#N; bare numbers are not allowed)")
             elif r == self_ref:
                 v.append(f"{key}: self reference")
             else:
@@ -488,8 +496,9 @@ def validate_frontmatter(fields: dict[str, Any], self_ref: IssueRef) -> tuple[di
     return record, v, w
 
 
-def format_ref_relative(ref: IssueRef, base_slug: str) -> str:
-    return f"#{ref[1]}" if ref[0] == base_slug else f"{ref[0]}#{ref[1]}"
+def format_ref_relative(ref: IssueRef, base_slug: str = "") -> str:
+    """Always the qualified form; the name is kept for call sites."""
+    return f"{ref[0]}#{ref[1]}"
 
 
 def rewrite_blocked_by(body: str, refs: list[IssueRef], base_slug: str) -> str | None:
@@ -560,9 +569,9 @@ def collect_frontmatter_dag(repo: str, roots: list[str], errors: list[dict[str, 
     seeds: set[IssueRef] = set()
     if roots:
         for text in roots:
-            r = parse_issue_ref(text, slug)
+            r = parse_issue_ref(text)
             if r is None:
-                errors.append({"source": "--root", "error": f"invalid reference {text!r}"})
+                errors.append({"source": "--root", "error": f"invalid reference {text!r} (use owner/repo#N)"})
             else:
                 seeds.add(r)
     else:
@@ -604,6 +613,16 @@ def collect_frontmatter_dag(repo: str, roots: list[str], errors: list[dict[str, 
                 break
             if obj.get("pull_request"):
                 violations[nid] = ["references a pull request, not an issue"]
+                continue
+            actual_slug = slug_from_repository_url(str(obj.get("repository_url") or ""))
+            actual = (actual_slug, int(obj.get("number", 0))) if actual_slug else None
+            if actual is None:
+                errors.append({"source": f"gh api repos/{ref[0]}/issues/{ref[1]}", "error": "issue has no parseable repository_url"})
+                break
+            if actual != ref:
+                moved = node_id(*actual)
+                for who in referenced_by[ref] or [nid]:
+                    violations.setdefault(who, []).append(f"reference {nid} moved to {moved} (transferred); update the frontmatter")
                 continue
             fetched[ref] = {"title": obj.get("title", ""), "state": str(obj.get("state", "")).lower(), "state_reason": obj.get("state_reason"), "body": obj.get("body") or "", "html_url": obj.get("html_url")}
         meta = fetched[ref]
@@ -991,7 +1010,7 @@ def render_roadmap_block(result: dict[str, Any]) -> str:
         f"| Max parallel width | {m['max_parallel_width']} |",
         f"| Critical path ({m['critical_path_length']}) | {' → '.join(m['critical_path'])} |",
         f"| Isolated nodes | {m['isolated_open_node_count']} |",
-        f"| Containers excluded | {', '.join(c.get('id') or '#' + str(c['number']) for c in src.get('containers_excluded', [])) or 'none'} |",
+        f"| Containers excluded | {', '.join(c['id'] for c in src.get('containers_excluded', [])) or 'none'} |",
         "",
         "## Ranked Open Frontier (Wave 0)",
         "",
@@ -1103,8 +1122,8 @@ def compile_from_github(repo: str, roots: list[str], min_confidence: float, emit
     undo: dict[str, Any] | None = None
 
     if add_edge or remove_edge:
-        if parse_edge_arg(add_edge or remove_edge or "", "home/home") is None:
-            print(json.dumps({"ok": False, "error": f"Invalid edge syntax (expected '#parent->#child' or 'owner/repo#parent->owner/repo#child'): {add_edge or remove_edge}"}))
+        if parse_edge_arg(add_edge or remove_edge or "") is None:
+            print(json.dumps({"ok": False, "error": f"Invalid edge syntax (expected 'owner/repo#parent->owner/repo#child'; bare numbers are not allowed): {add_edge or remove_edge}"}))
             return 1
         slug = gh_repo_slug(repo, errors)
         if slug is None:
@@ -1175,15 +1194,15 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Zero-local-state issue DAG compiler, frontier ranker, and inventory for issue-dag.")
     parser.add_argument("--repo", default=".", help="Path inside the git repository (gh resolves the GitHub repo from it)")
     parser.add_argument("--milestone", default=None, help="Inventory mode only: optional GitHub milestone title filter")
-    parser.add_argument("--root", action="append", default=[], help="With --from-github: start discovery at this issue (repeatable); default is every open home issue")
+    parser.add_argument("--root", action="append", default=[], help="With --from-github: start discovery at this issue, as owner/repo#N (repeatable); default is every open home issue")
     parser.add_argument("--sem-capacity", action="append", default=[], help="Semaphore capacity as name=N (repeatable); unknown semaphores count as 1")
     parser.add_argument("--compare-relationships", action="store_true", help="With --from-github: report drift between frontmatter edges and GitHub blocked_by relationships")
-    parser.add_argument("--from-github", action="store_true", help="Compile the DAG from issue frontmatter (issue-dag/1), across repositories")
+    parser.add_argument("--from-github", action="store_true", help="Compile the DAG from issue frontmatter (issue-dag/2), across repositories")
     parser.add_argument("--verify-dag", default=None, help="Path to a hand-written DAG JSON specification to verify and layer")
     parser.add_argument("--min-confidence", type=float, default=DEFAULT_MIN_CONFIDENCE, help=f"Minimum confidence for hard edges in --verify-dag specs (default {DEFAULT_MIN_CONFIDENCE})")
     parser.add_argument("--emit-mermaid", action="store_true", help="Output a transitively-reduced Mermaid flowchart TD")
-    parser.add_argument("--add-edge", default=None, help="Add '#parent->#child' to the child's frontmatter .blocked_by, then recompile (rolls back on cycle). Use 'owner/repo#N' for another repository.")
-    parser.add_argument("--remove-edge", default=None, help="Remove '#parent->#child' from the child's frontmatter .blocked_by, then recompile.")
+    parser.add_argument("--add-edge", default=None, help="Add 'owner/repo#parent->owner/repo#child' to the child's frontmatter .blocked_by, then recompile (rolls back on cycle).")
+    parser.add_argument("--remove-edge", default=None, help="Remove 'owner/repo#parent->owner/repo#child' from the child's frontmatter .blocked_by, then recompile.")
     parser.add_argument("--reason", default="issue-dag edge update", help="Rationale echoed in the output for the mutation (GitHub timeline is the ledger)")
     parser.add_argument("--emit-roadmap", action="store_true", help="With --from-github: print the generated ROADMAP.md block (between BEGIN/END markers)")
     args = parser.parse_args()

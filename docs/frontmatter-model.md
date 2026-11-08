@@ -1,6 +1,6 @@
-# Frontmatter model (`issue-dag/1`)
+# Frontmatter model (`issue-dag/2`)
 
-**Status**: Accepted on 2026-11-08.
+**Status**: Accepted on 2026-11-08. Version 2 replaced version 1 on the same day.
 
 The frontmatter of each issue is the only input to the DAG. The skill does not
 read labels, milestones, body sections, or GitHub issue relationships.
@@ -12,11 +12,11 @@ string `yaml`. Only blank lines can come before it.
 
 ````markdown
 ```yaml
-.dag: issue-dag/1
+.dag: issue-dag/2
 .id: flyingrobots/geordi#81
 .kind: task
 .type: feature
-.blocked_by: [#78, flyingrobots/bunny#199]
+.blocked_by: [flyingrobots/geordi#78, flyingrobots/bunny#199]
 .size_hours: 2
 area: rust-toolchain.toml
 ```
@@ -44,16 +44,24 @@ words without quotes. The alternatives fail somewhere:
 
 ## References
 
-`#123` (or `123`) names an issue in the repository that holds the frontmatter.
-`owner/repo#123` names an issue in any repository. The skill reports node ids
-relative to the home repository (the one that `--repo` resolves to).
+Every reference is `owner/repo#123`, where `owner/repo` is the path after
+`github.com`. A bare `#123` or `123` is invalid everywhere: in `.id`,
+`.blocked_by`, `.children`, and the command line. Output node ids use the same
+form.
+
+Why: GitHub can transfer an issue to another repository, and a transfer does
+not rewrite the frontmatter of other issues. A repository-relative reference
+would then point at an unrelated issue without any error. A qualified
+reference fails loudly instead. GitHub answers the old address with the moved
+issue, and the skill reports `reference X moved to Y (transferred)`. A
+transferred issue's own `.id` also stops matching, so its block fails too.
 
 ## Fields
 
 | Key | Required | Value |
 | --- | --- | --- |
-| `.dag` | always | `issue-dag/1` |
-| `.id` | always | The issue's own reference. It must match the issue, so a copied block fails. |
+| `.dag` | always | `issue-dag/2` |
+| `.id` | always | The issue's own `owner/repo#N`. It must match the issue, so a copied or transferred block fails. |
 | `.kind` | always | `task` (an executable node) or `container` (it groups other issues and never blocks) |
 | `.type` | task | `feature`, `bug`, `decision`, `research`, `investigation`, `spike`, or `task` |
 | `.blocked_by` | task | List of references that must be closed before this task is correct. `[]` is allowed. The only edge field. |
@@ -65,6 +73,17 @@ relative to the home repository (the one that `--repo` resolves to).
 
 A task must not have `.children`. A container must not have `.blocked_by`. A
 `.blocked_by` entry must not name a container.
+
+## Versions
+
+`.dag` versions the whole set of `.` fields. Because an unknown `.` key fails
+the run, any new field is a new version. A retired version fails with a
+message that names the migration.
+
+| Version | Status | Change |
+| --- | --- | --- |
+| `issue-dag/1` | Retired | Allowed repository-relative `#N` references. |
+| `issue-dag/2` | Current | Every reference is `owner/repo#N`. |
 
 ## Completion
 

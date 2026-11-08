@@ -2,7 +2,7 @@
 name: issue-dag
 description: >-
   Compile GitHub issues into a minimal, transitively-reduced precedence DAG
-  from their frontmatter (issue-dag/1: `.blocked_by` edges and container
+  from their frontmatter (issue-dag/2: `.blocked_by` edges and container
   `.children`, across repositories), with zero local state; rank the live Open
   Frontier (zero open blockers) by transitive unblocking power and
   critical-path depth; compute dispatch batches that respect `.holds`
@@ -43,17 +43,18 @@ edit history is.
 ## Frontmatter at a glance
 
 ```yaml
-.dag: issue-dag/1
+.dag: issue-dag/2
 .id: flyingrobots/geordi#81
 .kind: task
 .type: feature
-.blocked_by: [#78, flyingrobots/bunny#199]
+.blocked_by: [flyingrobots/geordi#78, flyingrobots/bunny#199]
 .size_hours: 2
 area: free-form notes have no prefix
 ```
 
-- `#123` names an issue in the repository that holds the frontmatter;
-  `owner/repo#123` names an issue anywhere.
+- Every reference is `owner/repo#123`. A bare `#123` is invalid everywhere,
+  because a transferred issue would silently re-point it. The skill reports a
+  reference that GitHub answers from a new location as transferred.
 - Required for every modeled issue: `.dag`, `.id` (must name the issue
   itself), `.kind` (`task` or `container`).
 - Tasks need `.type` and `.blocked_by` (`[]` is allowed). Containers need
@@ -139,7 +140,7 @@ area: free-form notes have no prefix
 
 1. **Frontmatter DAG (read-only):**
    ```bash
-   python3 <this-skill>/scripts/issue_dag_snapshot.py --from-github [--root "#149"] [--sem-capacity gpu=2] [--emit-mermaid]
+   python3 <this-skill>/scripts/issue_dag_snapshot.py --from-github [--root "flyingrobots/geordi#149"] [--sem-capacity gpu=2] [--emit-mermaid]
    ```
    Discovers the closure, validates every frontmatter, compiles the reduced
    DAG, ranks the frontier, and proposes a batch. An issue whose `.status` is
@@ -155,8 +156,8 @@ area: free-form notes have no prefix
 2. **Edit an edge in frontmatter:**
    ```bash
    python3 <this-skill>/scripts/issue_dag_snapshot.py --from-github \
-     --add-edge "#1080->flyingrobots/echo#1052" --reason "Coordinate contract must land before Optic reads"
-   python3 <this-skill>/scripts/issue_dag_snapshot.py --from-github --remove-edge "#1080->#1052"
+     --add-edge "flyingrobots/geordi#1080->flyingrobots/echo#1052" --reason "Coordinate contract must land before Optic reads"
+   python3 <this-skill>/scripts/issue_dag_snapshot.py --from-github --remove-edge "flyingrobots/geordi#1080->flyingrobots/geordi#1052"
    ```
    `parent->child` means *parent blocks child*. The script rewrites only the
    child's `.blocked_by` line, recompiles, and restores the old body on a
@@ -164,12 +165,12 @@ area: free-form notes have no prefix
 
 3. **Drift against GitHub relationships (read-only):**
    ```bash
-   python3 <this-skill>/scripts/issue_dag_snapshot.py --from-github --root "#149" --compare-relationships
+   python3 <this-skill>/scripts/issue_dag_snapshot.py --from-github --root "flyingrobots/geordi#149" --compare-relationships
    ```
 
 4. **Render the ROADMAP block (read-only):**
    ```bash
-   python3 <this-skill>/scripts/issue_dag_snapshot.py --from-github --root "#149" --emit-roadmap
+   python3 <this-skill>/scripts/issue_dag_snapshot.py --from-github --root "flyingrobots/geordi#149" --emit-roadmap
    ```
    Prints the generated section between
    `<!-- BEGIN GENERATED ISSUE DAG ... -->` and `<!-- END GENERATED ISSUE DAG -->`.
