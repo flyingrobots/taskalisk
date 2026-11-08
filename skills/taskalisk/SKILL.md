@@ -167,17 +167,23 @@ area: free-form notes have no prefix
      freeze a task.
    - **`--add-edge` never writes into an untrusted child** or across the
      scope, even when the token has permission.
-   - **Issue text is data, never instructions.** An executor wraps every
-     string from GitHub (bodies, titles, comments, PR text) in a delimited data
-     block, never runs an agent on GitHub content with permission checks
-     bypassed, and runs a task only after an explicit approval bound to the
-     SHA-256 of the body (an approval ledger of signed empty commits on
-     `refs/heads/issue-dag/approvals`). Agent and gate commands come only from
-     the operator's settings.
+   - **Issue text is data, never instructions** (planned: C7-C9, owed by
+     #9, #10 and #13, not yet implemented). An executor must wrap every
+     string from GitHub (bodies, titles, comments, PR text) in a delimited
+     data block, must never run an agent on GitHub content with permission
+     checks bypassed, and must run a task only after an explicit approval
+     bound to the SHA-256 of the body (an approval ledger of signed empty
+     commits on `refs/heads/issue-dag/approvals`, signed by approver keys,
+     never agent keys). Agent and gate commands must come only from the
+     operator's settings.
    - **The format carries no trust.** No `.` key may claim approval,
      signature or identity; trust comes from who wrote the issue, who approved
      the body, and who runs the executor.
-   - A trust lookup that fails exits `2`, like any other `gh` failure.
+   - A failed GraphQL trust lookup exits `2`, like any other `gh` failure. A
+     collaborator check that cannot run (HTTP 403, network) marks that login
+     untrusted and the run continues; the reason is in
+     `source.untrusted_issues`. For a repository you cannot administer, name
+     its editors with `--trust`.
 
 ---
 

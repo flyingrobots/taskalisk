@@ -414,6 +414,15 @@ class Trust(Harness):
         self.assertEqual(p.returncode, 0, r)
         self.assertIn("partner/lib#1", self.ids(r))
 
+    def test_untrusted_root_is_listed_not_a_node(self):
+        state = plan_state()
+        state["issues"][f"{HOME}#77"] = issue(177, "Stranger", fm(f"{HOME}#77"), author=STRANGER, association="NONE")
+        p = self.run_dag(state, "--from-github", "--root", f"{HOME}#77")
+        r = self.out(p)
+        self.assertEqual(p.returncode, 0, r)
+        self.assertEqual(self.ids(r), [])
+        self.assertEqual(self.untrusted_ids(r), [f"{HOME}#77"])
+
     def test_root_outside_the_scope_is_refused(self):
         p = self.run_dag(plan_state(), "--from-github", "--root", "mallory/trap#1")
         self.assertEqual(p.returncode, 2, p.stdout)

@@ -85,7 +85,12 @@ def main(argv):
                if k.startswith(state["home"] + "#") and v["state"] == "open"]
         print(json.dumps(out)); return
     if argv[:2] == ["pr", "list"]:
-        print(json.dumps(state.get("prs", []))); return
+        # Like the real gh, return only the requested --json fields.
+        prs = state.get("prs", [])
+        if "--json" in argv:
+            fields = argv[argv.index("--json") + 1].split(",")
+            prs = [{k: v for k, v in pr.items() if k in fields} for pr in prs]
+        print(json.dumps(prs)); return
     if argv[0] != "api":
         fail(f"fake gh: unsupported command {argv}")
     if argv[1:2] == ["graphql"]:

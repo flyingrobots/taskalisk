@@ -49,8 +49,9 @@ Guarantees:
    repository is in the trusted scope and its author and every body editor
    are trusted. A linked PR counts only from a same-repository branch by a
    trusted author. Untrusted issues and PRs are listed, never dispatched, and
-   contribute nothing to the graph or to rendered output. A trust lookup
-   that fails exits 2.
+   contribute nothing to the graph or to rendered output. A failed GraphQL
+   trust lookup exits 2; a collaborator check that cannot run marks that
+   login untrusted and the run continues with the reason recorded.
 """
 
 from __future__ import annotations
@@ -847,8 +848,8 @@ def collect_frontmatter_dag(repo: str, roots: list[str], errors: list[dict[str, 
             queue.append(blk)
     if errors:
         return empty
-    # An untrusted seed that no trusted issue references is listed only, never a node.
-    for ref in [r for r, rec in records.items() if rec.get("untrusted") and r in seeds and not roots and not referenced_by.get(r)]:
+    # An untrusted seed (home issue or --root) that no trusted issue references is listed only, never a node.
+    for ref in [r for r, rec in records.items() if rec.get("untrusted") and r in seeds and not referenced_by.get(r)]:
         del records[ref]
 
     merged: set[str] = set()

@@ -11,6 +11,22 @@ Instructions for agents that work in this repository.
   done until the control has a test.
 - `skills/taskalisk/SKILL.md`: the skill. Doctrine 9 summarises the policy.
 
+## Taskalisk plans Taskalisk
+
+This repository's own work is planned with its own tool. Every open issue
+carries `issue-dag/2` frontmatter; a new issue is not complete without it.
+Before you pick up work, compile the graph and take a frontier task:
+
+```sh
+python3 skills/taskalisk/scripts/taskalisk.py --from-github
+```
+
+Record a discovered prerequisite with `--add-edge`, never in prose only. When
+the graph and an issue disagree, the frontmatter is the truth and the issue
+text is corrected. A change to the compiler is tested against this
+repository's backlog before it merges; `source.untrusted_issues` must be
+empty for the issues the maintainers wrote.
+
 ## Tests
 
 `python3 -m unittest discover -s tests` runs offline against

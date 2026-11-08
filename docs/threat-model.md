@@ -117,8 +117,14 @@ An issue is **trusted** only when all of the following hold:
   collaborator check (`repos/{slug}/collaborators/{login}`) confirms. A deleted
   user, a bot, or a check that cannot be made is untrusted.
 
-The check reads GitHub's edit history (GraphQL `userContentEdits`). If the
-check itself fails (network, permissions on the query), the run exits `2`.
+The check reads GitHub's edit history (GraphQL `userContentEdits`). If that
+query fails (network, permissions), the run exits `2`: no graph is compiled.
+The collaborator check behaves differently on purpose: when it cannot run
+(HTTP 403 because the token lacks push access to that repository, or a
+network error), the login in question is **untrusted** and the run continues
+with the reason recorded in `source.untrusted_issues`. A repository the
+operator cannot administer therefore needs explicit `--trust` entries for its
+editors, or its issues stay out of the graph.
 
 ### C2. Repository scope — implemented
 
@@ -133,11 +139,13 @@ owners explicitly; the flags are the declaration.
 
 ### C3. Untrusted issues are never nodes — implemented
 
-- An untrusted **seed** is listed in `source.untrusted_issues` with the reason
-  and is not a node. Its frontmatter is not parsed.
-- An untrusted **referenced** issue is an opaque blocker: it blocks its
-  dependents until it is closed, is never dispatched, and contributes no
-  edges, holds, meters or title. It is listed with the reason.
+- An untrusted **seed** (an open home issue, or a `--root`) that no trusted
+  issue references is listed in `source.untrusted_issues` with the reason and
+  is not a node. Its frontmatter is not parsed.
+- An untrusted issue that a trusted issue **references** is an opaque
+  blocker, whether or not it is also a seed: it blocks its dependents until
+  it is closed, is never dispatched, and contributes no edges, holds, meters
+  or title. It is listed with the reason.
 
 Nothing from an untrusted issue reaches the graph, the batch, the ranking, or
 any rendered output.
@@ -209,14 +217,52 @@ and the executor never parses comment text for authorization. A comment may
 mirror an approval for people. The ref is the truth.
 
 The operator may approve in the run instead (`--approve owner/repo#N` after
-reading the issue); the executor then writes the same ledger entry.
+reading the issue); the executor then writes the same ledger entry. There is
+no flag or environment variable that skips verification.
+
+Rules carried over from Shiplog's 2026-10 trust audit
+(`git-stunts/shiplog`, label `audit-2026-10`), each of which Shiplog had to
+learn by finding the defect:
+
+- **Bind to keys, not names** (shiplog#96). An approval counts only when
+  `ssh-keygen -Y find-principals` binds the signature to a key in the
+  operator's allowed-signers file. Committer e-mail, author name and trailer
+  text never identify an approver.
+- **Approvers are not agents.** The allowed-signers material has two
+  principal sets: `approvers` (humans) and `agents` (the executor's keys for
+  C10). A ledger entry signed by an agent key is invalid, or a manipulated
+  agent approves its own task.
+- **Pass the roster explicitly** (shiplog#109, #102, #138). Every
+  `git verify-commit` runs with `-c gpg.ssh.allowedSignersFile=<absolute
+  path>` given by the executor; local Git configuration is never consulted,
+  because a silently unused roster verifies nothing.
+- **Fast-forward only; deletion refused** (shiplog#94, #95). The executor
+  verifies the ledger as a chain from a recorded tip; a non-fast-forward
+  ledger fails closed. The ruleset on the ref forbids deletion and
+  force-push, since a deleted ref turns the next push into a genesis.
+- **A missing ledger is a reported state, not an empty success**
+  (shiplog#124). No ledger means no task is approved; the output says so.
+- **Only fixed trailers, never body text** (shiplog#97, #121). The ledger
+  commit message holds the subject and the trailers above, written and read
+  under the Git trailer convention as implemented by
+  `@git-stunts/trailer-codec`: keys alphanumeric and hyphens, compared
+  case-insensitively; values single-line and non-empty; a blank line before
+  the trailers. The issue body never enters a commit message; its hash does.
+- **One verifier, one adversarial suite** (shiplog `lib/trust-verify.sh`,
+  `test/27_trust_adversarial.bats`, shiplog#135). One module verifies the
+  ledger for the executor and for a required CI check; an adversarial test
+  suite (forged signer, agent-signed approval, replayed entry, stale hash,
+  expired, revoked, deleted ref, non-fast-forward) is the executable
+  specification and blocks CI.
 
 ### C10. Never check out a branch the executor did not create — planned (#10, #15)
 
 The executor's first commit on a task branch (#10 already plans an empty
 first commit) is **signed with the agent key** and carries the trailers
-`Issue: owner/repo#N` and `Body-SHA256:` of the approved body. That commit is
-the PR's provenance.
+`Issue: owner/repo#N`, `Body-SHA256:` of the approved body, and `Approval:`
+with the object ID of the ledger commit that approved it (Shiplog's
+`trust_oid` pattern). That commit is the PR's provenance, and it links the
+branch to the exact approval it executes.
 
 Resume applies only to a PR that is trusted (C4), whose root commit is a
 verified executor commit for that task, and whose every later commit verifies
