@@ -684,8 +684,12 @@ def gh_issue_edit_history(repo: str, ref: IssueRef, errors: list[dict[str, str]]
         if not isinstance(issue, dict):
             errors.append({"source": source, "error": "GraphQL response has no issue"})
             return None
+        page_body = issue.get("body") or ""
         if body is None:
-            body = issue.get("body") or ""
+            body = page_body
+        elif page_body != body:
+            errors.append({"source": f"frontmatter of {node_id(*ref)}", "error": "body changed during edit-history pagination; rerun the edit"})
+            return None
         edits = issue.get("userContentEdits")
         if not isinstance(edits, dict) or not isinstance(edits.get("nodes"), list):
             # A missing connection is not "no editors"; it is an answer we cannot read.
@@ -1493,7 +1497,7 @@ def trusted_writer(repo: str, child: IssueRef, meta: dict[str, Any], errors: lis
     return trusted and not errors
 
 
-def compile_from_github(repo: str, roots: list[str], min_confidence: float, emit_mermaid: bool, add_edge: str | None, remove_edge: str | None, reason: str, emit_roadmap: bool = False, capacities: dict[str, int] | None = None, compare: bool = False, trust: dict[str, Any] | None = None) -> int:
+def compile_from_github(repo: str, roots: list[str], emit_mermaid: bool, add_edge: str | None, remove_edge: str | None, reason: str, emit_roadmap: bool = False, capacities: dict[str, int] | None = None, compare: bool = False, trust: dict[str, Any] | None = None) -> int:
     errors: list[dict[str, str]] = []
     mutation: dict[str, Any] | None = None
     edit: dict[str, Any] | None = None
@@ -1528,7 +1532,8 @@ def compile_from_github(repo: str, roots: list[str], min_confidence: float, emit
         print(json.dumps({"ok": False, "error": "GitHub inventory failed; refusing to compile a partial graph", "github_errors": errors, "mutation": mutation}, indent=2))
         return 1 if edit and all(e["source"].startswith("frontmatter of ") for e in errors) else 2
 
-    result = compile_and_analyze_dag(source["merged"], source["nodes"], min_confidence=min_confidence, capacities=capacities)
+    # Frontmatter edges are authoritative; confidence filtering is for hand-written specs only.
+    result = compile_and_analyze_dag(source["merged"], source["nodes"], min_confidence=DEFAULT_MIN_CONFIDENCE, capacities=capacities)
     result["source"] = {
         "kind": "issue-frontmatter",
         "schema": FM_SCHEMA,
@@ -1637,7 +1642,7 @@ def main() -> int:
 
     repo = os.path.abspath(args.repo)
     if args.from_github:
-        return compile_from_github(repo, args.root, args.min_confidence, args.emit_mermaid, args.add_edge, args.remove_edge, args.reason, emit_roadmap=args.emit_roadmap, capacities=capacities, compare=args.compare_relationships, trust=trust)
+        return compile_from_github(repo, args.root, args.emit_mermaid, args.add_edge, args.remove_edge, args.reason, emit_roadmap=args.emit_roadmap, capacities=capacities, compare=args.compare_relationships, trust=trust)
     if args.verify_dag:
         return verify_and_layer_dag(args.verify_dag, args.min_confidence, args.emit_mermaid)
 

@@ -100,6 +100,15 @@ class Harness(unittest.TestCase):
 
 
 class Parsing(Harness):
+    def test_verify_spec_still_honors_confidence_threshold(self):
+        spec = self.tmp / "confidence.json"
+        spec.write_text(json.dumps({"nodes": {"a": {}, "b": {"depends_on": [{"from": "a", "isHard": True, "confidence": 0.6}]}}}))
+        for threshold, edge_count in [("0.5", 1), ("0.9", 0)]:
+            with self.subTest(threshold=threshold):
+                p = subprocess.run([sys.executable, str(SCRIPT), "--verify-dag", str(spec), "--min-confidence", threshold], capture_output=True, text=True)
+                self.assertEqual(p.returncode, 0, p.stdout)
+                self.assertEqual(len(self.out(p)["edges"]), edge_count)
+
     def test_verify_dag_spec_still_works(self):
         spec = self.tmp / "dag.json"
         spec.write_text(json.dumps({"nodes": {f"{HOME}#1": {"title": "a"}, f"{HOME}#2": {"title": "b", "depends_on": [f"{HOME}#1"]}}}))
@@ -357,6 +366,12 @@ class Mutation(Harness):
         self.assertIn("Cycle", p.stdout)
         self.assertFalse(any("PATCH" in call for call in self.calls()))
 
+    def test_verify_only_confidence_option_cannot_hide_a_frontmatter_cycle(self):
+        p = self.run_dag(plan_state(), "--from-github", "--add-edge", f"{HOME}#2->{HOME}#1", "--min-confidence", "2")
+        self.assertEqual(p.returncode, 1, p.stdout)
+        self.assertIn("Cycle", p.stdout)
+        self.assertFalse(any("PATCH" in call for call in self.calls()))
+
     def test_observed_concurrent_body_edit_is_preserved(self):
         for read in (2, 3):
             with self.subTest(read=read):
@@ -380,6 +395,27 @@ class Mutation(Harness):
         self.assertEqual(p.returncode, 1, p.stdout)
         self.assertIn("untrusted", p.stdout)
         self.assertFalse(any("PATCH" in call for call in self.calls()))
+
+    def test_change_observed_on_later_edit_history_page_refuses_write(self):
+        state = plan_state()
+        child = f"{HOME}#2"
+        newer = state["issues"][child]["body"] + "\nNew requirement during final history read.\n"
+        state["edits_page_size"] = 1
+        state["issues"][child]["editors"] = ["owner", "owner"]
+        state["history_change"] = {"issue": child, "read": 6, "body": newer}
+        p = self.run_dag(state, "--from-github", "--add-edge", f"{ECHO}#6->{child}")
+        self.assertEqual(p.returncode, 1, p.stdout)
+        self.assertEqual(self.current()["issues"][child]["body"], newer)
+        self.assertFalse(any("PATCH" in call for call in self.calls()))
+
+    def test_unchanged_paginated_history_allows_one_write(self):
+        state = plan_state()
+        state["edits_page_size"] = 1
+        state["issues"][f"{HOME}#2"]["editors"] = ["owner", "owner"]
+        p = self.run_dag(state, "--from-github", "--add-edge", f"{ECHO}#6->{HOME}#2")
+        self.assertEqual(p.returncode, 0, p.stdout)
+        self.assertTrue(self.out(p)["mutation"]["changed"])
+        self.assertEqual(len([c for c in self.calls() if "PATCH" in c]), 1)
 
     def test_unknown_or_untrusted_writer_is_refused(self):
         for actor, code in [({}, 2), ({"login": "owner", "type": []}, 2),

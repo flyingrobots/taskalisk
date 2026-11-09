@@ -146,9 +146,12 @@ area: free-form notes have no prefix
      compile the proposed graph in memory before writing, including the
      edited child even when explicit roots exclude it. Invalid graphs and
      failed lookups cause no PATCH. There is no rollback write.
+     Frontmatter edges always participate in validation; `--min-confidence`
+     applies only to hand-written `--verify-dag` specifications.
    - **Edge writes use optimistic checks, not atomic transactions.** The
      child is reread and its identity, body, author and editors checked before
-     PATCH; an observed body change refuses the write. The authenticated
+     PATCH; an observed body change, including across edit-history pages,
+     refuses the write. The authenticated
      writer must also pass the trust gate. Changes after the final reread,
      including edits to other graph nodes, can still race with PATCH.
    - Never resolve review threads without a verifying fix and never push to
