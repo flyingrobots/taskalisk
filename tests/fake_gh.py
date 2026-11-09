@@ -15,6 +15,9 @@ from fake_values import fields, items, text
 
 def list_issues(state: dict[str, object]) -> None:
     """Project open issues in the home repository for the inventory command."""
+    if "issue_inventory_raw" in state:
+        sys.stdout.write(text(state["issue_inventory_raw"]))
+        return
     prefix = text(state["home"]).lower() + "#"
     result: list[dict[str, object]] = []
     for key, record in issue_table(state).items():

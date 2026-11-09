@@ -4,14 +4,15 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
 
 from .authorization import TrustPolicy
+from .authorization_values import TrustOptions
 from .discovery import collect_frontmatter_dag, compare_relationships
 from .frontmatter import FM_SCHEMA, parse_frontmatter, rewrite_blocked_by, validate_frontmatter
 from .github import gh_get_issue, gh_issue_edit_history, gh_patch_body, gh_repo_slug, issue_meta
 from .graph import compile_and_analyze_dag, strip_merged_hint
 from .issue_refs import IssueRef, node_id, parse_edge_arg
+from .mutation_values import EdgeMutation, EdgeUndo
 from .output import emit, with_artifact_hash
 from .process import sanitize_home
 
@@ -46,7 +47,7 @@ def mutate_edge(
     add: bool,
     errors: list[dict[str, str]],
     policy: TrustPolicy,
-) -> dict[str, Any] | None:
+) -> EdgeUndo | None:
     """Edit the child's frontmatter .blocked_by. Returns {"child": ref, "old_body": str} or None."""
     # The child is always checked. The parent's scope matters only when an edge is added:
     # removing a reference to an out-of-scope issue is how an operator repairs such a reference.
@@ -141,11 +142,11 @@ def compile_from_github(
     emit_roadmap: bool = False,
     capacities: dict[str, int] | None = None,
     compare: bool = False,
-    trust: dict[str, Any] | None = None,
+    trust: TrustOptions | None = None,
 ) -> int:
     errors: list[dict[str, str]] = []
-    mutation: dict[str, Any] | None = None
-    undo: dict[str, Any] | None = None
+    mutation: EdgeMutation | None = None
+    undo: EdgeUndo | None = None
     trust = trust or {}
 
     if add_edge or remove_edge:

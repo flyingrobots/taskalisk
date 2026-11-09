@@ -6,6 +6,7 @@ import argparse
 import json
 import os
 
+from .authorization_values import TrustOptions
 from .defaults import DEFAULT_MIN_CONFIDENCE
 from .identities import OWNER_RE, SLUG_RE
 from .inventory import collect_github_inventory, collect_unmerged_branches, collect_worktrees
@@ -145,7 +146,7 @@ def main() -> int:
         not SLUG_RE.fullmatch(r) for r in args.trust_repo
     ):
         parser.error("--trust-owner takes an owner name; --trust-repo takes owner/repo")
-    trust = {
+    trust: TrustOptions = {
         "owners": args.trust_owner,
         "repos": args.trust_repo,
         "logins": args.trust,

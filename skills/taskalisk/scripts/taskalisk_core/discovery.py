@@ -6,6 +6,7 @@ from collections import defaultdict, deque
 from typing import Any
 
 from .authorization import TrustPolicy
+from .authorization_values import TrustOptions
 from .defaults import PARKED_STATUS
 from .frontmatter import parse_frontmatter, validate_frontmatter
 from .frontmatter_values import FrontmatterRecord
@@ -26,7 +27,7 @@ UNTRUSTED_TITLE = "(untrusted issue)"
 
 
 def collect_frontmatter_dag(
-    repo: str, roots: list[str], errors: list[dict[str, str]], trust: dict[str, Any] | None = None
+    repo: str, roots: list[str], errors: list[dict[str, str]], trust: TrustOptions | None = None
 ) -> dict[str, Any]:
     """Build (merged, nodes) from issue frontmatter, across repositories."""
     empty: dict[str, Any] = {"merged": set(), "nodes": {}, "containers": [], "slug": None}

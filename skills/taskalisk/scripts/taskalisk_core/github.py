@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import json
-from typing import Any
 
 from .defaults import GH_ISSUE_LIST_LIMIT, GH_PR_LIST_LIMIT
 from .github_history import gh_issue_edit_history as gh_issue_edit_history
+from .github_inventory_values import InventoryIssue, parse_inventory_issue
 from .github_issue_values import IssueMeta, RestIssue, parse_rest_issue
 from .github_json import (
     parse_json,
@@ -55,7 +55,8 @@ def gh_list_open_prs(repo: str, errors: list[dict[str, str]]) -> list[PullReques
 
 def gh_list_open_issues(
     repo: str, milestone: str | None, errors: list[dict[str, str]]
-) -> list[dict[str, Any]]:
+) -> list[InventoryIssue]:
+    """Summarize all checked CLI issue rows or report a complete-inventory failure."""
     cmd = [
         "gh",
         "issue",
@@ -81,7 +82,13 @@ def gh_list_open_issues(
                 "error": f"Result filled --limit {GH_ISSUE_LIST_LIMIT}; possible truncation",
             }
         )
-    return issues
+    if errors:
+        return []
+    try:
+        return [parse_inventory_issue(issue) for issue in issues]
+    except (TypeError, ValueError) as exc:
+        errors.append({"source": "gh issue list", "error": str(exc)})
+        return []
 
 
 # --------------------------------------------------------------------------- #

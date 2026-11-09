@@ -194,6 +194,25 @@ returning any PRs: a malformed later row rejects the whole inventory. These
 checks do not add cross-repository fetching or establish completeness of nested
 closing-reference pagination; issue #3 owns that discovery work.
 
+## Inventory field admission
+
+`github_inventory_values` checks the fields consumed from `gh issue list` before
+returning public summaries. Require a positive integer number, textual title/URL,
+an array of named label objects and an explicit nullable milestone. A present
+milestone needs a textual title. Preserve label order and discard metadata that
+the existing summary never exposed. All issue rows pass or the complete issue
+inventory is refused with a source-qualified exit-2 error.
+
+`inventory_values` describes worktree and branch observations without changing
+Git command behavior. `authorization_values` types operator trust settings and
+the policy explanation; `mutation_values` types existing edit bookkeeping. These
+annotations do not strengthen rollback guarantees or replace issue #1's contract.
+
+Inventory CLI tests use real Git in an owned temporary repository with a commit
+and `origin/main` baseline. Without that baseline, an unrelated Git error could
+make an expected refusal exit code pass accidentally. Tests require the issue
+list to be the only reported error and check a valid combined issue/PR summary.
+
 ## Edit-history field admission
 
 `github_history_values` validates the nested GraphQL envelope, textual body,

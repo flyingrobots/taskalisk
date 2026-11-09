@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import os
 import re
-from typing import Any
 
 from .defaults import SHORT_SHA_LEN
 from .github import gh_list_open_issues, gh_list_open_prs
+from .inventory_values import Branch, BranchInventory, GithubInventory, Worktree
 from .process import run_cmd_checked, sanitize_home
 
 # --------------------------------------------------------------------------- #
@@ -15,14 +15,14 @@ from .process import run_cmd_checked, sanitize_home
 # --------------------------------------------------------------------------- #
 
 
-def collect_worktrees(repo: str, errors: list[dict[str, str]]) -> list[dict[str, Any]]:
+def collect_worktrees(repo: str, errors: list[dict[str, str]]) -> list[Worktree]:
     ok, raw, err = run_cmd_checked(["git", "worktree", "list", "--porcelain"], cwd=repo)
     if not ok:
         errors.append({"source": "git worktree list", "error": err or "command failed"})
         return []
 
-    worktrees: list[dict[str, Any]] = []
-    current: dict[str, Any] = {}
+    worktrees: list[Worktree] = []
+    current: Worktree = {}
     for line in raw.splitlines():
         if not line.strip():
             if current:
@@ -63,9 +63,7 @@ def collect_worktrees(repo: str, errors: list[dict[str, str]]) -> list[dict[str,
     return worktrees
 
 
-def collect_unmerged_branches(
-    repo: str, errors: list[dict[str, str]]
-) -> dict[str, list[dict[str, Any]]]:
+def collect_unmerged_branches(repo: str, errors: list[dict[str, str]]) -> BranchInventory:
     ok_l, local_raw, err_l = run_cmd_checked(
         ["git", "branch", "--no-merged", "origin/main", "--format=%(refname:short)"], cwd=repo
     )
@@ -77,8 +75,8 @@ def collect_unmerged_branches(
     if not ok_r:
         errors.append({"source": "git branch -r --no-merged", "error": err_r or "command failed"})
 
-    def summarize(branches: list[str]) -> list[dict[str, Any]]:
-        out: list[dict[str, Any]] = []
+    def summarize(branches: list[str]) -> list[Branch]:
+        out: list[Branch] = []
         for br in branches:
             if not br or br.endswith("/HEAD"):
                 continue
@@ -101,22 +99,10 @@ def collect_unmerged_branches(
 
 def collect_github_inventory(
     repo: str, milestone: str | None, errors: list[dict[str, str]]
-) -> dict[str, Any]:
+) -> GithubInventory:
     prs = gh_list_open_prs(repo, errors)
     issues = gh_list_open_issues(repo, milestone, errors)
-    summarized: list[dict[str, Any]] = []
-    for iss in issues:
-        labels = [lbl.get("name", "") for lbl in iss.get("labels", [])]
-        summarized.append(
-            {
-                "number": iss["number"],
-                "title": iss["title"],
-                "milestone": (iss.get("milestone") or {}).get("title"),
-                "labels": labels,
-                "url": iss.get("url"),
-            }
-        )
-    return {"open_prs": [pr["wire"] for pr in prs], "open_issues": summarized}
+    return {"open_prs": [pr["wire"] for pr in prs], "open_issues": issues}
 
 
 def list_branches(repo: str, errors: list[dict[str, str]]) -> list[str]:

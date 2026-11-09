@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from typing import Any
 
+from .authorization_values import TrustDescription
 from .github_history_values import HistoryEditor
 from .github_issue_values import IssueMeta
 from .identities import BOT_KEY_PREFIX, normalize_login, parse_codeowners
@@ -56,7 +56,7 @@ class TrustPolicy:
     def in_scope(self, slug: str) -> bool:
         return slug.lower() in self.repos or slug.split("/", 1)[0].lower() in self.owners
 
-    def describe(self) -> dict[str, Any]:
+    def describe(self) -> TrustDescription:
         return {
             "owners": sorted(self.owners),
             "repos": sorted(self.repos),
