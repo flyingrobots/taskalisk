@@ -7,6 +7,7 @@ from typing import Any
 
 from .defaults import GH_ISSUE_LIST_LIMIT, GH_PR_LIST_LIMIT
 from .github_history import gh_issue_edit_history as gh_issue_edit_history
+from .github_issue_values import IssueMeta, RestIssue, parse_rest_issue
 from .github_json import (
     parse_json,
     parse_json_list,
@@ -93,7 +94,7 @@ def gh_repo_slug(repo: str, errors: list[dict[str, str]]) -> str | None:
 
 def gh_blocked_by(
     repo: str, slug: str, number: int, errors: list[dict[str, str]]
-) -> list[dict[str, Any]]:
+) -> list[RestIssue]:
     """Return the issues that block `number`, via GitHub's native dependency API."""
     source = f"gh api repos/{slug}/issues/{number}/dependencies/blocked_by"
     ok, raw, err = run_cmd_checked(
@@ -103,12 +104,22 @@ def gh_blocked_by(
     if not ok:
         errors.append({"source": source, "error": err or "command failed"})
         return []
-    return parse_paginated_arrays(raw, source, errors)
+    return _rest_issues(raw, source, errors)
 
 
-def gh_list_open_issues_rest(
-    repo: str, slug: str, errors: list[dict[str, str]]
-) -> list[dict[str, Any]]:
+def _rest_issues(raw: str, source: str, errors: list[dict[str, str]]) -> list[RestIssue]:
+    """Admit every consumed row, or return no rows and a source-qualified run error."""
+    rows = parse_paginated_arrays(raw, source, errors)
+    if errors:
+        return []
+    try:
+        return [parse_rest_issue(row) for row in rows]
+    except (TypeError, ValueError) as exc:
+        errors.append({"source": source, "error": str(exc)})
+        return []
+
+
+def gh_list_open_issues_rest(repo: str, slug: str, errors: list[dict[str, str]]) -> list[RestIssue]:
     """Open issues of `slug` with author login, actor type and association, so the trust gate
     can reject a stranger's issue before any further query (C1, C15). Pull requests are dropped."""
     source = f"gh api repos/{slug}/issues"
@@ -118,11 +129,11 @@ def gh_list_open_issues_rest(
     if not ok:
         errors.append({"source": source, "error": err or "command failed"})
         return []
-    items = [
-        it
-        for it in parse_paginated_arrays(raw, source, errors)
-        if isinstance(it, dict) and not it.get("pull_request")
-    ]
+    rows = _rest_issues(raw, source, errors)
+    if any(row["reference"][0] != slug.lower() for row in rows):
+        errors.append({"source": source, "error": "issue listing returned a different repository"})
+        return []
+    items = [row for row in rows if not row["pull_request"]]
     if len(items) >= GH_ISSUE_LIST_LIMIT:
         errors.append(
             {
@@ -133,19 +144,9 @@ def gh_list_open_issues_rest(
     return items
 
 
-def issue_meta(obj: dict[str, Any]) -> dict[str, Any]:
-    """The fields discovery keeps from a REST issue object."""
-    user = obj.get("user") or {}
-    return {
-        "title": obj.get("title", ""),
-        "state": str(obj.get("state", "open")).lower(),
-        "state_reason": obj.get("state_reason"),
-        "body": obj.get("body") or "",
-        "html_url": obj.get("html_url"),
-        "author": user.get("login"),
-        "author_type": user.get("type"),
-        "association": obj.get("author_association"),
-    }
+def issue_meta(obj: RestIssue) -> IssueMeta:
+    """The checked fields discovery keeps from a REST issue object."""
+    return obj["meta"]
 
 
 def gh_issue_database_id(
@@ -162,7 +163,8 @@ def gh_issue_database_id(
     return int(raw)
 
 
-def gh_get_issue(repo: str, ref: IssueRef, errors: list[dict[str, str]]) -> dict[str, Any] | None:
+def gh_get_issue(repo: str, ref: IssueRef, errors: list[dict[str, str]]) -> RestIssue | None:
+    """Admit a complete issue or report a structured transport/field failure."""
     ok, raw, err = run_cmd_checked(["gh", "api", f"repos/{ref[0]}/issues/{ref[1]}"], cwd=repo)
     if not ok:
         errors.append(
@@ -171,11 +173,13 @@ def gh_get_issue(repo: str, ref: IssueRef, errors: list[dict[str, str]]) -> dict
         return None
     source = f"gh api repos/{ref[0]}/issues/{ref[1]}"
     obj = parse_json(raw, source, errors)
-    if not isinstance(obj, dict):
-        if not any(e["source"] == source for e in errors):
-            errors.append({"source": source, "error": "Expected a JSON object"})
+    if any(e["source"] == source for e in errors):
         return None
-    return obj
+    try:
+        return parse_rest_issue(obj)
+    except (TypeError, ValueError) as exc:
+        errors.append({"source": source, "error": str(exc)})
+        return None
 
 
 def gh_patch_body(repo: str, ref: IssueRef, body: str, errors: list[dict[str, str]]) -> bool:

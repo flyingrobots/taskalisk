@@ -148,6 +148,29 @@ is distinct from failure through the error collection; domain adapters decide
 whether a nullable field is valid. CLI witnesses check that malformed issue-list
 bytes reach structured exit 2 instead of hiding work behind an empty frontier.
 
+## REST issue field admission
+
+`github_issue_values` admits the REST fields consumed by discovery and author
+authorization. Issue numbers must be positive integers; booleans, fractions and
+numeric text cannot alias another issue through coercion. Repository identity,
+state, title, URL and author association are checked before returning typed
+metadata. Preserve nullable body and state-reason fields. A null user remains
+unknown and untrusted; a present user needs a nonempty login and exactly `User`
+or `Bot` as its actor type. Unsupported types stop the run before any author
+association can grant trust.
+
+The REST [issue discriminator](https://docs.github.com/en/rest/issues/issues)
+is the presence of a `pull_request` object, including an empty object. Malformed
+discriminators are errors. Validate all rows before returning an inventory;
+one invalid later row rejects the whole result. Home-list identities must name
+the requested repository. Referenced issues preserve their returned identities
+for the existing transfer diagnostic. Relationship mirrors use the same checked
+identities, so malformed rows cannot silently disappear from comparisons.
+
+These checks validate consumed fields, not every field in GitHub's schema.
+They do not add approval, atomic writes or concurrent-body detection; issue #1
+retains ownership of the optimistic write contract.
+
 ## Edit-history field admission
 
 `github_history_values` validates the nested GraphQL envelope, textual body,

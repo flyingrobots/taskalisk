@@ -6,6 +6,7 @@ from collections import defaultdict
 from typing import Any
 
 from .github_history_values import HistoryEditor
+from .github_issue_values import IssueMeta
 from .identities import BOT_KEY_PREFIX, normalize_login, parse_codeowners
 from .process import run_cmd_checked
 
@@ -93,7 +94,7 @@ class TrustPolicy:
             return False, f"association {association}"
         return self._collaborator(slug, login)
 
-    def author_trusted(self, slug: str, meta: dict[str, Any]) -> tuple[bool, list[str]]:
+    def author_trusted(self, slug: str, meta: IssueMeta) -> tuple[bool, list[str]]:
         """The author check needs only the REST issue object, so a stranger's issue costs no further query."""
         ok, why = self.login_trusted(
             slug, meta.get("author"), meta.get("association"), meta.get("author_type")

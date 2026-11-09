@@ -18,8 +18,9 @@ from .github import (
     gh_repo_slug,
     issue_meta,
 )
+from .github_issue_values import IssueMeta
 from .inventory import branches_for_issue, list_branches
-from .issue_refs import IssueRef, node_id, parse_issue_ref, slug_from_repository_url
+from .issue_refs import IssueRef, node_id, parse_issue_ref
 
 UNTRUSTED_TITLE = "(untrusted issue)"
 
@@ -44,7 +45,7 @@ def collect_frontmatter_dag(
     )
     prs = gh_list_open_prs(repo, errors)
     branches = list_branches(repo, errors)
-    fetched: dict[IssueRef, dict[str, Any]] = {}
+    fetched: dict[IssueRef, IssueMeta] = {}
     queue: deque[IssueRef] = deque()
     seeds: set[IssueRef] = set()
     if roots:
@@ -65,7 +66,7 @@ def collect_frontmatter_dag(
                 seeds.add(r)
     else:
         for iss in gh_list_open_issues_rest(repo, slug, errors):
-            r = (slug, int(iss["number"]))
+            r = iss["reference"]
             fetched[r] = issue_meta(iss)
             seeds.add(r)
     if errors:
@@ -156,16 +157,7 @@ def collect_frontmatter_dag(
             if obj.get("pull_request"):
                 violations[nid] = ["references a pull request, not an issue"]
                 continue
-            actual_slug = slug_from_repository_url(str(obj.get("repository_url") or ""))
-            actual = (actual_slug, int(obj.get("number", 0))) if actual_slug else None
-            if actual is None:
-                errors.append(
-                    {
-                        "source": f"gh api repos/{ref[0]}/issues/{ref[1]}",
-                        "error": "issue has no parseable repository_url",
-                    }
-                )
-                break
+            actual = obj["reference"]
             if actual[0].lower() != ref[0].lower() or actual[1] != ref[1]:
                 moved = node_id(*actual)
                 for who in referenced_by[ref] or [nid]:
@@ -285,16 +277,15 @@ def collect_frontmatter_dag(
             if brec and brec["kind"] == "container":
                 violations.setdefault(nid, []).append(f".blocked_by names container {bid}")
                 continue
-            bmeta = fetched.get(blk, {})
+            bmeta = fetched.get(blk)
             evidence = f"frontmatter: {nid} .blocked_by {bid}"
             if (
-                bmeta.get("state") == "closed"
-                and str(bmeta.get("state_reason") or "") == "not_planned"
+                bmeta is not None
+                and bmeta["state"] == "closed"
+                and bmeta["state_reason"] == "not_planned"
             ):
                 # A closed untrusted blocker still contributes no title (C3).
-                btitle = (
-                    UNTRUSTED_TITLE if (brec or {}).get("untrusted") else bmeta.get("title", "")
-                )
+                btitle = UNTRUSTED_TITLE if (brec or {}).get("untrusted") else bmeta["title"]
                 not_planned.append({"parent": bid, "child": nid, "title": btitle})
             depends_on.append(
                 {
@@ -358,11 +349,7 @@ def compare_relationships(
         if rec["kind"] != "task" or source["fetched"][ref]["state"] == "closed":
             continue
         nid = node_id(ref[0], ref[1], slug)
-        gh_set = set()
-        for blk in gh_blocked_by(repo, ref[0], ref[1], errors):
-            b_slug = slug_from_repository_url(str(blk.get("repository_url") or ""))
-            if b_slug:
-                gh_set.add((b_slug, int(blk["number"])))
+        gh_set = {blk["reference"] for blk in gh_blocked_by(repo, ref[0], ref[1], errors)}
         fm_set = set(rec["blocked_by"])
         only_fm += [f"{node_id(b[0], b[1], slug)} -> {nid}" for b in sorted(fm_set - gh_set)]
         only_gh += [f"{node_id(b[0], b[1], slug)} -> {nid}" for b in sorted(gh_set - fm_set)]

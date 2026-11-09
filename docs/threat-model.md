@@ -144,6 +144,13 @@ opaque blockers while the run reported success. For a repository the operator
 cannot administer, name its editors with `--trust`; allowlisted logins are
 never looked up.
 
+Consumed REST issue fields are checked before discovery or authorization. A null
+user is untrusted. A present author requires a nonempty login and a supported
+`User` or `Bot` type; an unsupported type exits `2` before association or
+permission can grant trust. Issue numbers are positive integers without
+coercion. A malformed later inventory row rejects the entire inventory rather
+than admitting a prefix.
+
 Edit-history responses must have checked body, connection, editor and pagination
 fields. Null nodes or editors are unknown identities, never trusted authors.
 An edit-history actor object with a malformed login or a type other than `User` or `Bot`
