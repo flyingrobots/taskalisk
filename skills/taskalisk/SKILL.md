@@ -210,6 +210,12 @@ area: free-form notes have no prefix
    frontmatter, applies the trust gate (doctrine 9), compiles the reduced
    DAG, ranks the frontier, and proposes a batch. An issue whose `.status` is
    `active`, or that has an open **trusted** linked PR, is in flight.
+   Trusted draft PRs produce `wip`; any trusted ready PR produces `in-review`,
+   including when both draft and ready PRs exist. All trusted PR links remain
+   in the output. Both states keep the +1000 in-flight priority bonus and appear
+   in the ROADMAP status column and wave checklist. Without a trusted PR,
+   `.status: active` remains `in-progress`. A missing or non-boolean `isDraft`
+   on a trusted linked PR fails the run with exit `2`.
    `.status: parked` (started, stopped, recoverable branch exists) scores
    +500: resuming beats restarting, but in-flight work still ranks first.
    Output includes `source.trust` (the scope and allowlists in force),
