@@ -6,13 +6,13 @@ import json
 from typing import Any
 
 from .defaults import GH_ISSUE_LIST_LIMIT, GH_PR_LIST_LIMIT
-from .issue_refs import IssueRef, node_id
-from .process import (
+from .github_json import (
     parse_json,
     parse_json_list,
     parse_paginated_arrays,
-    run_cmd_checked,
 )
+from .issue_refs import IssueRef, node_id
+from .process import run_cmd_checked
 
 
 def gh_list_open_prs(repo: str, errors: list[dict[str, str]]) -> list[dict[str, Any]]:

@@ -110,3 +110,24 @@ Darwin may return EPERM when only the exited leader remains in the group. On
 that path, cleanup reaps the leader and probes group existence with signal 0.
 Only an absent group completes cleanup. A remaining or inaccessible group is
 an error; no terminating signal is sent after the identity has been released.
+
+## GitHub JSON admission
+
+Decode external JSON into `object`; domain adapters must check fields before
+assigning domain types. An object-container check establishes string keys only,
+not the meaning of its values. Duplicate keys, non-finite numbers, numeric tokens
+longer than 128 characters and lone Unicode surrogates are rejected. These
+otherwise permissive decoder behaviors can conceal or change trust evidence.
+
+Apply ceilings of 32 MiB of UTF-8 input, 32 container levels and 100,000 structural
+punctuation tokens outside strings. Check the envelope before decoding; quoted
+punctuation and escapes do not consume the structural budget. Callers may tighten
+these ceilings. They bound parsing work and allocation inputs, not process memory.
+
+A list response must contain only objects. Missing output is an error; a literal
+empty array is a successful empty list. Paginated arrays admit all pages or none:
+an invalid later page records a source-specific error and discards earlier rows.
+Only JSON whitespace separates pages. Generic `null` remains a JSON value and
+is distinct from failure through the error collection; domain adapters decide
+whether a nullable field is valid. CLI witnesses check that malformed issue-list
+bytes reach structured exit 2 instead of hiding work behind an empty frontier.

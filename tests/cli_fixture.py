@@ -108,7 +108,8 @@ class Harness(unittest.TestCase):
     def tearDown(self):
         shutil.rmtree(self.tmp)
 
-    def run_dag(self, state, *args):
+    def run_dag(self, state: object, *args: str) -> subprocess.CompletedProcess[str]:
+        """Serialize an owned fixture and run the public CLI against the fake gh."""
         self.state.write_text(json.dumps(state))
         env = dict(
             os.environ,

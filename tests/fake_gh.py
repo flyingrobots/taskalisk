@@ -190,6 +190,10 @@ def main(argv):
     m = re.fullmatch(r"repos/([^/]+/[^/]+)/issues\?state=open&per_page=\d+", path)
     if m:
         # The REST list: open issues of that repository, pull requests included, like GitHub.
+        if "issues_list_raw" in state:
+            # Fault injection at the CLI byte boundary, including empty/malformed output.
+            sys.stdout.write(state["issues_list_raw"])
+            return
         if state.get("issues_list_returns_object"):
             print("{}")
             return
