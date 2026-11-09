@@ -8,11 +8,12 @@ BOT_KEY_PREFIX = "bot:"
 
 
 def normalize_login(login: str, actor_type: str | None = None) -> str:
-    """One key per identity across GitHub surfaces, keeping bots and humans apart.
+    """Keep one comparison key per identity while separating bots from humans.
 
-    REST names a bot `x[bot]`, GraphQL `x` with `__typename: Bot`, `gh pr list` `app/x`;
-    all three become `bot:x`. A human `x` stays `x`, so allowlisting `x[bot]` never
-    trusts a person who happens to own the login `x`. Allowlist a bot as `x[bot]` or `app/x`."""
+    REST names a bot `x[bot]`, GraphQL `x` with `__typename: Bot`, and the CLI
+    `app/x`; all become `bot:x`. A human `x` remains `x`. Allowlist a bot as
+    `x[bot]` or `app/x` so its name cannot also trust a human account.
+    """
     key = login.lower()
     is_bot = actor_type == BOT_TYPENAME
     if key.startswith("app/"):

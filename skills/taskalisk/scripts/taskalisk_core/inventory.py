@@ -16,6 +16,7 @@ from .process import run_cmd_checked, sanitize_home
 
 
 def collect_worktrees(repo: str, errors: list[dict[str, str]]) -> list[Worktree]:
+    """Observe worktree paths, Git state and available divergence from origin/main."""
     ok, raw, err = run_cmd_checked(["git", "worktree", "list", "--porcelain"], cwd=repo)
     if not ok:
         errors.append({"source": "git worktree list", "error": err or "command failed"})
@@ -64,6 +65,7 @@ def collect_worktrees(repo: str, errors: list[dict[str, str]]) -> list[Worktree]
 
 
 def collect_unmerged_branches(repo: str, errors: list[dict[str, str]]) -> BranchInventory:
+    """Summarize local and remote branches not merged into origin/main."""
     ok_l, local_raw, err_l = run_cmd_checked(
         ["git", "branch", "--no-merged", "origin/main", "--format=%(refname:short)"], cwd=repo
     )
@@ -100,6 +102,7 @@ def collect_unmerged_branches(repo: str, errors: list[dict[str, str]]) -> Branch
 def collect_github_inventory(
     repo: str, milestone: str | None, errors: list[dict[str, str]]
 ) -> GithubInventory:
+    """Collect checked issue summaries and preserved PR inventory records."""
     prs = gh_list_open_prs(repo, errors)
     issues = gh_list_open_issues(repo, milestone, errors)
     return {"open_prs": [pr["wire"] for pr in prs], "open_issues": issues}
@@ -123,5 +126,6 @@ def list_branches(repo: str, errors: list[dict[str, str]]) -> list[str]:
 
 
 def branches_for_issue(number: int, branches: list[str]) -> list[str]:
+    """Find branch names containing the issue number without adjacent digits."""
     pattern = re.compile(rf"(?<!\d){number}(?!\d)")
     return [b for b in branches if pattern.search(b)]

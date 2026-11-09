@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""
-taskalisk.py
+"""Compile issue frontmatter into a task DAG.
 
 Taskalisk: zero-local-state DAG compiler for issue frontmatter. Issue frontmatter
 (`issue-dag/2`, see docs/frontmatter-model.md) is the single source of truth:

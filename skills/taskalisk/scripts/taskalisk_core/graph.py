@@ -24,10 +24,12 @@ from .graph_values import DependencyEntry, GraphNode, NormalizedDependency
 
 
 def strip_merged_hint(ref: str) -> str:
+    """Remove the merged display hint and surrounding whitespace."""
     return ref.replace(MERGED_HINT, "").strip()
 
 
 def normalize_dep_entry(dep: DependencyEntry) -> NormalizedDependency:
+    """Separate merged hints from checked dependency fields."""
     if isinstance(dep, str):
         return {
             "from": strip_merged_hint(dep),
@@ -49,6 +51,7 @@ def normalize_dep_entry(dep: DependencyEntry) -> NormalizedDependency:
 
 
 def lock_keys_conflict(a: str, b: str) -> bool:
+    """Detect identical resource keys and ancestor/descendant path overlap."""
     if a == b:
         return True
     a_tree = a if a.endswith("/") else a + "/"
@@ -57,6 +60,7 @@ def lock_keys_conflict(a: str, b: str) -> bool:
 
 
 def any_lock_conflict(required: set[str], held: set[str]) -> bool:
+    """Detect whether any requested key overlaps a held resource."""
     return any(lock_keys_conflict(r, h) for r in required for h in held)
 
 
@@ -66,6 +70,7 @@ def compile_and_analyze_dag(
     min_confidence: float = DEFAULT_MIN_CONFIDENCE,
     capacities: dict[str, int] | None = None,
 ) -> dict[str, Any]:
+    """Reduce hard dependencies, rank open tasks and allocate a resource-safe batch."""
     merged = set(merged)
     for nid, meta in nodes.items():
         if str(meta.get("status", "")).strip().lower() in COMPLETED_STATUSES:

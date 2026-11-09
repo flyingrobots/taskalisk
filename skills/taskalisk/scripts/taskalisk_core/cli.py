@@ -14,6 +14,7 @@ from .modes import compile_from_github, verify_and_layer_dag
 
 
 def parse_capacities(items: list[str]) -> dict[str, int] | None:
+    """Parse positive name=count capacities, refusing any malformed item."""
     caps: dict[str, int] = {}
     for item in items:
         name, _, num = item.partition("=")
@@ -24,6 +25,7 @@ def parse_capacities(items: list[str]) -> dict[str, int] | None:
 
 
 def main() -> int:
+    """Parse operator options and dispatch one inventory, spec or GitHub mode."""
     parser = argparse.ArgumentParser(
         description="Taskalisk: zero-local-state issue DAG compiler, frontier ranker, and inventory."
     )

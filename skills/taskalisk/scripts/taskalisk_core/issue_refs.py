@@ -12,8 +12,10 @@ REPOSITORY_URL_RE = re.compile(r"/repos/([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)/?$")
 
 
 def node_id(slug: str, number: int, home: str = "") -> str:
-    """Canonical node id: always 'owner/repo#123'. A bare '#123' is never produced or accepted,
-    because a transferred issue would silently re-point a repository-relative reference."""
+    """Format a qualified 'owner/repo#123' identity.
+
+    Bare references could silently change meaning after an issue transfer.
+    """
     return f"{slug}#{number}"
 
 
@@ -38,6 +40,7 @@ def parse_edge_arg(arg: str, home: str = "") -> tuple[IssueRef, IssueRef] | None
 
 
 def slug_from_repository_url(url: str) -> str | None:
+    """Extract and case-fold a repository identity from a REST repository URL."""
     m = REPOSITORY_URL_RE.search(url or "")
     return m.group(1).lower() if m else None
 

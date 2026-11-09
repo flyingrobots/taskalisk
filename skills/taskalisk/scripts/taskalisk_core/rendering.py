@@ -11,6 +11,7 @@ from .issue_refs import id_sort_key
 
 
 def render_mermaid_flowchart(dag_result: dict[str, Any]) -> str:
+    """Render task nodes and reduced edges with neutralized diagram labels."""
     waves: dict[str, list[dict[str, Any]]] = dag_result.get("waves", {})
 
     def safe_id(raw: str) -> str:

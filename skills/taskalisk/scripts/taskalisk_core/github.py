@@ -97,6 +97,7 @@ def gh_list_open_issues(
 
 
 def gh_repo_slug(repo: str, errors: list[dict[str, str]]) -> str | None:
+    """Read the repository identity selected by the local checkout."""
     ok, raw, err = run_cmd_checked(
         ["gh", "repo", "view", "--json", "nameWithOwner", "--jq", ".nameWithOwner"], cwd=repo
     )
@@ -135,8 +136,10 @@ def _rest_issues(raw: str, source: str, errors: list[dict[str, str]]) -> list[Re
 
 
 def gh_list_open_issues_rest(repo: str, slug: str, errors: list[dict[str, str]]) -> list[RestIssue]:
-    """Open issues of `slug` with author login, actor type and association, so the trust gate
-    can reject a stranger's issue before any further query (C1, C15). Pull requests are dropped."""
+    """Read open issues with author evidence before further trust queries.
+
+    Drop PR rows and expose login, actor type and association for C1 and C15.
+    """
     source = f"gh api repos/{slug}/issues"
     ok, raw, err = run_cmd_checked(
         ["gh", "api", "--paginate", f"repos/{slug}/issues?state=open&per_page=100"], cwd=repo
@@ -167,6 +170,7 @@ def issue_meta(obj: RestIssue) -> IssueMeta:
 def gh_issue_database_id(
     repo: str, slug: str, number: int, errors: list[dict[str, str]]
 ) -> int | None:
+    """Read an issue database ID, recording command or conversion failures."""
     ok, raw, err = run_cmd_checked(
         ["gh", "api", f"repos/{slug}/issues/{number}", "--jq", ".id"], cwd=repo
     )

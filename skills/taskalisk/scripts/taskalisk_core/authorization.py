@@ -40,8 +40,9 @@ class TrustPolicy:
         logins: list[str],
         codeowners: bool,
         errors: list[dict[str, str]],
-    ):
+    ) -> None:
         # GitHub owner, repository and login names are case-insensitive; compare them folded.
+        """Store normalized trust settings and empty per-run lookup caches."""
         self.repo = repo
         self.owners = {home_slug.split("/", 1)[0].lower(), *(o.lower() for o in owners)}
         self.repos = {r.lower() for r in repos}
@@ -54,9 +55,11 @@ class TrustPolicy:
         self._collaborator_cache: dict[tuple[str, str], tuple[bool, str]] = {}
 
     def in_scope(self, slug: str) -> bool:
+        """Check explicit repository trust or membership in a trusted owner namespace."""
         return slug.lower() in self.repos or slug.split("/", 1)[0].lower() in self.owners
 
     def describe(self) -> TrustDescription:
+        """Report configured identities and CODEOWNERS evidence already observed."""
         return {
             "owners": sorted(self.owners),
             "repos": sorted(self.repos),
@@ -108,8 +111,10 @@ class TrustPolicy:
         editors: list[HistoryEditor],
         author_type: str | None = None,
     ) -> tuple[bool, list[str]]:
-        """Every body editor other than the (already trusted) author must be trusted.
-        Identities are compared with their actor type, so a bot sharing the author's login is still checked."""
+        """Require trust for every editor other than the already trusted author.
+
+        Compare typed identities so a bot sharing the author's login is still checked.
+        """
         reasons: list[str] = []
         seen: set[str | None] = {normalize_login(author, author_type) if author else None}
         for editor in editors:
@@ -124,8 +129,11 @@ class TrustPolicy:
         return not reasons, reasons
 
     def _collaborator(self, slug: str, login: str) -> tuple[bool, str]:
-        """Trusted only with write, maintain or admin permission. A lookup that cannot run is a run error (exit 2):
-        a silently untrusted collaborator would hide trusted work as opaque blockers."""
+        """Require write, maintain or admin permission from the collaborator endpoint.
+
+        A lookup failure is a run error: treating it as ordinary denial would hide
+        trusted work behind opaque blockers.
+        """
         key = (slug.lower(), login.lower())
         if key not in self._collaborator_cache:
             source = f"gh api repos/{slug}/collaborators/{login}/permission"

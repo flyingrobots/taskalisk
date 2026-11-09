@@ -22,6 +22,7 @@ from .spec_file import read_spec
 
 
 def verify_and_layer_dag(dag_path: str, min_confidence: float, emit_mermaid: bool) -> int:
+    """Validate a bounded local spec, then emit its plan or structured refusal."""
     try:
         data = read_spec(dag_path)
     except (OSError, TypeError, ValueError) as exc:
@@ -138,6 +139,7 @@ def compile_from_github(
     compare: bool = False,
     trust: TrustOptions | None = None,
 ) -> int:
+    """Compile trusted issue closure and optionally edit one frontmatter edge."""
     errors: list[dict[str, str]] = []
     mutation: EdgeMutation | None = None
     undo: EdgeUndo | None = None
