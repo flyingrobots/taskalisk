@@ -128,6 +128,38 @@
       "tracking": "https://github.com/flyingrobots/taskalisk/issues/22",
       "expires": "2027-02-08",
       "review_condition": "Output contract or callers change"
+    },
+    {
+      "id": "PY-CLI-FIXTURE-INIT",
+      "rule": "PY-SUPPRESSIONS",
+      "diagnostic": "S603",
+      "path": "tests/cli_fixture.py",
+      "symbol": "Harness.setUp",
+      "mechanism": "noqa",
+      "reason": "The resolved Git executable initializes an owned temporary fixture with fixed arguments and no shell.",
+      "risk": "Executable resolution remains trusted; a direct-child timeout does not contain arbitrary descendants.",
+      "compensating_check": "Real-Git inventory and CLI tests exercise fixture creation with a ten-second direct-child deadline",
+      "owner": "Taskalisk maintainers",
+      "approver": "Codex under James's delegated decisions",
+      "tracking": "https://github.com/flyingrobots/taskalisk/issues/22",
+      "expires": "2027-02-08",
+      "review_condition": "Command construction, executable resolution or fixture ownership changes"
+    },
+    {
+      "id": "PY-CLI-FIXTURE-ARGV",
+      "rule": "PY-SUPPRESSIONS",
+      "diagnostic": "S603",
+      "path": "tests/cli_fixture.py",
+      "symbol": "Harness.run_dag",
+      "mechanism": "noqa",
+      "reason": "The interpreter and compiler path are fixed; owned fixture arguments reach the CLI without a shell.",
+      "risk": "Changing executable or fixture ownership invalidates this boundary; captured output and nested process groups are not bounded by the direct-child timeout.",
+      "compensating_check": "Named public CLI tests and deliberate behavioral faults, with a thirty-second direct-child deadline; separate process tests cover production command limits",
+      "owner": "Taskalisk maintainers",
+      "approver": "Codex under James's delegated decisions",
+      "tracking": "https://github.com/flyingrobots/taskalisk/issues/22",
+      "expires": "2027-02-08",
+      "review_condition": "Command construction, executable resolution or fixture ownership changes"
     }
   ]
 }

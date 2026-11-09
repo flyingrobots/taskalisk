@@ -56,7 +56,12 @@ class Harness(unittest.TestCase):
         (self.bin / "gh").chmod(0o755)
         self.repo = self.tmp / "repo"
         self.repo.mkdir()
-        subprocess.run(["git", "init", "-q", "-b", "main"], cwd=self.repo, check=True)
+        git = shutil.which("git")
+        if git is None:
+            self.fail("Git is required to create the owned CLI fixture")
+        subprocess.run(  # noqa: S603 -- fixed Git initialization; PY-CLI-FIXTURE-INIT
+            [git, "init", "-q", "-b", "main"], cwd=self.repo, check=True, timeout=10
+        )
         self.state = self.tmp / "state.json"
         self.log = self.tmp / "gh.log"
         self.log.write_text("")
@@ -74,11 +79,12 @@ class Harness(unittest.TestCase):
             FAKE_GH_STATE=str(self.state),
             FAKE_GH_LOG=str(self.log),
         )
-        return subprocess.run(
+        return subprocess.run(  # noqa: S603 -- fixed interpreter/CLI; PY-CLI-FIXTURE-ARGV
             [sys.executable, str(SCRIPT), "--repo", str(self.repo), *args],
             capture_output=True,
             text=True,
             env=env,
+            timeout=30,
         )
 
     def current_body(self, reference: str) -> str:

@@ -38,7 +38,6 @@ class EditContext(TypedDict):
     """Repository and authorization/error state shared by one edit attempt."""
 
     repo: str
-    home: str
     policy: TrustPolicy
     errors: list[dict[str, str]]
 

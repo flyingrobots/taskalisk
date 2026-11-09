@@ -41,7 +41,7 @@ def _admit_body(context: EditContext, child: IssueRef, meta: IssueMeta) -> str |
     if not trusted:
         context["errors"].append(
             {
-                "source": f"frontmatter of {node_id(child[0], child[1], context['home'])}",
+                "source": f"frontmatter of {node_id(child[0], child[1])}",
                 "error": "child is untrusted: " + "; ".join(reasons),
             }
         )

@@ -40,9 +40,8 @@ def parse_codeowners(text: str) -> tuple[set[str], list[str]]:
             if not token.startswith("@"):
                 continue
             name = token[1:]
-            if "/" in name:
-                if name not in teams:
-                    teams.append(name)
-            elif name:
+            if "/" in name and name not in teams:
+                teams.append(name)
+            elif "/" not in name and name:
                 logins.add(name)
     return logins, teams

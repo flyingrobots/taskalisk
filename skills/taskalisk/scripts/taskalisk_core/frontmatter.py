@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 
 from .frontmatter_values import FrontmatterRecord, ParsedFields
-from .issue_refs import IssueRef, format_ref_relative, node_id, parse_issue_ref
+from .issue_refs import IssueRef, node_id, parse_issue_ref
 
 # --------------------------------------------------------------------------- #
 # Frontmatter model (issue-dag/2). See docs/frontmatter-model.md.
@@ -56,6 +56,12 @@ def _fm_scalar(text: str) -> str | int:
     return text
 
 
+def _fm_list_items(value: str) -> list[str]:
+    """Decode the scalar items of an already delimited flat list, retaining textual values."""
+    inner = value[1:-1].strip()
+    return [str(_fm_scalar(item)) for item in inner.split(",")] if inner else []
+
+
 def parse_frontmatter(body: str) -> tuple[ParsedFields | None, list[str]]:
     """Return (fields, problems). fields is None when the body has no frontmatter block.
 
@@ -83,8 +89,7 @@ def parse_frontmatter(body: str) -> tuple[ParsedFields | None, list[str]]:
             if not value.endswith("]"):
                 problems.append(f"line {n}: unterminated list for {key}")
                 continue
-            inner = value[1:-1].strip()
-            fields[key] = [str(_fm_scalar(item)) for item in inner.split(",")] if inner else []
+            fields[key] = _fm_list_items(value)
         else:
             fields[key] = _fm_scalar(value)
     return fields, problems
@@ -223,13 +228,13 @@ def validate_frontmatter(
     return record, violations, warnings
 
 
-def rewrite_blocked_by(body: str, refs: list[IssueRef], base_slug: str) -> str | None:
+def rewrite_blocked_by(body: str, refs: list[IssueRef]) -> str | None:
     """Replace only the .blocked_by line of the frontmatter block. None when it cannot."""
     m = FM_BLOCK_RE.match(body or "")
     if not m:
         return None
     block = m.group("yaml")
-    new_line = ".blocked_by: [" + ", ".join(format_ref_relative(r, base_slug) for r in refs) + "]"
+    new_line = ".blocked_by: [" + ", ".join(node_id(*ref) for ref in refs) + "]"
     lines = block.splitlines()
     hits = [i for i, line in enumerate(lines) if re.match(r"\.blocked_by[ \t]*:", line)]
     if len(hits) != 1:

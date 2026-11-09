@@ -128,7 +128,7 @@ class FrontmatterContract(unittest.TestCase):
         ]
         for body in cases:
             with self.subTest(body=body):
-                self.assertIsNone(rewrite_blocked_by(body, [("org/repo", 2)], "org/repo"))
+                self.assertIsNone(rewrite_blocked_by(body, [("org/repo", 2)]))
 
     @seed(20261108)
     @settings(max_examples=30, database=None, deadline=500, print_blob=True)
@@ -145,5 +145,5 @@ class FrontmatterContract(unittest.TestCase):
             ".blocked_by: [" + ", ".join(f"org/repo#{number}" for number in numbers) + "]"
         )
         expected = body.replace(".blocked_by: []", expected_line, 1)
-        actual = rewrite_blocked_by(body, [("org/repo", number) for number in numbers], "org/repo")
+        actual = rewrite_blocked_by(body, [("org/repo", number) for number in numbers])
         self.assertEqual(actual, expected)

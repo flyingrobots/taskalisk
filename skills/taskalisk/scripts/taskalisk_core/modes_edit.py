@@ -33,13 +33,12 @@ def apply_edge(
     parent, child = parsed
     if parent == child:
         write_json(
-            {"ok": False, "error": f"Self-edge rejected: {node_id(child[0], child[1], slug)}"},
+            {"ok": False, "error": f"Self-edge rejected: {node_id(child[0], child[1])}"},
             indent=None,
         )
         return 1
     context: EditContext = {
         "repo": repo,
-        "home": slug,
         "policy": TrustPolicy(repo, slug, trust, errors),
         "errors": errors,
     }
@@ -47,10 +46,10 @@ def apply_edge(
     if undo is None:
         write_json({"ok": False, "error": "Frontmatter edit failed", "github_errors": errors})
         return 2 if any(error["source"].startswith("gh ") for error in errors) else 1
-    child_id = node_id(child[0], child[1], slug)
+    child_id = node_id(child[0], child[1])
     mutation: EdgeMutation = {
         "type": "add_blocked_by" if request["add"] else "remove_blocked_by",
-        "parent": node_id(parent[0], parent[1], slug),
+        "parent": node_id(parent[0], parent[1]),
         "child": child_id,
         "changed": undo["changed"],
         "reason": request["reason"],

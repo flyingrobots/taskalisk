@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from itertools import product
 
 from cli_fixture import HOME, STRANGER, Harness, closing, fm, issue
 from fake_values import field, records
@@ -88,13 +89,12 @@ class PullRequestStates(Harness):
 
     def test_missing_or_invalid_draft_state_fails_closed(self) -> None:
         """Missing or invalid draft state fails closed."""
-        for prefix in [[], [True]]:
-            for value in [None, "false", 0]:
-                with self.subTest(prefix=prefix, value=value):
-                    state = self.state_with_prs([*prefix, value])
-                    if value is None:
-                        del state["prs"][-1]["isDraft"]
-                    p = self.run_dag(state, "--from-github")
-                    self.assertEqual(p.returncode, 2, p.stdout)
-                    self.assertIn("isDraft", p.stdout)
-                    self.assertNotIn("waves", self.out(p))
+        for prefix, value in product([[], [True]], [None, "false", 0]):
+            with self.subTest(prefix=prefix, value=value):
+                state = self.state_with_prs([*prefix, value])
+                if value is None:
+                    del state["prs"][-1]["isDraft"]
+                p = self.run_dag(state, "--from-github")
+                self.assertEqual(p.returncode, 2, p.stdout)
+                self.assertIn("isDraft", p.stdout)
+                self.assertNotIn("waves", self.out(p))

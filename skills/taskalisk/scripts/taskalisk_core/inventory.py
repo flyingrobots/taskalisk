@@ -2,66 +2,17 @@
 
 from __future__ import annotations
 
-import os
 import re
 
 from .defaults import SHORT_SHA_LEN
 from .github import gh_list_open_issues, gh_list_open_prs
-from .inventory_values import Branch, BranchInventory, GithubInventory, Worktree
-from .process import run_cmd_checked, sanitize_home
+from .inventory_values import Branch, BranchInventory, GithubInventory
+from .inventory_worktrees import collect_worktrees as collect_worktrees
+from .process import run_cmd_checked
 
 # --------------------------------------------------------------------------- #
 # Inventory (read-only)
 # --------------------------------------------------------------------------- #
-
-
-def collect_worktrees(repo: str, errors: list[dict[str, str]]) -> list[Worktree]:
-    """Observe worktree paths, Git state and available divergence from origin/main."""
-    ok, raw, err = run_cmd_checked(["git", "worktree", "list", "--porcelain"], cwd=repo)
-    if not ok:
-        errors.append({"source": "git worktree list", "error": err or "command failed"})
-        return []
-
-    worktrees: list[Worktree] = []
-    current: Worktree = {}
-    for line in raw.splitlines():
-        if not line.strip():
-            if current:
-                worktrees.append(current)
-                current = {}
-            continue
-        if line.startswith("worktree "):
-            wt_path = line[len("worktree ") :].strip()
-            current["path"] = sanitize_home(wt_path)
-            if not os.path.isdir(wt_path):
-                current["path_exists"] = False
-                current["dirty"] = None
-                continue
-            current["path_exists"] = True
-            ok_st, dirty, err_st = run_cmd_checked(["git", "status", "--porcelain"], cwd=wt_path)
-            if not ok_st:
-                errors.append({"source": f"git status ({sanitize_home(wt_path)})", "error": err_st})
-            current["dirty"] = bool(dirty) if ok_st else None
-            ok_ab, ahead_behind, _ = run_cmd_checked(
-                ["git", "rev-list", "--left-right", "--count", "HEAD...origin/main"], cwd=wt_path
-            )
-            if ok_ab and ahead_behind and "\t" in ahead_behind:
-                a, b = ahead_behind.split("\t", 1)
-                current["ahead_of_main"] = int(a)
-                current["behind_main"] = int(b)
-        elif line.startswith("HEAD "):
-            current["head"] = line[len("HEAD ") :].strip()[:SHORT_SHA_LEN]
-        elif line.startswith("branch "):
-            current["branch"] = line[len("branch ") :].strip().removeprefix("refs/heads/")
-        elif line == "detached":
-            current["branch"] = "(detached HEAD)"
-        elif line.startswith("prunable"):
-            current["prunable"] = True
-        elif line.startswith("locked"):
-            current["locked"] = True
-    if current:
-        worktrees.append(current)
-    return worktrees
 
 
 def collect_unmerged_branches(repo: str, errors: list[dict[str, str]]) -> BranchInventory:

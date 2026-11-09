@@ -50,17 +50,16 @@ def compare_relationships(
     repo: str, source: DiscoveryResult, errors: list[dict[str, str]]
 ) -> RelationshipDrift:
     """Drift between frontmatter edges and GitHub blocked_by relationships (a mirror)."""
-    slug = source["slug"]
     only_fm: list[str] = []
     only_gh: list[str] = []
     for ref, rec in source["records"].items():
         if rec["kind"] != "task" or source["fetched"][ref]["state"] == "closed":
             continue
-        nid = node_id(ref[0], ref[1], slug)
+        nid = node_id(ref[0], ref[1])
         gh_set = {blk["reference"] for blk in gh_blocked_by(repo, ref[0], ref[1], errors)}
         fm_set = set(rec["blocked_by"])
-        only_fm += [f"{node_id(b[0], b[1], slug)} -> {nid}" for b in sorted(fm_set - gh_set)]
-        only_gh += [f"{node_id(b[0], b[1], slug)} -> {nid}" for b in sorted(gh_set - fm_set)]
+        only_fm += [f"{node_id(b[0], b[1])} -> {nid}" for b in sorted(fm_set - gh_set)]
+        only_gh += [f"{node_id(b[0], b[1])} -> {nid}" for b in sorted(gh_set - fm_set)]
     return {
         "only_in_frontmatter": only_fm,
         "only_in_github": only_gh,

@@ -17,11 +17,10 @@ def _record_untrusted(
     ref: IssueRef,
     meta: IssueMeta,
     reasons: list[str],
-    context: DiscoveryContext,
     closure: IssueClosure,
 ) -> None:
     """Retain an opaque blocker and shared references, without any untrusted title or metadata."""
-    nid = node_id(ref[0], ref[1], context["slug"])
+    nid = node_id(ref[0], ref[1])
     closure["notes"]["untrusted"].append(
         {
             "id": nid,
@@ -49,7 +48,7 @@ def _unmodeled_record(
     ref: IssueRef, meta: IssueMeta, context: DiscoveryContext, closure: IssueClosure
 ) -> FrontmatterRecord | None:
     """List unmodeled home seeds; other missing models remain opaque blockers."""
-    nid = node_id(ref[0], ref[1], context["slug"])
+    nid = node_id(ref[0], ref[1])
     if ref in closure["seeds"] and not context["roots"]:
         closure["notes"]["unmodeled"].append(
             {"id": nid, "title": meta["title"], "url": meta["html_url"]}
@@ -84,7 +83,7 @@ def _read_model(
         return _unmodeled_record(ref, meta, context, closure)
     record, violations, warnings = validate_frontmatter(fields, ref)
     violations = problems + violations
-    nid = node_id(ref[0], ref[1], context["slug"])
+    nid = node_id(ref[0], ref[1])
     if violations:
         closure["notes"]["violations"][nid] = violations
     if warnings:
@@ -104,12 +103,12 @@ def _visit_issue(
         return False
     trusted, reasons = admission
     if not trusted:
-        _record_untrusted(ref, meta, reasons, context, closure)
+        _record_untrusted(ref, meta, reasons, closure)
         return True
     record = _read_model(ref, meta, context, closure)
     if record is not None:
         closure["records"][ref] = record
-        nid = node_id(ref[0], ref[1], context["slug"])
+        nid = node_id(ref[0], ref[1])
         for dependency in chain(record["children"], record["blocked_by"]):
             closure["referenced_by"][dependency].append(nid)
             queue.append(dependency)

@@ -11,14 +11,14 @@ from .issue_refs import IssueRef, node_id
 
 
 def _dependencies(
-    ref: IssueRef, context: DiscoveryContext, closure: IssueClosure
+    ref: IssueRef, closure: IssueClosure
 ) -> tuple[list[Dependency], list[NotPlannedParent]]:
     """Build task prerequisites and report closed-not-planned parents without leaking titles."""
-    nid = node_id(ref[0], ref[1], context["slug"])
+    nid = node_id(ref[0], ref[1])
     dependencies: list[Dependency] = []
     not_planned: list[NotPlannedParent] = []
     for blocker in closure["records"][ref]["blocked_by"]:
-        bid = node_id(blocker[0], blocker[1], context["slug"])
+        bid = node_id(blocker[0], blocker[1])
         record = closure["records"].get(blocker)
         if record and record["kind"] == "container":
             closure["notes"]["violations"].setdefault(nid, []).append(
@@ -52,7 +52,7 @@ def _task_node(
     """Return a task node and its closure notices, retaining existing status precedence."""
     record = closure["records"][ref]
     meta = closure["fetched"][ref]
-    dependencies, not_planned = _dependencies(ref, context, closure)
+    dependencies, not_planned = _dependencies(ref, closure)
     untrusted = bool(record.get("untrusted"))
     linked = links["by_issue"].get(ref, []) if ref[0] == context["slug"] and not untrusted else []
     status = record["status"] or "open"
@@ -91,7 +91,7 @@ def project_closure(
     containers: list[Container] = []
     not_planned: list[NotPlannedParent] = []
     for ref, record in closure["records"].items():
-        nid = node_id(ref[0], ref[1], context["slug"])
+        nid = node_id(ref[0], ref[1])
         meta = closure["fetched"][ref]
         if record["kind"] == "container":
             containers.append(
@@ -99,9 +99,7 @@ def project_closure(
                     "id": nid,
                     "number": ref[1],
                     "title": meta["title"],
-                    "children": [
-                        node_id(child[0], child[1], context["slug"]) for child in record["children"]
-                    ],
+                    "children": [node_id(child[0], child[1]) for child in record["children"]],
                 }
             )
         elif meta["state"] == "closed":

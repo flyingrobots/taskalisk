@@ -30,15 +30,14 @@ class ProcessOwnership(unittest.TestCase):
                 result = PipeCapture(CommandLimits(timeout_seconds=5), b"").collect(child, stack)
                 with self.subTest(check="output"):
                     self.assertEqual(result, ("complete", ""))
-                with self.subTest(check="ownership"):
-                    try:
-                        pid, status = os.waitpid(child.pid, os.WNOHANG)
-                    except ChildProcessError:
-                        self.fail("leader reaped before process-group shutdown")
-                    reaped = pid == child.pid
-                    if reaped:
-                        child.returncode = os.waitstatus_to_exitcode(status)
-                    self.assertEqual(pid, child.pid, "capture returned before leader exit")
+                try:
+                    pid, status = os.waitpid(child.pid, os.WNOHANG)
+                except ChildProcessError:
+                    self.fail("leader reaped before process-group shutdown")
+                reaped = pid == child.pid
+                if reaped:
+                    child.returncode = os.waitstatus_to_exitcode(status)
+                self.assertEqual(pid, child.pid, "capture returned before leader exit")
             finally:
                 # This probe consumes the leaf child's wait status. Never signal
                 # the numeric group after releasing that identity.

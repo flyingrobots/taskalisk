@@ -21,7 +21,7 @@ def lookup_issue(
     ref: IssueRef, context: DiscoveryContext, closure: IssueClosure
 ) -> IssueMeta | LookupDecision:
     """Check scope before fetching, preserve seed metadata, and report transferred/PR references."""
-    nid = node_id(ref[0], ref[1], context["slug"])
+    nid = node_id(ref[0], ref[1])
     violations = closure["notes"]["violations"]
     if not context["policy"].in_scope(ref[0]):
         hint = f"add --trust-owner {ref[0].split('/', 1)[0]} or --trust-repo {ref[0]}"

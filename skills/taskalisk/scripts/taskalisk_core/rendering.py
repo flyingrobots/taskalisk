@@ -42,8 +42,9 @@ def render_mermaid_flowchart(dag_result: GraphPlan) -> str:
                 .replace("]", ")")
             )
             lines.append(f'    {safe_id(nid)}["{safe_label}"]')
-            for child in item.get("directly_unlocks", []):
-                edges.append((safe_id(nid), safe_id(child)))
+            edges.extend(
+                (safe_id(nid), safe_id(child)) for child in item.get("directly_unlocks", [])
+            )
         lines.append("  end")
     for s, d in edges:
         lines.append(f"  {s} --> {d}")
@@ -79,12 +80,28 @@ def _md_cell(text: object) -> str:
     )
 
 
+def _workstream_checklist(waves: dict[str, list[PlannedNode]]) -> list[str]:
+    """Group tasks by workstream, retaining identity ordering and escaped display titles."""
+    by_id = {node["id"]: node for items in waves.values() for node in items}
+    out = ["## Task Checklist by Workstream (`area:*`)", ""]
+    streams: dict[str, list[PlannedNode]] = defaultdict(list)
+    for node in by_id.values():
+        streams[str(node.get("workstream") or "unassigned")].append(node)
+    for workstream in sorted(streams):
+        out += [f"### {workstream}", ""]
+        for node in sorted(streams[workstream], key=lambda item: id_sort_key(item["id"])):
+            out.append(
+                f"- [ ] {_issue_link(node['id'], node.get('url'))} {_md_cell(node['title'])}"
+            )
+        out.append("")
+    return out
+
+
 def render_roadmap_block(result: GraphPlan) -> str:
     """Render the computed ROADMAP sections. Pure function of the compiled DAG."""
     m = result["metrics"]
     src: SourceDetails = result.get("source", {})
     waves = result["waves"]
-    by_id = {n["id"]: n for items in waves.values() for n in items}
     out: list[str] = [ROADMAP_BEGIN, ""]
     out += [
         f"Compiled from issue frontmatter (`{src.get('schema', '')}`), home `{src.get('repository', '')}`, roots `{', '.join(src.get('roots') or []) or 'all open home issues'}`. "
@@ -97,7 +114,7 @@ def render_roadmap_block(result: GraphPlan) -> str:
         "| --- | --- |",
         f"| Open nodes | {m['open_node_count']} |",
         f"| Reduced edges (raw) | {m['reduced_open_edge_count']} ({m['raw_open_edge_count']}) |",
-        f"| Edge density | {m['edge_density']} ({'in' if m['edge_density_band_ok'] else 'outside'} band 0.01–0.50) |",
+        f"| Edge density | {m['edge_density']} ({'in' if m['edge_density_band_ok'] else 'outside'} band 0.01\N{EN DASH}0.50) |",
         f"| Max parallel width | {m['max_parallel_width']} |",
         f"| Critical path ({m['critical_path_length']}) | {' → '.join(m['critical_path'])} |",
         f"| Isolated nodes | {m['isolated_open_node_count']} |",
@@ -127,15 +144,7 @@ def render_roadmap_block(result: GraphPlan) -> str:
                 f"- [ ] {_issue_link(n['id'], n.get('url'))} {_md_cell(n['title'])} ({n['status']})"
             )
         out.append("")
-    out += ["## Task Checklist by Workstream (`area:*`)", ""]
-    streams: dict[str, list[PlannedNode]] = defaultdict(list)
-    for n in by_id.values():
-        streams[str(n.get("workstream") or "unassigned")].append(n)
-    for ws in sorted(streams):
-        out += [f"### {ws}", ""]
-        for n in sorted(streams[ws], key=lambda x: id_sort_key(x["id"])):
-            out.append(f"- [ ] {_issue_link(n['id'], n.get('url'))} {_md_cell(n['title'])}")
-        out.append("")
+    out += _workstream_checklist(waves)
     out += [
         "## Transitively-Reduced Dependency DAG",
         "",

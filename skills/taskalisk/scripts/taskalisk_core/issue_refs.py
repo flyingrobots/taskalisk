@@ -11,7 +11,7 @@ ISSUE_REF_RE = re.compile(r"\s*(?P<slug>[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)#(?P<num
 REPOSITORY_URL_RE = re.compile(r"/repos/([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)/?$")
 
 
-def node_id(slug: str, number: int, home: str = "") -> str:
+def node_id(slug: str, number: int) -> str:
     """Format a qualified 'owner/repo#123' identity.
 
     Bare references could silently change meaning after an issue transfer.
@@ -19,7 +19,7 @@ def node_id(slug: str, number: int, home: str = "") -> str:
     return f"{slug}#{number}"
 
 
-def parse_issue_ref(text: str, home: str = "") -> IssueRef | None:
+def parse_issue_ref(text: str) -> IssueRef | None:
     """Parse 'owner/repo#123'. A bare '#123' or '123' is invalid."""
     m = ISSUE_REF_RE.fullmatch(text)
     if not m:
@@ -28,7 +28,7 @@ def parse_issue_ref(text: str, home: str = "") -> IssueRef | None:
     return (m.group("slug").lower(), int(m.group("num")))
 
 
-def parse_edge_arg(arg: str, home: str = "") -> tuple[IssueRef, IssueRef] | None:
+def parse_edge_arg(arg: str) -> tuple[IssueRef, IssueRef] | None:
     """'owner/repo#1080->owner/repo#1052' means the first blocks the second (parent -> child)."""
     parts = arg.split("->")
     if len(parts) != 2:
@@ -49,8 +49,3 @@ def id_sort_key(nid: str) -> tuple[str, int]:
     """Sort by repository slug, then by number."""
     slug, _, num = nid.rpartition("#")
     return (slug, int(num) if num.isdigit() else 0)
-
-
-def format_ref_relative(ref: IssueRef, base_slug: str = "") -> str:
-    """Always the qualified form; the name is kept for call sites."""
-    return f"{ref[0]}#{ref[1]}"

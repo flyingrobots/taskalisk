@@ -13,7 +13,7 @@ from .mutation_values import EdgeUndo
 def _edited_body(body: str, context: EditContext, change: EdgeChange) -> str | None:
     """Validate task frontmatter and rewrite only its blocked-by field."""
     parent, child = change["parent"], change["child"]
-    source = f"frontmatter of {node_id(child[0], child[1], context['home'])}"
+    source = f"frontmatter of {node_id(child[0], child[1])}"
     fields, problems = parse_frontmatter(body)
     if fields is None or problems:
         context["errors"].append({"source": source, "error": "missing or unparseable frontmatter"})
@@ -32,7 +32,7 @@ def _edited_body(body: str, context: EditContext, change: EdgeChange) -> str | N
         refs.append(parent)
     if not change["add"]:
         refs = [ref for ref in refs if ref != parent]
-    new_body = rewrite_blocked_by(body, refs, child[0])
+    new_body = rewrite_blocked_by(body, refs)
     if new_body is None:
         context["errors"].append({"source": source, "error": "cannot rewrite .blocked_by"})
     return new_body

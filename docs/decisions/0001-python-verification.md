@@ -102,6 +102,8 @@ they do not waive typing, coverage, source limits or behavioral checks.
 | Ruff S603, `FakeGh.run_fake` | The test invokes the fixed Python interpreter and owned fake-provider file, without a shell. A change to either path would change this assumption. | Provider-contract tests use a five-second deadline and check pagination, termination and invalid fixture limits. | Re-review when command construction or fixture ownership changes. |
 | Ruff S603, `StructureScan.test_cli_emits_json_and_exit_status_for_both_control_and_violation` | The interpreter and checker module are fixed; only the owned fixture root varies, without a shell. Module resolution remains part of the trusted checkout boundary. | Real CLI controls check successful and rejected JSON/exit results with a ten-second deadline. | Re-review when command construction, module resolution or fixture ownership changes. |
 | Ruff T201, `output.write_text` | This one sink intentionally emits the public stdout protocol, including its terminating newline. Future callers could disclose private data or change framing. | Named CLI refusal/rendering tests, deliberate output/selection faults and byte-for-byte CLI comparisons. | Re-review when the output contract or callers change. |
+| Ruff S603, `Harness.setUp` | A resolved Git executable initializes an owned temporary repository with fixed arguments and no shell. Executable resolution remains trusted. | Real-Git inventory and CLI tests exercise creation with a ten-second direct-child deadline. | Re-review when command construction, executable resolution or fixture ownership changes. |
+| Ruff S603, `Harness.run_dag` | A fixed interpreter runs the compiler against owned fixtures without a shell. A direct-child deadline does not bound captured output or contain nested command groups. | Named CLI tests and deliberate behavioral faults use a thirty-second direct-child deadline; separate process tests cover production command limits. | Re-review when command construction, executable resolution or fixture ownership changes. |
 
 The machine-readable records in `exceptions.json` own identifiers and expiry.
 Registry validation is pending under #22; the file alone is not enforcement.
@@ -391,6 +393,12 @@ inventory is refused with a source-qualified exit-2 error.
 Git command behavior. `authorization_values` types operator trust settings and
 the policy explanation; `mutation_values` types existing edit bookkeeping. These
 annotations do not strengthen rollback guarantees or replace issue #1's contract.
+
+`inventory_worktrees` owns porcelain record boundaries and worktree filesystem
+observations; `inventory` retains branch and GitHub summaries. A missing checkout
+has unknown dirtiness, while a failed status command also records an error.
+Real-Git tests distinguish those states from clean, dirty and detached/locked
+checkouts, and verify the checkout's own commit and divergence counts.
 
 Inventory CLI tests use real Git in an owned temporary repository with a commit
 and `origin/main` baseline. Without that baseline, an unrelated Git error could
