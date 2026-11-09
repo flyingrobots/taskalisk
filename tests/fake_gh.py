@@ -79,6 +79,10 @@ def fail(msg):
 
 def graphql(state, args):
     """The edit-history query: body and paginated body editors."""
+    if "graphql_raw" in state:
+        # Preserve deliberately malformed provider bytes at the transport boundary.
+        sys.stdout.write(state["graphql_raw"])
+        return
     if state.get("fail_graphql"):
         fail("gh: GraphQL unavailable (fake)")
     variables = {}

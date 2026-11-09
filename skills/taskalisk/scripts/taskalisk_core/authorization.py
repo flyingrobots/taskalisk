@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections import defaultdict
 from typing import Any
 
+from .github_history_values import HistoryEditor
 from .identities import BOT_KEY_PREFIX, normalize_login, parse_codeowners
 from .process import run_cmd_checked
 
@@ -103,7 +104,7 @@ class TrustPolicy:
         self,
         slug: str,
         author: str | None,
-        editors: list[dict[str, Any]],
+        editors: list[HistoryEditor],
         author_type: str | None = None,
     ) -> tuple[bool, list[str]]:
         """Every body editor other than the (already trusted) author must be trusted.

@@ -144,6 +144,15 @@ opaque blockers while the run reported success. For a repository the operator
 cannot administer, name its editors with `--trust`; allowlisted logins are
 never looked up.
 
+Edit-history responses must have checked body, connection, editor and pagination
+fields. Null nodes or editors are unknown identities, never trusted authors.
+An edit-history actor object with a malformed login or a type other than `User` or `Bot`
+stops the run with exit `2`; it must not share a human's identity key. GraphQL
+errors, missing pagination metadata, repeated cursors, or a history exceeding
+100 pages or 10,000 editor records also stop the run without admitting a prefix.
+These count limits bound each history's requests and retained editor records;
+they are not a total wall-clock deadline for the compiler.
+
 Bots: a Bot actor (a GitHub App or integration) is trusted only by explicit
 `--trust <name>[bot]` (or `app/<name>`). Association and permission never
 trust a bot, because an installation's permissions are not the operator's.

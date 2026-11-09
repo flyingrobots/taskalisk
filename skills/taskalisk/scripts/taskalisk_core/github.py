@@ -6,12 +6,13 @@ import json
 from typing import Any
 
 from .defaults import GH_ISSUE_LIST_LIMIT, GH_PR_LIST_LIMIT
+from .github_history import gh_issue_edit_history as gh_issue_edit_history
 from .github_json import (
     parse_json,
     parse_json_list,
     parse_paginated_arrays,
 )
-from .issue_refs import IssueRef, node_id
+from .issue_refs import IssueRef
 from .process import run_cmd_checked
 
 
@@ -193,80 +194,3 @@ def gh_patch_body(repo: str, ref: IssueRef, body: str, errors: list[dict[str, st
         )
         return False
     return True
-
-
-# The body and the actor of every body edit (the first edit is the creation), in one
-# query, so the editors checked are the editors of the body that is parsed.
-EDIT_HISTORY_QUERY = (
-    "query($owner:String!,$name:String!,$number:Int!,$after:String){"
-    "repository(owner:$owner,name:$name){issue(number:$number){body "
-    "userContentEdits(first:100,after:$after){pageInfo{hasNextPage endCursor} nodes{editor{login __typename}}}}}}"
-)
-
-
-def gh_issue_edit_history(
-    repo: str, ref: IssueRef, errors: list[dict[str, str]]
-) -> dict[str, Any] | None:
-    """The current body and every body editor of an issue: {"body": str, "editors": [{"login", "type"}]}.
-    Every page is read; a page that claims a next page without a cursor fails the lookup (exit 2)."""
-    owner, name = ref[0].split("/", 1)
-    source = f"gh api graphql (edit history of {node_id(*ref)})"
-    editors: list[dict[str, Any]] = []
-    body: str | None = None
-    after: str | None = None
-    while True:
-        cmd = [
-            "gh",
-            "api",
-            "graphql",
-            "-f",
-            f"query={EDIT_HISTORY_QUERY}",
-            "-f",
-            f"owner={owner}",
-            "-f",
-            f"name={name}",
-            "-F",
-            f"number={ref[1]}",
-        ]
-        if after:
-            cmd += ["-f", f"after={after}"]
-        ok, raw, err = run_cmd_checked(cmd, cwd=repo)
-        if not ok:
-            errors.append({"source": source, "error": err or "command failed"})
-            return None
-        data = parse_json(raw, source, errors)
-        issue = (
-            (((data or {}).get("data") or {}).get("repository") or {}).get("issue")
-            if isinstance(data, dict)
-            else None
-        )
-        if not isinstance(issue, dict):
-            errors.append({"source": source, "error": "GraphQL response has no issue"})
-            return None
-        if body is None:
-            body = issue.get("body") or ""
-        edits = issue.get("userContentEdits")
-        if not isinstance(edits, dict) or not isinstance(edits.get("nodes"), list):
-            # A missing connection is not "no editors"; it is an answer we cannot read.
-            errors.append(
-                {
-                    "source": source,
-                    "error": "GraphQL response has no readable userContentEdits connection",
-                }
-            )
-            return None
-        for node in edits["nodes"]:
-            editor = (node or {}).get("editor") or {}
-            editors.append({"login": editor.get("login"), "type": editor.get("__typename")})
-        page = edits.get("pageInfo") or {}
-        if not page.get("hasNextPage"):
-            return {"body": body, "editors": editors}
-        if not page.get("endCursor"):
-            errors.append(
-                {
-                    "source": source,
-                    "error": "edit history reports another page but no cursor; refusing a partial editor list",
-                }
-            )
-            return None
-        after = str(page["endCursor"])

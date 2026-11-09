@@ -131,3 +131,28 @@ Only JSON whitespace separates pages. Generic `null` remains a JSON value and
 is distinct from failure through the error collection; domain adapters decide
 whether a nullable field is valid. CLI witnesses check that malformed issue-list
 bytes reach structured exit 2 instead of hiding work behind an empty frontier.
+
+## Edit-history field admission
+
+`github_history_values` validates the nested GraphQL envelope, textual body,
+editor records and pagination metadata before assigning domain types. Null
+nodes and null editors remain unknown identities for the trust policy to deny.
+An actor object requires a nonempty login and a supported `User` or `Bot` type.
+Other actor types stop the run; their identity semantics must be specified before
+they can share an authorization path. A response carrying GraphQL errors is
+incomplete even when it also contains usable-looking data.
+
+`github_history` owns pagination. Require a boolean `hasNextPage` and a nullable
+text cursor; continuation requires a nonempty, previously unseen cursor. Cap each
+history at 100 pages and 10,000 editor records. A nonterminal last allowed page
+fails before another request. Each command retains the command adapter's own
+deadline; these aggregate count limits do not impose a total elapsed deadline
+on an entire backlog compile. Stop on any malformed or incomplete page, record
+exit-2 run errors and return no history prefix. Preserve issue #1's ownership of
+detecting a body change across otherwise valid pages.
+
+The [GitHub schema](https://docs.github.com/en/graphql/reference/users#usercontenteditconnection)
+declares pagination metadata non-null while allowing nullable nodes and editors.
+The null-versus-malformed distinction is deliberate. The current supported
+actor set is narrower than GitHub's complete Actor interface; an unsupported
+actor stops the run rather than being reinterpreted as a human.
