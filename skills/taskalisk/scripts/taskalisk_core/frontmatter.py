@@ -100,7 +100,7 @@ def validate_frontmatter(
     for key in sorted(k for k in fields if k.startswith(FM_PREFIX) and k not in FM_KEYS):
         v.append(f"unknown key {key}")
     dag = fields.get(".dag")
-    if dag in FM_RETIRED_SCHEMAS:
+    if isinstance(dag, str) and dag in FM_RETIRED_SCHEMAS:
         v.append(f".dag {dag} is retired: {FM_RETIRED_SCHEMAS[dag]}")
     elif dag != FM_SCHEMA:
         v.append(f".dag must be {FM_SCHEMA}")
@@ -112,7 +112,7 @@ def validate_frontmatter(
             f".id {fields.get('.id')} does not name this issue ({node_id(*self_ref)}); was it transferred or copied?"
         )
     kind = fields.get(".kind")
-    if kind not in FM_KINDS:
+    if not isinstance(kind, str) or kind not in FM_KINDS:
         v.append(".kind must be task or container")
 
     def refs(key: str) -> list[IssueRef]:
@@ -144,7 +144,8 @@ def validate_frontmatter(
         "size_hours": fields.get(".size_hours"),
     }
     if kind == "task":
-        if fields.get(".type") not in FM_TYPES:
+        task_type = fields.get(".type")
+        if not isinstance(task_type, str) or task_type not in FM_TYPES:
             v.append(".type must be one of " + ", ".join(sorted(FM_TYPES)))
         if ".blocked_by" not in fields:
             v.append("a task needs .blocked_by (use [] for none)")
@@ -174,7 +175,8 @@ def validate_frontmatter(
                 record["meters"].append(
                     {"name": mm.group("name"), "slots": int(mm.group("slots") or 1)}
                 )
-    if record["status"] is not None and record["status"] not in FM_STATUSES:
+    status = record["status"]
+    if status is not None and (not isinstance(status, str) or status not in FM_STATUSES):
         v.append(".status must be active, parked, or blocked")
     size = record["size_hours"]
     if size is not None:

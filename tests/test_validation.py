@@ -4,6 +4,19 @@ from cli_fixture import ECHO, HOME, Harness, fm, plan_state
 
 
 class Validation(Harness):
+    def test_list_in_scalar_enum_field_returns_a_structured_violation(self) -> None:
+        """Malformed enum values must be refused as data, without a traceback."""
+        for field, value in [
+            (".dag", "issue-dag/2"),
+            (".kind", "task"),
+            (".type", "feature"),
+            (".status", "active"),
+        ]:
+            with self.subTest(field=field):
+                body = fm(f"{HOME}#1", extra=".status: active")
+                body = body.replace(f"{field}: {value}", f"{field}: [{value}]")
+                self.assert_violation(body, f"{field} must be")
+
     def assert_violation(self, body, needle):
         state = plan_state()
         state["issues"][f"{HOME}#1"]["body"] = body
