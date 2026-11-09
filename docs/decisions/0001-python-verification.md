@@ -173,7 +173,7 @@ PR summaries are display data; validation does not establish GitHub trust.
 `graph_values` describes admitted graph inputs. Discovery may also retain invalid
 frontmatter scalar values alongside violations, so these annotations preserve
 diagnostic output instead of laundering invalid fields into valid defaults.
-Typing input does not complete result typing, source-size or coverage adoption.
+Typing input does not complete source-size or coverage adoption.
 The three local-admission modules each require the critical 95% floor.
 
 ## Result typing
@@ -191,6 +191,30 @@ invalid frontmatter values for error JSON. Workstream headings format their
 values as text; valid inputs retain the same rendering. Explicit field projection
 keeps container children out of the public excluded-container summary. These
 types neither establish approval nor alter issue #1's write/rollback contract.
+
+## Graph phases
+
+`graph` coordinates four pure phases. `graph_dependencies` owns completion-state
+copying, dependency classification and open adjacency. Only admitted open nodes
+enter that adjacency; unresolved references and stale merged hints stop analysis.
+`graph_structure` owns cycle detection, reachability, transitive reduction and
+longest-path depths. Cycle detection precedes all path calculations. The endpoint
+invariant removes redundant membership checks during topological traversal.
+
+`graph_ranking` projects source metadata and computed relationships into stable
+ranked waves. `graph_resources` allocates the frontier in that order using holds
+and semaphore capacities. Keep blocked/opaque exclusions, resource reason priority,
+lexical ties and the implicit capacity of one unchanged. Phase records carry
+explicit state; source metadata and caller completion sets remain read only.
+
+Generated graph tests use relational closure and bounded path enumeration as
+independent oracles for reduction, wave membership and critical-path length.
+A named diamond checks redundant-edge evidence and lexical path ties. Fixed
+and externally recorded random seeds, shrinking, observed corpus classifications
+and deliberate output faults accompany verification. Baseline comparisons cover
+complete serialized compiler results and fixed CLI observations, including
+provider calls and mutation state. Those comparisons protect compatibility;
+agreement with an earlier implementation alone does not establish correctness.
 
 ## REST issue field admission
 

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from . import spec_checks as check
 from .frontmatter_values import Meter
-from .graph import strip_merged_hint
+from .graph_dependencies import strip_merged_hint
 from .graph_values import DagSpec, DependencyEntry, GraphNode, LinkedPr
 
 
