@@ -59,7 +59,8 @@ class CoverageGate(unittest.TestCase):
 
     def invoke_path(self, path: Path) -> subprocess.CompletedProcess[str]:
         """Run a fixed checker over a supplied, owned report path."""
-        return subprocess.run(  # noqa: S603 - Fixed checker; only owned fixture paths vary.
+        # policy-exception: PY-COVERAGE-ARGV -- Fixed checker; only owned fixture paths vary.
+        return subprocess.run(  # noqa: S603
             [sys.executable, str(CHECKER), "--root", str(self.root), str(path)],
             capture_output=True,
             text=True,

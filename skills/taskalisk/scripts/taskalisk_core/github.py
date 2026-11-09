@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import subprocess
 from typing import Any
 
 from .defaults import GH_ISSUE_LIST_LIMIT, GH_PR_LIST_LIMIT
@@ -13,7 +12,6 @@ from .process import (
     parse_json_list,
     parse_paginated_arrays,
     run_cmd_checked,
-    sanitize_home,
 )
 
 
@@ -180,29 +178,17 @@ def gh_get_issue(repo: str, ref: IssueRef, errors: list[dict[str, str]]) -> dict
 
 
 def gh_patch_body(repo: str, ref: IssueRef, body: str, errors: list[dict[str, str]]) -> bool:
-    try:
-        proc = subprocess.run(
-            ["gh", "api", "-X", "PATCH", f"repos/{ref[0]}/issues/{ref[1]}", "--input", "-"],
-            cwd=repo,
-            input=json.dumps({"body": body}),
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            check=False,
-        )
-    except (FileNotFoundError, PermissionError) as exc:
+    """Attempt one bounded PATCH; a failed command does not prove no remote effect."""
+    ok, _, error = run_cmd_checked(
+        ["gh", "api", "-X", "PATCH", f"repos/{ref[0]}/issues/{ref[1]}", "--input", "-"],
+        cwd=repo,
+        input_text=json.dumps({"body": body}),
+    )
+    if not ok:
         errors.append(
             {
                 "source": f"gh api PATCH repos/{ref[0]}/issues/{ref[1]}",
-                "error": sanitize_home(str(exc)),
-            }
-        )
-        return False
-    if proc.returncode != 0:
-        errors.append(
-            {
-                "source": f"gh api PATCH repos/{ref[0]}/issues/{ref[1]}",
-                "error": sanitize_home(proc.stderr.strip()) or "command failed",
+                "error": error or "command failed",
             }
         )
         return False

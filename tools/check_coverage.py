@@ -151,11 +151,13 @@ def main() -> int:
     try:
         report: object = json.loads(report_path.read_text(encoding="utf-8"))
     except (OSError, UnicodeError, json.JSONDecodeError) as error:
-        print(f"invalid coverage report: {error}")  # noqa: T201 - CLI diagnostic output.
+        # policy-exception: PY-COVERAGE-OUTPUT -- Emit the CLI's diagnostic protocol.
+        print(f"invalid coverage report: {error}")  # noqa: T201
         return 1
     failures = check_report(report, root)
     for failure in failures:
-        print(failure)  # noqa: T201 - CLI diagnostic output.
+        # policy-exception: PY-COVERAGE-OUTPUT -- Emit the CLI's diagnostic protocol.
+        print(failure)  # noqa: T201
     return int(bool(failures))
 
 

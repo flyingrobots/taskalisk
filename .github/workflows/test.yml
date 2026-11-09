@@ -14,13 +14,31 @@ concurrency:
 
 jobs:
   offline:
-    name: Offline tests (Python ${{ matrix.python }})
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
+    name: Offline tests (${{ matrix.os }}, Python ${{ matrix.python }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 8
+    defaults:
+      run:
+        shell: sh
+    env:
+      UV_PYTHON: ${{ matrix.python }}
+      UV_PYTHON_DOWNLOADS: never
+      UV_CACHE_DIR: ${{ runner.temp }}/taskalisk-uv-cache
     strategy:
       fail-fast: false
+      max-parallel: 2
       matrix:
-        python: ['3.9', '3.13']
+        include:
+          - {os: ubuntu-24.04, python: '3.9.25'}
+          - {os: ubuntu-24.04, python: '3.10.22'}
+          - {os: ubuntu-24.04, python: '3.11.18'}
+          - {os: ubuntu-24.04, python: '3.12.16'}
+          - {os: ubuntu-24.04, python: '3.13.15'}
+          - {os: macos-15-intel, python: '3.9.25'}
+          - {os: macos-15-intel, python: '3.10.22'}
+          - {os: macos-15-intel, python: '3.11.9'}
+          - {os: macos-15-intel, python: '3.12.10'}
+          - {os: macos-15-intel, python: '3.13.15'}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
@@ -28,5 +46,11 @@ jobs:
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: ${{ matrix.python }}
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: '0.12.19'
+          enable-cache: false
+      - name: Prepare locked verification environment
+        run: uv sync --locked --no-editable --group dev
       - name: Run offline suite
-        run: python -m unittest discover -s tests
+        run: uv run --no-sync python -W error -m unittest discover -s tests

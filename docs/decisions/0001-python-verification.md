@@ -30,6 +30,13 @@ They are development dependencies only. Coverage.py 7.10.7 and Hypothesis
 6.135.26 retain the existing Python 3.9 runtime floor; the newest releases have
 higher floors. The lock also captures the type checker's Node runtime.
 
+The adoption matrix covers CPython 3.9 through 3.13 on macOS and Linux, with
+explicit patch pins in CI and 3.13.15 for local development. Later minors and
+other platforms are unclaimed. Metadata uses `>=3.9,<3.14` to express this
+finite range; the CLI's minimum is unchanged. Compatibility remains pending
+until the matrix runs on the actual candidate. The setup step uses uv 0.12.19;
+ordinary checks use the prepared environment without syncing it again.
+
 ## Required evidence
 
 Adoption is complete only when the declared runtime matrix passes the locked
@@ -67,5 +74,39 @@ they do not waive typing, coverage, source limits or behavioral checks.
 | Diagnostic and scope | Reason and risk | Compensating verification | Review condition |
 | --- | --- | --- | --- |
 | Ruff PT009, TestCase assertions in `tests/*.py` | The local policy prescribes unittest. Native assertions preserve its diagnostics and subtest behavior; no product assertion is exempted. | Diagnostic RED runs exercise the actual assertions. | Remove if the repository changes test frameworks; review with every lint-policy update. |
+| Ruff PT027, TestCase exception assertions in `tests/*.py` | The same local unittest contract requires native exception assertions without a second framework. | Invalid-limit tests check the exact exception family and diagnostic, with deliberate acceptance faults. | Remove if the repository changes test frameworks; review with every lint-policy update. |
 | Ruff S603, the marked coverage-gate test invocation | The executable and checker are fixed; only owned fixture paths vary. A changed command producer could invalidate that assumption. | Tests invoke the real checker with a fixed argument vector and timeout, without a shell. | Remove or re-review if the command or path producer changes. |
 | Ruff T201, marked coverage-checker prints | These lines intentionally emit CLI diagnostics. Unintended payload disclosure remains a review concern. | CLI tests assert specific failures; output contains coverage paths and counts. | Re-review when the output contract changes. |
+| Ruff S603, `process_capture.run_limited` | Internal callers supply executable argument vectors without a shell. A compromised executable or PATH remains outside the I/O guard's boundary. | Real local-process tests exercise bounded I/O, refusal and cleanup. | Re-review when command producers or executable resolution change. |
+
+The machine-readable records in `exceptions.json` own identifiers and expiry.
+Registry validation is pending under #22; the file alone is not enforcement.
+
+## Command ownership
+
+The command adapter targets POSIX hosts (macOS and Linux). Other hosts refuse
+before launching a child. Each command has a 60-second deadline and a 32-MiB
+ceiling for input and for combined stdout/stderr. UTF-8 decoding is strict;
+exceeded output is discarded rather than admitted as a partial JSON response.
+Input admission occurs before spawn. There is no implicit retry.
+
+One process group owns each command and its ordinary descendants. On every
+exit the supervisor terminates that group and reaps its leader. Orphan reaping
+belongs to the operating system. A process that deliberately detaches from the
+group, and any already-submitted remote operation, can outlive this boundary.
+The guard is not an execution sandbox. Cleanup failure is raised explicitly.
+Issue #1 owns optimistic mutation reconciliation; a local timeout cannot prove
+that GitHub rejected a write.
+
+Exit observation uses Linux `waitid(WNOWAIT)` or macOS kqueue so the leader
+remains unreaped until group shutdown. Python exposes macOS `waitid` only from
+3.13, so using it unconditionally would break the preserved runtime floor.
+Reaping first could release the numeric identity before its last use. The
+adapter owns this child exclusively; an unrelated signal handler must not reap
+it. Tests observe the child as still waitable after capture and verify that
+group shutdown releases a separate descendant's kernel lock.
+
+Darwin may return EPERM when only the exited leader remains in the group. On
+that path, cleanup reaps the leader and probes group existence with signal 0.
+Only an absent group completes cleanup. A remaining or inaccessible group is
+an error; no terminating signal is sent after the identity has been released.

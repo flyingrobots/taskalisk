@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import json
-import subprocess
 from pathlib import Path
 from typing import Any
+
+from .process_capture import CommandLimitError, run_limited
+from .process_limits import CommandLimits
 
 
 def sanitize_home(text: str) -> str:
@@ -15,24 +17,26 @@ def sanitize_home(text: str) -> str:
     return text
 
 
-def run_cmd_checked(cmd: list[str], cwd: str | None = None) -> tuple[bool, str, str]:
-    """Run a command; never raise. Returns (ok, stdout, sanitized stderr)."""
+def run_cmd_checked(
+    cmd: list[str],
+    cwd: str | None = None,
+    *,
+    limits: CommandLimits | None = None,
+    input_text: str | None = None,
+) -> tuple[bool, str, str]:
+    """Run trusted argv within limits, returning status, stdout and safe stderr.
+
+    A failed or cancelled local command does not establish a remote write's
+    outcome. No automatic retry occurs. Cancellation and cleanup failures
+    propagate; ordinary spawn, limit and encoding failures become diagnostics.
+    """
     try:
-        proc = subprocess.run(
-            cmd,
-            cwd=cwd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            check=False,
-        )
-    except (FileNotFoundError, NotADirectoryError, PermissionError) as exc:
+        ok, output, error = run_limited(cmd, cwd, limits or CommandLimits(), input_text or "")
+    except (OSError, CommandLimitError) as exc:
         return False, "", sanitize_home(f"{type(exc).__name__}: {exc}")
-    return (
-        proc.returncode == 0,
-        proc.stdout.strip(),
-        sanitize_home(proc.stderr.strip()),
-    )
+    except UnicodeError:
+        return False, "", "command protocol contains invalid UTF-8"
+    return ok, output, sanitize_home(error)
 
 
 def parse_json(raw: str, source: str, errors: list[dict[str, str]]) -> Any:
