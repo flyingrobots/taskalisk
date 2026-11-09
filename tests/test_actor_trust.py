@@ -1,6 +1,7 @@
 """Check ActorTrust behavior through the public CLI."""
 
 from cli_fixture import ECHO, HOME, STRANGER, TrustFixture, fm, issue, plan_state
+from fake_values import field, items, records, text
 
 
 class ActorTrust(TrustFixture):
@@ -32,9 +33,9 @@ class ActorTrust(TrustFixture):
         self.assertIn(f"{HOME}#1", self.untrusted_ids(r))
         self.assertTrue(
             any(
-                "below write" in why
-                for u in r["source"]["untrusted_issues"]
-                for why in u["reasons"]
+                "below write" in text(why)
+                for u in records(field(r, "source", "untrusted_issues"))
+                for why in items(u["reasons"])
             )
         )
 
@@ -90,9 +91,10 @@ class ActorTrust(TrustFixture):
             self.run_dag(state, "--from-github", "--root", f"{HOME}#9", "--trust-codeowners")
         )
         self.assertEqual(self.untrusted_ids(r), [])
-        self.assertEqual(r["source"]["trust"]["codeowners"][HOME], ["carol"])
+        self.assertEqual(field(r, "source", "trust", "codeowners", HOME), ["carol"])
         self.assertEqual(
-            r["source"]["trust"]["codeowners_teams_not_expanded"], {HOME: ["flyingrobots/core"]}
+            field(r, "source", "trust", "codeowners_teams_not_expanded"),
+            {HOME: ["flyingrobots/core"]},
         )
         # The allowlist is per repository: Carol owns nothing in ECHO.
         state["issues"][f"{ECHO}#5"]["editors"] = ["owner", "carol"]
@@ -125,7 +127,9 @@ class ActorTrust(TrustFixture):
         self.assertIn(f"{HOME}#1", self.untrusted_ids(r))
         self.assertTrue(
             any(
-                "bot actors" in why for u in r["source"]["untrusted_issues"] for why in u["reasons"]
+                "bot actors" in text(why)
+                for u in records(field(r, "source", "untrusted_issues"))
+                for why in items(u["reasons"])
             )
         )
 
@@ -164,7 +168,9 @@ class ActorTrust(TrustFixture):
         )
         r = self.out(self.run_dag(state, "--from-github", "--trust", "ci-worker[bot]"))
         self.assertIn(f"{HOME}#78", self.untrusted_ids(r))
-        self.assertNotIn(f"{HOME}#78", [b["id"] for b in r["conflict_free_frontier_batch"]])
+        self.assertNotIn(
+            f"{HOME}#78", [b["id"] for b in records(r["conflict_free_frontier_batch"])]
+        )
 
     def test_association_only_counts_inside_the_scope(self):
         state = plan_state()
@@ -180,8 +186,8 @@ class ActorTrust(TrustFixture):
         self.assertEqual(p.returncode, 1, r)
         self.assertTrue(
             any(
-                "outside the trusted repositories" in v
-                for v in r["frontmatter"]["violations"][f"{HOME}#1"]
+                "outside the trusted repositories" in text(v)
+                for v in items(field(r, "frontmatter", "violations", f"{HOME}#1"))
             )
         )
         self.assertNotIn(["api", "repos/mallory/trap/issues/1"], self.calls())

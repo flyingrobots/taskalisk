@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 from cli_fixture import HOME, STRANGER, Harness, closing, fm, issue
+from fake_values import field, records
 from fixture_models import FakePrState
 
 
@@ -43,7 +44,7 @@ class PullRequestStates(Harness):
                 node = self.node(self.out(p), f"{HOME}#1")
                 self.assertEqual(node["status"], expected)
                 self.assertEqual(node["priority_score"], 1010)
-                self.assertEqual([pr["isDraft"] for pr in node["linked_open_prs"]], drafts)
+                self.assertEqual([pr["isDraft"] for pr in records(node["linked_open_prs"])], drafts)
                 rendered = self.run_dag(state, "--from-github", "--emit-roadmap")
                 self.assertEqual(rendered.returncode, 0, rendered.stdout)
                 self.assertIn(f"| {expected} |", rendered.stdout)
@@ -60,9 +61,13 @@ class PullRequestStates(Harness):
                 node = self.node(result, f"{HOME}#1")
                 self.assertEqual(node["status"], "wip")
                 self.assertEqual(node["priority_score"], 1010)
-                self.assertEqual([pr["number"] for pr in node["linked_open_prs"]], [10])
+                self.assertEqual([pr["number"] for pr in records(node["linked_open_prs"])], [10])
                 self.assertEqual(
-                    [pr["number"] for pr in result["source"]["untrusted_linked_prs"]], [11]
+                    [
+                        pr["number"]
+                        for pr in records(field(result, "source", "untrusted_linked_prs"))
+                    ],
+                    [11],
                 )
 
     def test_active_without_a_pr_stays_in_progress(self):

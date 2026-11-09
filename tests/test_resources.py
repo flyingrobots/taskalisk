@@ -1,10 +1,12 @@
 """Check Resources behavior through the public CLI."""
 
 from cli_fixture import HOME, Harness, fm, issue
+from fake_values import records, text
+from fixture_models import FakeState
 
 
 class Resources(Harness):
-    def frontier_state(self, extra_a, extra_b):
+    def frontier_state(self, extra_a: str, extra_b: str) -> FakeState:
         return {
             "home": HOME,
             "blocked_by": {},
@@ -14,12 +16,14 @@ class Resources(Harness):
             },
         }
 
-    def batch(self, state, *args):
+    def batch(self, state: FakeState, *args: str) -> list[str]:
         return [
-            b["id"]
-            for b in self.out(self.run_dag(state, "--from-github", *args))[
-                "conflict_free_frontier_batch"
-            ]
+            text(b["id"])
+            for b in records(
+                self.out(self.run_dag(state, "--from-github", *args))[
+                    "conflict_free_frontier_batch"
+                ]
+            )
         ]
 
     def test_no_resources_means_full_parallelism(self):
@@ -40,7 +44,7 @@ class Resources(Harness):
     def test_unknown_semaphore_capacity_is_exclusive(self):
         state = self.frontier_state(".meters: [gpu]", ".meters: [gpu]")
         r = self.out(self.run_dag(state, "--from-github"))
-        self.assertEqual(len(r["conflict_free_frontier_batch"]), 1)
+        self.assertEqual(len(records(r["conflict_free_frontier_batch"])), 1)
         self.assertEqual(r["semaphores_with_unknown_capacity_treated_as_1"], ["gpu"])
 
     def test_declared_semaphore_capacity_allows_parallel_slots(self):

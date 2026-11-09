@@ -1,6 +1,7 @@
 """Check DiscoveryTrust behavior through the public CLI."""
 
 from cli_fixture import ECHO, HOME, STRANGER, TrustFixture, fm, issue, plan_state
+from fake_values import field, fields, items, records
 
 
 class DiscoveryTrust(TrustFixture):
@@ -13,8 +14,12 @@ class DiscoveryTrust(TrustFixture):
         r = self.out(p)
         self.assertEqual(p.returncode, 0, r)
         self.assertNotIn(f"{HOME}#77", self.ids(r))
-        self.assertNotIn(f"{HOME}#77", [b["id"] for b in r["conflict_free_frontier_batch"]])
-        entry = next(u for u in r["source"]["untrusted_issues"] if u["id"] == f"{HOME}#77")
+        self.assertNotIn(
+            f"{HOME}#77", [b["id"] for b in records(r["conflict_free_frontier_batch"])]
+        )
+        entry = next(
+            u for u in records(field(r, "source", "untrusted_issues")) if u["id"] == f"{HOME}#77"
+        )
         self.assertEqual(entry["author"], STRANGER)
         self.assertNotIn("title", entry)
 
@@ -29,9 +34,11 @@ class DiscoveryTrust(TrustFixture):
         p = self.run_dag(state, "--from-github")
         r = self.out(p)
         self.assertEqual(p.returncode, 0, r)
-        self.assertIn(f"{HOME}#77", self.node(r, f"{HOME}#2")["open_parents"])
+        self.assertIn(f"{HOME}#77", items(self.node(r, f"{HOME}#2")["open_parents"]))
         self.assertTrue(self.node(r, f"{HOME}#77")["untrusted"])
-        self.assertNotIn(f"{HOME}#77", [b["id"] for b in r["conflict_free_frontier_batch"]])
+        self.assertNotIn(
+            f"{HOME}#77", [b["id"] for b in records(r["conflict_free_frontier_batch"])]
+        )
 
     def test_untrusted_editor_makes_a_trusted_issue_an_opaque_blocker(self):
         state = plan_state()
@@ -42,7 +49,7 @@ class DiscoveryTrust(TrustFixture):
         self.assertTrue(node["opaque"] and node["untrusted"])
         self.assertEqual(node["title"], "(untrusted issue)")
         self.assertEqual(self.node(r, f"{HOME}#2")["open_parents"], [f"{HOME}#1"])
-        self.assertNotIn(f"{HOME}#1", [b["id"] for b in r["conflict_free_frontier_batch"]])
+        self.assertNotIn(f"{HOME}#1", [b["id"] for b in records(r["conflict_free_frontier_batch"])])
 
     def test_null_edit_history_connection_exits_2(self):
         state = plan_state()
@@ -77,7 +84,7 @@ class DiscoveryTrust(TrustFixture):
         p = self.run_dag(state, "--from-github", "--root", f"{HOME}#1")
         r = self.out(p)
         self.assertEqual(p.returncode, 0, r)
-        self.assertNotIn(f"{HOME}#1", r["frontmatter"]["violations"])
+        self.assertNotIn(f"{HOME}#1", fields(field(r, "frontmatter", "violations")))
 
     def test_compare_mode_fails_closed_on_a_gh_error(self):
         state = plan_state()
@@ -110,7 +117,7 @@ class DiscoveryTrust(TrustFixture):
         p = self.run_dag(state, "--from-github")
         r = self.out(p)
         self.assertEqual(p.returncode, 0, r)
-        self.assertEqual(r["frontmatter"]["violations"], {})
+        self.assertEqual(field(r, "frontmatter", "violations"), {})
         self.assertEqual(self.node(r, f"{HOME}#2")["status"], "in-review")
         self.assertEqual(len([i for i in self.ids(r) if i.endswith("#2")]), 1)
 

@@ -1,6 +1,7 @@
 """Check RenderingTrust behavior through the public CLI."""
 
 from cli_fixture import BUNNY, ECHO, HOME, STRANGER, TrustFixture, fm, issue, plan_state
+from fake_values import field, records
 
 
 class RenderingTrust(TrustFixture):
@@ -24,7 +25,8 @@ class RenderingTrust(TrustFixture):
         self.assertEqual(p.returncode, 0, p.stdout[-400:])
         self.assertNotIn("SECRET STRANGER TITLE", p.stdout)
         self.assertEqual(
-            self.out(p)["source"]["not_planned_parents"][0]["title"], "(untrusted issue)"
+            records(field(self.out(p), "source", "not_planned_parents"))[0]["title"],
+            "(untrusted issue)",
         )
 
     def test_rendered_cells_escape_links_and_resource_pipes(self):

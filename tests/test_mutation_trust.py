@@ -1,6 +1,7 @@
 """Check MutationTrust behavior through the public CLI."""
 
 from cli_fixture import ECHO, HOME, STRANGER, TrustFixture, fm, issue, plan_state
+from fake_values import field
 
 
 class MutationTrust(TrustFixture):
@@ -13,8 +14,8 @@ class MutationTrust(TrustFixture):
         p = self.run_dag(state, "--from-github", "--add-edge", f"{ECHO}#6->{HOME}#2")
         r = self.out(p)
         self.assertEqual(p.returncode, 2, r)
-        self.assertTrue(r["mutation"]["rolled_back"])
-        self.assertEqual(self.current()["issues"][f"{HOME}#2"]["body"], before)
+        self.assertTrue(field(r, "mutation", "rolled_back"))
+        self.assertEqual(self.current_body(f"{HOME}#2"), before)
 
     def test_add_edge_aborts_when_a_trust_lookup_records_an_error(self):
         state = plan_state()
@@ -24,7 +25,7 @@ class MutationTrust(TrustFixture):
             state, "--from-github", "--add-edge", f"{ECHO}#6->{HOME}#2", "--trust-codeowners"
         )
         self.assertEqual(p.returncode, 2, p.stdout)
-        self.assertEqual(self.current()["issues"][f"{HOME}#2"]["body"], before)
+        self.assertEqual(self.current_body(f"{HOME}#2"), before)
         self.assertFalse(any("PATCH" in c for c in self.calls()))
 
     def test_add_edge_refuses_a_pull_request_child(self):
@@ -51,8 +52,8 @@ class MutationTrust(TrustFixture):
         )
         r = self.out(p)
         self.assertEqual(p.returncode, 2, r)
-        self.assertTrue(r["mutation"]["rolled_back"])
-        self.assertEqual(self.current()["issues"][f"{ECHO}#5"]["body"], before)
+        self.assertTrue(field(r, "mutation", "rolled_back"))
+        self.assertEqual(self.current_body(f"{ECHO}#5"), before)
 
     def test_remove_edge_to_an_out_of_scope_parent_is_allowed(self):
         state = plan_state()
@@ -68,7 +69,7 @@ class MutationTrust(TrustFixture):
             f"mallory/trap#1->{HOME}#1",
         )
         self.assertEqual(p.returncode, 0, p.stdout[-500:])
-        self.assertIn(f".blocked_by: [{ECHO}#5]", self.current()["issues"][f"{HOME}#1"]["body"])
+        self.assertIn(f".blocked_by: [{ECHO}#5]", self.current_body(f"{HOME}#1"))
 
     def test_add_edge_refuses_an_untrusted_child_without_writing(self):
         state = plan_state()
@@ -76,7 +77,7 @@ class MutationTrust(TrustFixture):
         before = state["issues"][f"{HOME}#2"]["body"]
         p = self.run_dag(state, "--from-github", "--add-edge", f"{ECHO}#6->{HOME}#2")
         self.assertEqual(p.returncode, 1, p.stdout)
-        self.assertEqual(self.current()["issues"][f"{HOME}#2"]["body"], before)
+        self.assertEqual(self.current_body(f"{HOME}#2"), before)
         self.assertFalse(any("PATCH" in c for c in self.calls()))
 
     def test_add_edge_refuses_a_parent_outside_the_scope(self):

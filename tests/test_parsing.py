@@ -5,6 +5,7 @@ import subprocess
 import sys
 
 from cli_fixture import HOME, SCRIPT, Harness
+from fake_values import field
 
 
 class Parsing(Harness):
@@ -24,4 +25,4 @@ class Parsing(Harness):
             [sys.executable, str(SCRIPT), "--verify-dag", str(spec)], capture_output=True, text=True
         )
         self.assertEqual(p.returncode, 0, p.stdout)
-        self.assertEqual(self.out(p)["metrics"]["critical_path"], [f"{HOME}#1", f"{HOME}#2"])
+        self.assertEqual(field(self.out(p), "metrics", "critical_path"), [f"{HOME}#1", f"{HOME}#2"])

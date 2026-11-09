@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import unittest
 
-from fake_values import fields, integer, items, text
+from fake_values import field, fields, integer, items, records, text
 
 
 class FakeValues(unittest.TestCase):
@@ -40,3 +40,31 @@ class FakeValues(unittest.TestCase):
             with self.subTest(value=value), self.assertRaisesRegex(TypeError, "fixture integer"):
                 integer(value)
         self.assertEqual([integer(-1), integer(0), integer(2)], [-1, 0, 2])
+
+    def test_records_refuse_bad_containers_and_later_rows(self) -> None:
+        """A valid first row must not hide a malformed later row."""
+        bad_arrays: tuple[object, ...] = (None, {}, "rows")
+        for value in bad_arrays:
+            with self.subTest(value=value), self.assertRaisesRegex(TypeError, "fixture array"):
+                records(value)
+        bad_rows: tuple[object, ...] = ([None], [{"id": "one"}, 2], [{1: "bad key"}])
+        for value in bad_rows:
+            with self.subTest(value=value), self.assertRaisesRegex(TypeError, "fixture object"):
+                records(value)
+        self.assertEqual(records([]), [])
+        self.assertEqual(
+            records([{"id": "one"}, {"body": [None]}]), [{"id": "one"}, {"body": [None]}]
+        )
+
+    def test_field_checks_each_container_and_requires_each_key(self) -> None:
+        """Missing or malformed intermediate fields cannot become an empty result."""
+        bad_objects: tuple[object, ...] = (None, {"source": []}, {"source": "text"})
+        for value in bad_objects:
+            with self.subTest(value=value), self.assertRaisesRegex(TypeError, "fixture object"):
+                field(value, "source", "issues")
+        missing_keys: tuple[object, ...] = ({}, {"source": {}})
+        for value in missing_keys:
+            with self.subTest(value=value), self.assertRaises(KeyError):
+                field(value, "source", "issues")
+        self.assertEqual(field({"source": {"issues": [None, 2]}}, "source", "issues"), [None, 2])
+        self.assertEqual(field([None, 2]), [None, 2])

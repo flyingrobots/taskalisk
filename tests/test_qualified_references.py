@@ -1,10 +1,15 @@
 """Check QualifiedReferences behavior through the public CLI."""
 
+from __future__ import annotations
+
+from subprocess import CompletedProcess
+
 from cli_fixture import BUNNY, ECHO, HOME, Harness, fm, plan_state
+from fake_values import field, items, text
 
 
 class QualifiedReferences(Harness):
-    def run_with(self, body_for_1):
+    def run_with(self, body_for_1: str) -> tuple[CompletedProcess[str], dict[str, object]]:
         state = plan_state()
         state["issues"][f"{HOME}#1"]["body"] = body_for_1
         p = self.run_dag(state, "--from-github", "--root", f"{HOME}#9")
@@ -15,8 +20,8 @@ class QualifiedReferences(Harness):
         self.assertEqual(p.returncode, 1, r)
         self.assertTrue(
             any(
-                "bare numbers are not allowed" in v
-                for v in r["frontmatter"]["violations"][f"{HOME}#1"]
+                "bare numbers are not allowed" in text(v)
+                for v in items(field(r, "frontmatter", "violations", f"{HOME}#1"))
             )
         )
 
@@ -24,7 +29,10 @@ class QualifiedReferences(Harness):
         p, r = self.run_with(fm("#1", blocked_by=[f"{ECHO}#5"]))
         self.assertEqual(p.returncode, 1, r)
         self.assertTrue(
-            any("must be owner/repo#N" in v for v in r["frontmatter"]["violations"][f"{HOME}#1"])
+            any(
+                "must be owner/repo#N" in text(v)
+                for v in items(field(r, "frontmatter", "violations", f"{HOME}#1"))
+            )
         )
 
     def test_retired_schema_is_invalid(self):
@@ -32,7 +40,12 @@ class QualifiedReferences(Harness):
             fm(f"{HOME}#1", blocked_by=[f"{ECHO}#5"]).replace("issue-dag/2", "issue-dag/1")
         )
         self.assertEqual(p.returncode, 1, r)
-        self.assertTrue(any("retired" in v for v in r["frontmatter"]["violations"][f"{HOME}#1"]))
+        self.assertTrue(
+            any(
+                "retired" in text(v)
+                for v in items(field(r, "frontmatter", "violations", f"{HOME}#1"))
+            )
+        )
 
     def test_bare_cli_references_are_rejected(self):
         for args in (["--add-edge", f"#5->{HOME}#2"], ["--root", "#9"]):
@@ -48,8 +61,8 @@ class QualifiedReferences(Harness):
         self.assertEqual(p.returncode, 1, r)
         self.assertTrue(
             any(
-                f"{ECHO}#6 moved to {BUNNY}#66" in v
-                for v in r["frontmatter"]["violations"][f"{HOME}#9"]
+                f"{ECHO}#6 moved to {BUNNY}#66" in text(v)
+                for v in items(field(r, "frontmatter", "violations", f"{HOME}#9"))
             )
         )
 

@@ -43,3 +43,15 @@ def integer(value: object) -> int:
         message = "fixture integer required"
         raise TypeError(message)
     return value
+
+
+def records(value: object) -> list[dict[str, object]]:
+    """Require an array of objects, preserving unknown member values."""
+    return [fields(item) for item in items(value)]
+
+
+def field(value: object, *keys: str) -> object:
+    """Read required object fields without inferring a schema for the leaf."""
+    for key in keys:
+        value = fields(value)[key]
+    return value

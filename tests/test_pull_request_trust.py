@@ -1,7 +1,10 @@
 """Check PullRequestTrust behavior through the public CLI."""
 
+from __future__ import annotations
+
 from cli_fixture import HOME, STRANGER, TrustFixture, closing, fm, issue, plan_state
-from fixture_models import FakePullRequest
+from fake_values import field, records
+from fixture_models import FakePrAuthor, FakePullRequest
 
 
 class PullRequestTrust(TrustFixture):
@@ -35,7 +38,9 @@ class PullRequestTrust(TrustFixture):
         r = self.out(self.run_dag(state, "--from-github"))
         self.assertEqual(self.node(r, f"{HOME}#2")["status"], "open")
         self.assertEqual(self.node(r, f"{HOME}#2")["linked_open_prs"], [])
-        self.assertEqual(r["source"]["untrusted_linked_prs"][0]["closes"], [f"{HOME}#2"])
+        self.assertEqual(
+            records(field(r, "source", "untrusted_linked_prs"))[0]["closes"], [f"{HOME}#2"]
+        )
 
     def test_same_repository_pr_by_a_trusted_author_marks_in_flight(self):
         state = plan_state()
@@ -52,10 +57,11 @@ class PullRequestTrust(TrustFixture):
         state["collaborators"] = {HOME: ["owner"]}
         r = self.out(self.run_dag(state, "--from-github"))
         self.assertEqual(self.node(r, f"{HOME}#2")["status"], "in-review")
-        self.assertEqual(r["source"]["untrusted_linked_prs"], [])
+        self.assertEqual(field(r, "source", "untrusted_linked_prs"), [])
 
     def test_same_repository_pr_by_an_untrusted_or_missing_author_is_untrusted(self):
-        for author in ({"login": STRANGER}, None):
+        authors: tuple[FakePrAuthor | None, ...] = ({"login": STRANGER}, None)
+        for author in authors:
             state = plan_state()
             pr: FakePullRequest = {
                 "number": 8,
@@ -70,7 +76,7 @@ class PullRequestTrust(TrustFixture):
             r = self.out(self.run_dag(state, "--from-github"))
             self.assertEqual(self.node(r, f"{HOME}#2")["status"], "open", author)
             self.assertEqual(self.node(r, f"{HOME}#2")["linked_open_prs"], [])
-            self.assertEqual(len(r["source"]["untrusted_linked_prs"]), 1)
+            self.assertEqual(len(records(field(r, "source", "untrusted_linked_prs"))), 1)
 
     def test_pr_without_trust_fields_is_untrusted(self):
         state = plan_state()
@@ -79,4 +85,4 @@ class PullRequestTrust(TrustFixture):
         ]
         r = self.out(self.run_dag(state, "--from-github"))
         self.assertEqual(self.node(r, f"{HOME}#2")["status"], "open")
-        self.assertEqual(len(r["source"]["untrusted_linked_prs"]), 1)
+        self.assertEqual(len(records(field(r, "source", "untrusted_linked_prs"))), 1)

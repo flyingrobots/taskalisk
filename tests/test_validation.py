@@ -1,6 +1,7 @@
 """Check Validation behavior through the public CLI."""
 
 from cli_fixture import ECHO, HOME, Harness, fm, plan_state
+from fake_values import field, fields, items, text
 
 
 class Validation(Harness):
@@ -17,14 +18,16 @@ class Validation(Harness):
                 body = body.replace(f"{field}: {value}", f"{field}: [{value}]")
                 self.assert_violation(body, f"{field} must be")
 
-    def assert_violation(self, body, needle):
+    def assert_violation(self, body: str, needle: str) -> None:
         state = plan_state()
         state["issues"][f"{HOME}#1"]["body"] = body
         p = self.run_dag(state, "--from-github", "--root", f"{HOME}#9")
         r = self.out(p)
         self.assertEqual(p.returncode, 1, r)
         self.assertTrue(
-            any(needle in v for v in r["frontmatter"]["violations"].get(f"{HOME}#1", [])),
+            any(
+                needle in text(v) for v in items(field(r, "frontmatter", "violations", f"{HOME}#1"))
+            ),
             r["frontmatter"],
         )
 
@@ -57,4 +60,4 @@ class Validation(Harness):
         )
         p = self.run_dag(state, "--from-github", "--root", f"{HOME}#9")
         self.assertEqual(p.returncode, 0, p.stdout)
-        self.assertIn(f"{HOME}#1", self.out(p)["frontmatter"]["warnings"])
+        self.assertIn(f"{HOME}#1", fields(field(self.out(p), "frontmatter", "warnings")))
