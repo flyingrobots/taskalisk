@@ -176,6 +176,22 @@ diagnostic output instead of laundering invalid fields into valid defaults.
 Typing input does not complete result typing, source-size or coverage adoption.
 The three local-admission modules each require the critical 95% floor.
 
+## Result typing
+
+`discovery_values` records admitted issue evidence, exclusion reasons and public
+provenance. Its empty failure variant accompanies recorded lookup errors and is
+never compiled. `graph_results` distinguishes a structural graph refusal from a
+computed plan. A computed plan may later acquire a false run status because of
+frontmatter violations or failed relationship checks; its diagnostic graph data
+must remain intact. Render only a computed plan whose run status is successful.
+
+Keep scalar and collection types through analysis, hashing and rendering instead
+of using `Any` between individually typed boundaries. Field-value unions retain
+invalid frontmatter values for error JSON. Workstream headings format their
+values as text; valid inputs retain the same rendering. Explicit field projection
+keeps container children out of the public excluded-container summary. These
+types neither establish approval nor alter issue #1's write/rollback contract.
+
 ## REST issue field admission
 
 `github_issue_values` admits the REST fields consumed by discovery and author

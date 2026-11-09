@@ -3,11 +3,22 @@
 from __future__ import annotations
 
 from collections import defaultdict, deque
-from typing import Any
 
 from .authorization import TrustPolicy
 from .authorization_values import TrustOptions
 from .defaults import PARKED_STATUS
+from .discovery_values import (
+    Container,
+    Discovery,
+    DiscoveryFailure,
+    DiscoveryResult,
+    NotPlannedParent,
+    OpaqueIssue,
+    RelationshipDrift,
+    UnmodeledIssue,
+    UntrustedIssue,
+    UntrustedPr,
+)
 from .frontmatter import parse_frontmatter, validate_frontmatter
 from .frontmatter_values import FrontmatterRecord
 from .github import (
@@ -29,9 +40,9 @@ UNTRUSTED_TITLE = "(untrusted issue)"
 
 def collect_frontmatter_dag(
     repo: str, roots: list[str], errors: list[dict[str, str]], trust: TrustOptions | None = None
-) -> dict[str, Any]:
+) -> Discovery:
     """Build (merged, nodes) from issue frontmatter, across repositories."""
-    empty: dict[str, Any] = {"merged": set(), "nodes": {}, "containers": [], "slug": None}
+    empty: DiscoveryFailure = {"merged": set(), "nodes": {}, "containers": [], "slug": None}
     slug = gh_repo_slug(repo, errors)
     if slug is None:
         return empty
@@ -77,7 +88,7 @@ def collect_frontmatter_dag(
 
     # A PR links a task only from a same-repository branch by a trusted author (C4).
     prs_by_issue: dict[IssueRef, list[LinkedPr]] = defaultdict(list)
-    untrusted_prs: list[dict[str, Any]] = []
+    untrusted_prs: list[UntrustedPr] = []
     for pr in prs:
         closes = pr["closes"]
         if not closes:
@@ -114,11 +125,11 @@ def collect_frontmatter_dag(
     records: dict[IssueRef, FrontmatterRecord] = {}
     violations: dict[str, list[str]] = {}
     warnings: dict[str, list[str]] = {}
-    unmodeled_seeds: list[dict[str, Any]] = []
-    untrusted: list[dict[str, Any]] = []
-    opaque: list[dict[str, Any]] = []
-    containers: list[dict[str, Any]] = []
-    not_planned: list[dict[str, Any]] = []
+    unmodeled_seeds: list[UnmodeledIssue] = []
+    untrusted: list[UntrustedIssue] = []
+    opaque: list[OpaqueIssue] = []
+    containers: list[Container] = []
+    not_planned: list[NotPlannedParent] = []
     while queue:
         ref = queue.popleft()
         if ref in seen:
@@ -322,8 +333,8 @@ def collect_frontmatter_dag(
 
 
 def compare_relationships(
-    repo: str, source: dict[str, Any], errors: list[dict[str, str]]
-) -> dict[str, Any]:
+    repo: str, source: DiscoveryResult, errors: list[dict[str, str]]
+) -> RelationshipDrift:
     """Drift between frontmatter edges and GitHub blocked_by relationships (a mirror)."""
     slug = source["slug"]
     only_fm: list[str] = []

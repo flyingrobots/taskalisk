@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from collections import defaultdict, deque
-from typing import Any
 
 from .defaults import (
     BLOCKED_STATUS,
@@ -20,6 +19,16 @@ from .defaults import (
     PRIORITY_PARKED_WEIGHT,
 )
 from .frontmatter_values import Meter
+from .graph_results import (
+    BatchNode,
+    GraphResult,
+    PlannedNode,
+    RedundantEdge,
+    SkippedNode,
+    SoftEdge,
+    StaleHint,
+    UnknownDependency,
+)
 from .graph_values import DependencyEntry, GraphNode, NormalizedDependency
 
 
@@ -69,7 +78,7 @@ def compile_and_analyze_dag(
     nodes: dict[str, GraphNode],
     min_confidence: float = DEFAULT_MIN_CONFIDENCE,
     capacities: dict[str, int] | None = None,
-) -> dict[str, Any]:
+) -> GraphResult:
     """Reduce hard dependencies, rank open tasks and allocate a resource-safe batch."""
     merged = set(merged)
     for nid, meta in nodes.items():
@@ -83,9 +92,9 @@ def compile_and_analyze_dag(
     raw_parents: dict[str, set[str]] = defaultdict(set)
     completed_parents: dict[str, list[str]] = defaultdict(list)
     edge_evidence: dict[tuple[str, str], str] = {}
-    soft_edges: list[dict[str, Any]] = []
-    unknown: list[dict[str, str]] = []
-    stale_hints: list[dict[str, str]] = []
+    soft_edges: list[SoftEdge] = []
+    unknown: list[UnknownDependency] = []
+    stale_hints: list[StaleHint] = []
 
     for nid in open_nodes:
         for raw_dep in nodes[nid].get("depends_on", nodes[nid].get("prerequisites", [])):
@@ -163,7 +172,7 @@ def compile_and_analyze_dag(
 
     reduced_children: dict[str, list[str]] = defaultdict(list)
     reduced_parents: dict[str, list[str]] = defaultdict(list)
-    redundant: list[dict[str, str]] = []
+    redundant: list[RedundantEdge] = []
     for u in open_nodes:
         children_u = sorted(raw_children.get(u, set()) & open_set)
         for v in children_u:
@@ -203,7 +212,7 @@ def compile_and_analyze_dag(
     max_edges = (n_open * (n_open - 1)) / 2 if n_open > 1 else 1
     density = round(e_red / max_edges, 4) if n_open > 1 else 0.0
 
-    waves: dict[int, list[dict[str, Any]]] = defaultdict(list)
+    waves: dict[int, list[PlannedNode]] = defaultdict(list)
     isolated: list[str] = []
     for nid in open_nodes:
         meta = nodes[nid]
@@ -255,8 +264,8 @@ def compile_and_analyze_dag(
     unknown_capacity: set[str] = set()
     held: set[str] = set()
     used: dict[str, int] = defaultdict(int)
-    batch: list[dict[str, Any]] = []
-    skipped: list[dict[str, Any]] = []
+    batch: list[BatchNode] = []
+    skipped: list[SkippedNode] = []
     for cand in frontier:
         if cand["status"] == BLOCKED_STATUS or cand.get("opaque"):
             continue  # hand-set block or unmodeled issue: never dispatched

@@ -4,15 +4,17 @@ from __future__ import annotations
 
 import re
 from collections import defaultdict
-from typing import Any
 
 from .defaults import MERMAID_TITLE_MAX
+from .discovery_values import SourceDetails
+from .frontmatter_values import Meter
+from .graph_results import GraphPlan, PlannedNode
 from .issue_refs import id_sort_key
 
 
-def render_mermaid_flowchart(dag_result: dict[str, Any]) -> str:
+def render_mermaid_flowchart(dag_result: GraphPlan) -> str:
     """Render task nodes and reduced edges with neutralized diagram labels."""
-    waves: dict[str, list[dict[str, Any]]] = dag_result.get("waves", {})
+    waves = dag_result.get("waves", {})
 
     def safe_id(raw: str) -> str:
         return "N_" + re.sub(r"[^A-Za-z0-9_]", "_", raw)
@@ -57,14 +59,14 @@ def _issue_link(nid: str, url: str | None) -> str:
     return f"[{nid}]({url})" if url else nid
 
 
-def _resources_cell(holds: list[str], meters: list[dict[str, Any]], empty: str) -> str:
+def _resources_cell(holds: list[str], meters: list[Meter], empty: str) -> str:
     cells = [f"`{_md_cell(k)}`" for k in holds] + [
         "`" + _md_cell(str(m["name"])) + "*" + str(m["slots"]) + "`" for m in meters
     ]
     return ", ".join(cells) or empty
 
 
-def _md_cell(text: str) -> str:
+def _md_cell(text: object) -> str:
     """Issue text in a rendered table cell: no pipes, no HTML, no links, no line breaks (C5)."""
     return (
         str(text)
@@ -77,11 +79,11 @@ def _md_cell(text: str) -> str:
     )
 
 
-def render_roadmap_block(result: dict[str, Any]) -> str:
+def render_roadmap_block(result: GraphPlan) -> str:
     """Render the computed ROADMAP sections. Pure function of the compiled DAG."""
     m = result["metrics"]
-    src = result.get("source", {})
-    waves: dict[str, list[dict[str, Any]]] = result["waves"]
+    src: SourceDetails = result.get("source", {})
+    waves = result["waves"]
     by_id = {n["id"]: n for items in waves.values() for n in items}
     out: list[str] = [ROADMAP_BEGIN, ""]
     out += [
@@ -126,9 +128,9 @@ def render_roadmap_block(result: dict[str, Any]) -> str:
             )
         out.append("")
     out += ["## Task Checklist by Workstream (`area:*`)", ""]
-    streams: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    streams: dict[str, list[PlannedNode]] = defaultdict(list)
     for n in by_id.values():
-        streams[n.get("workstream") or "unassigned"].append(n)
+        streams[str(n.get("workstream") or "unassigned")].append(n)
     for ws in sorted(streams):
         out += [f"### {ws}", ""]
         for n in sorted(streams[ws], key=lambda x: id_sort_key(x["id"])):

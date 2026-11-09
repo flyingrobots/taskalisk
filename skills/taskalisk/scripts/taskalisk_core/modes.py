@@ -7,9 +7,11 @@ import json
 from .authorization import TrustPolicy
 from .authorization_values import TrustOptions
 from .discovery import collect_frontmatter_dag, compare_relationships
+from .discovery_values import SourceDetails
 from .frontmatter import FM_SCHEMA, parse_frontmatter, rewrite_blocked_by, validate_frontmatter
 from .github import gh_get_issue, gh_issue_edit_history, gh_patch_body, gh_repo_slug, issue_meta
 from .graph import compile_and_analyze_dag
+from .graph_results import FrontmatterReport
 from .issue_refs import IssueRef, node_id, parse_edge_arg
 from .mutation_values import EdgeMutation, EdgeUndo
 from .output import emit, with_artifact_hash
@@ -209,7 +211,7 @@ def compile_from_github(
         }
 
     source = collect_frontmatter_dag(repo, roots, errors, trust)
-    if errors:
+    if errors or "trust" not in source:
         if mutation and mutation["type"] == "add_blocked_by" and undo and undo["changed"]:
             # The recompile that would have caught a cycle did not run; do not leave the unchecked edge on GitHub.
             rb_errors: list[dict[str, str]] = []
@@ -234,14 +236,15 @@ def compile_from_github(
     result = compile_and_analyze_dag(
         source["merged"], source["nodes"], min_confidence=min_confidence, capacities=capacities
     )
-    result["source"] = {
+    details: SourceDetails = {
         "kind": "issue-frontmatter",
         "schema": FM_SCHEMA,
         "repository": source.get("slug"),
         "roots": roots,
         "trust": source["trust"],
         "containers_excluded": [
-            {k: c[k] for k in ("id", "number", "title")} for c in source["containers"]
+            {"id": c["id"], "number": c["number"], "title": c["title"]}
+            for c in source["containers"]
         ],
         "unmodeled_open_issues": source["unmodeled_open_issues"],
         "untrusted_issues": source["untrusted_issues"],
@@ -249,11 +252,13 @@ def compile_from_github(
         "opaque_nodes": source["opaque_nodes"],
         "not_planned_parents": source["not_planned_parents"],
     }
-    result["frontmatter"] = {
+    result["source"] = details
+    frontmatter: FrontmatterReport = {
         "violating_issues": len(source["violations"]),
         "violations": source["violations"],
         "warnings": source["warnings"],
     }
+    result["frontmatter"] = frontmatter
     if source["violations"] and result.get("ok"):
         result["ok"] = False
         result["error"] = f"{len(source['violations'])} issue(s) have invalid frontmatter"
@@ -277,11 +282,9 @@ def compile_from_github(
     ):
         # Restore the child's body so a cycle never persists in the truth source, whatever made the run fail.
         rb_errors: list[dict[str, str]] = []
-        result["mutation"]["rolled_back"] = gh_patch_body(
-            repo, undo["child"], undo["old_body"], rb_errors
-        )
+        mutation["rolled_back"] = gh_patch_body(repo, undo["child"], undo["old_body"], rb_errors)
         if rb_errors:
-            result["mutation"]["rollback_errors"] = rb_errors
+            mutation["rollback_errors"] = rb_errors
 
     code = emit(with_artifact_hash(result), emit_mermaid, emit_roadmap)
     return 2 if rel_errors else code
