@@ -1,0 +1,58 @@
+[project]
+name = "taskalisk"
+version = "0.0.0"
+description = "Compile trusted issue frontmatter into a precedence DAG"
+requires-python = ">=3.9"
+dependencies = []
+
+[tool.uv]
+package = false
+
+[dependency-groups]
+dev = [
+  "coverage[toml]==7.10.7",
+  "hypothesis==6.135.26",
+  "pyright[nodejs]==1.1.414",
+  "ruff==0.17.4",
+]
+
+[tool.ruff]
+target-version = "py39"
+line-length = 100
+preview = false
+
+[tool.ruff.lint]
+select = [
+  "E4", "E7", "E9", "F", "I", "UP", "B", "SIM", "C4", "C90", "N", "S",
+  "BLE", "A", "ARG", "RUF", "D", "ANN", "RET", "TRY", "PERF", "FBT", "TID",
+  "ICN", "PT", "T20", "ASYNC", "PLR0911", "PLR0912", "PLR0913", "PLR0915", "PLW0120",
+]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.mccabe]
+max-complexity = 10
+
+[tool.ruff.lint.pylint]
+max-args = 5
+max-branches = 10
+max-statements = 60
+
+[tool.pyright]
+include = ["skills/taskalisk/scripts", "tests"]
+typeCheckingMode = "strict"
+pythonVersion = "3.9"
+venvPath = "."
+venv = ".venv"
+
+[tool.coverage.run]
+branch = true
+source = ["skills/taskalisk/scripts", "tests"]
+parallel = true
+patch = ["subprocess"]
+relative_files = true
+
+[tool.coverage.report]
+show_missing = true
+precision = 2
