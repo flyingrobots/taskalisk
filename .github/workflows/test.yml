@@ -23,7 +23,6 @@ jobs:
     env:
       UV_PYTHON: ${{ matrix.python }}
       UV_PYTHON_DOWNLOADS: never
-      UV_CACHE_DIR: ${{ runner.temp }}/taskalisk-uv-cache
     strategy:
       fail-fast: false
       max-parallel: 2
@@ -47,10 +46,16 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
       - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        env:
+          UV_CACHE_DIR: ${{ runner.temp }}/taskalisk-uv-cache
         with:
           version: '0.12.19'
           enable-cache: false
       - name: Prepare locked verification environment
+        env:
+          UV_CACHE_DIR: ${{ runner.temp }}/taskalisk-uv-cache
         run: uv sync --locked --no-editable --group dev
       - name: Run offline suite
+        env:
+          UV_CACHE_DIR: ${{ runner.temp }}/taskalisk-uv-cache
         run: uv run --no-sync python -W error -m unittest discover -s tests
