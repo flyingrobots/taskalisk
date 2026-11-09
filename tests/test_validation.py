@@ -1,0 +1,47 @@
+"""Check Validation behavior through the public CLI."""
+
+from cli_fixture import ECHO, HOME, Harness, fm, plan_state
+
+
+class Validation(Harness):
+    def assert_violation(self, body, needle):
+        state = plan_state()
+        state["issues"][f"{HOME}#1"]["body"] = body
+        p = self.run_dag(state, "--from-github", "--root", f"{HOME}#9")
+        r = self.out(p)
+        self.assertEqual(p.returncode, 1, r)
+        self.assertTrue(
+            any(needle in v for v in r["frontmatter"]["violations"].get(f"{HOME}#1", [])),
+            r["frontmatter"],
+        )
+
+    def test_unknown_dot_key_fails(self):
+        self.assert_violation(
+            fm(f"{HOME}#1", extra=f".blockedby: [{HOME}#2]"), "unknown key .blockedby"
+        )
+
+    def test_copied_frontmatter_with_wrong_id_fails(self):
+        self.assert_violation(fm(f"{HOME}#2", blocked_by=[f"{ECHO}#5"]), "does not name this issue")
+
+    def test_task_without_blocked_by_fails(self):
+        self.assert_violation(
+            f"```yaml\n.dag: issue-dag/2\n.id: {HOME}#1\n.kind: task\n.type: feature\n```\n",
+            "needs .blocked_by",
+        )
+
+    def test_container_as_blocker_fails(self):
+        self.assert_violation(
+            fm(f"{HOME}#1", blocked_by=[f"{HOME}#9"]), f"names container {HOME}#9"
+        )
+
+    def test_unparseable_line_fails(self):
+        self.assert_violation(fm(f"{HOME}#1", extra="  nested:\n    - x"), "not 'key: value'")
+
+    def test_large_size_is_a_warning_only(self):
+        state = plan_state()
+        state["issues"][f"{HOME}#1"]["body"] = fm(
+            f"{HOME}#1", blocked_by=[f"{ECHO}#5"], extra=".size_hours: 12"
+        )
+        p = self.run_dag(state, "--from-github", "--root", f"{HOME}#9")
+        self.assertEqual(p.returncode, 0, p.stdout)
+        self.assertIn(f"{HOME}#1", self.out(p)["frontmatter"]["warnings"])
