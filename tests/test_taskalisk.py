@@ -308,14 +308,16 @@ class PullRequestStates(Harness):
         self.assertEqual(node["priority_score"], 1010)
 
     def test_missing_or_invalid_draft_state_fails_closed(self):
-        for value in [None, "false", 0]:
-            with self.subTest(value=value):
-                state = self.state_with_prs([value])
-                if value is None:
-                    del state["prs"][0]["isDraft"]
-                p = self.run_dag(state, "--from-github")
-                self.assertEqual(p.returncode, 2, p.stdout)
-                self.assertIn("isDraft", p.stdout)
+        for prefix in [[], [True]]:
+            for value in [None, "false", 0]:
+                with self.subTest(prefix=prefix, value=value):
+                    state = self.state_with_prs([*prefix, value])
+                    if value is None:
+                        del state["prs"][-1]["isDraft"]
+                    p = self.run_dag(state, "--from-github")
+                    self.assertEqual(p.returncode, 2, p.stdout)
+                    self.assertIn("isDraft", p.stdout)
+                    self.assertNotIn("waves", self.out(p))
 
 
 class Mutation(Harness):
