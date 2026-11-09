@@ -216,6 +216,16 @@ area: free-form notes have no prefix
    in the ROADMAP status column and wave checklist. Without a trusted PR,
    `.status: active` remains `in-progress`. A missing or non-boolean `isDraft`
    on a trusted linked PR fails the run with exit `2`.
+   PR discovery queries the home repository and each other discovered
+   repository containing a trusted open task, once per repository. It uses
+   the same author, fork and draft checks everywhere. Linked and rejected
+   PR records include `repository`, so equal PR numbers remain distinct.
+   A failed, malformed or limit-filled remote inventory exits `2`; it never
+   makes unfinished work appear idle. PR references do not expand the issue
+   closure or trigger queries outside its trusted scope.
+   Recoverable branches are inspected only in the local home checkout;
+   `source.recoverable_branches_repository` names that repository. An empty
+   remote `recoverable_branches` list means those branches were not inspected.
    `.status: parked` (started, stopped, recoverable branch exists) scores
    +500: resuming beats restarting, but in-flight work still ranks first.
    Output includes `source.trust` (the scope and allowlists in force),
@@ -228,7 +238,7 @@ area: free-form notes have no prefix
    task is never adopted, so if the work is wanted a maintainer with write
    access brings it onto a same-repository branch under their own name. PR
    authors are trusted by the same rule as issue authors, so the token needs
-   push access to the home repository for the permission lookups to run.
+   push access to each inventoried PR repository for permission lookups to run.
    Read `source.untrusted_issues` on every run: a legitimate
    contribution there needs triage by a trusted person, never frontmatter
    added on the stranger's behalf.
