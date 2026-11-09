@@ -78,7 +78,7 @@ def required_files(root: Path) -> list[str]:
 
 def floor_for(path: str) -> int:
     """Assign critical module families 95%, and other maintained Python 90%."""
-    if path.startswith("tools/check_"):
+    if path.startswith("tools/"):
         return 95
     stem = Path(path).stem
     critical = path.startswith(CORE) and any(

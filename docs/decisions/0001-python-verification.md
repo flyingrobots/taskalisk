@@ -94,9 +94,63 @@ they do not waive typing, coverage, source limits or behavioral checks.
 | Ruff T201, marked coverage-checker prints | These lines intentionally emit CLI diagnostics. Unintended payload disclosure remains a review concern. | CLI tests assert specific failures; output contains coverage paths and counts. | Re-review when the output contract changes. |
 | Ruff S603, `process_capture.run_limited` | Internal callers supply executable argument vectors without a shell. A compromised executable or PATH remains outside the I/O guard's boundary. | Real local-process tests exercise bounded I/O, refusal and cleanup. | Re-review when command producers or executable resolution change. |
 | Ruff S603, `FakeGh.run_fake` | The test invokes the fixed Python interpreter and owned fake-provider file, without a shell. A change to either path would change this assumption. | Provider-contract tests use a five-second deadline and check pagination, termination and invalid fixture limits. | Re-review when command construction or fixture ownership changes. |
+| Ruff S603, `StructureScan.test_cli_emits_json_and_exit_status_for_both_control_and_violation` | The interpreter and checker module are fixed; only the owned fixture root varies, without a shell. Module resolution remains part of the trusted checkout boundary. | Real CLI controls check successful and rejected JSON/exit results with a ten-second deadline. | Re-review when command construction, module resolution or fixture ownership changes. |
 
 The machine-readable records in `exceptions.json` own identifiers and expiry.
 Registry validation is pending under #22; the file alone is not enforcement.
+
+## Source measurements
+
+Run `.venv/bin/python -m tools.check_structure` from the repository root to emit
+JSON measurements, source hashes and exceeded bounds. Taskalisk maintainers own
+the check. It scans `.py` and `.pyi` files in all three maintained roots:
+`skills/taskalisk/scripts`, `tests` and `tools`. Missing roots, an empty inventory,
+more than 1,000 files, unreadable sources or syntax newer than Python 3.9 fail.
+Directory enumeration propagates errors and refuses linked subtrees instead of
+silently omitting them. Visit at most 1,000 directories per root. This bounds
+visited directories, not the standard library's allocation for one directory
+listing; execution resource guards remain a separate obligation.
+Read only non-symlink regular UTF-8 files, with a one-MiB ceiling per source.
+These are local checkout observations, not an atomic filesystem snapshot or a
+confinement boundary. Candidate evidence must still match the source it checks.
+
+`source_inventory` owns bounded discovery and file reads. `source_lines` counts
+nonblank physical lines carrying code or literal content; real comments do not
+count, but a hash inside a string does. Logical function-body lines terminate at
+a Python logical newline or a semicolon. Continuation wrapping does not add lines,
+and an empty trailing semicolon does not add a statement. Exclude actual leading
+docstrings by token span. Include nested declarations and their bodies in the
+outer function's source cost; measure those functions separately as well.
+Normalize Python's LF, CRLF and CR line endings for analysis, retaining the
+original bytes' hash. Convert tokenizer character columns to AST UTF-8 byte
+columns before comparing spans. Unicode separators inside literals remain data.
+
+`source_control` counts syntactic nesting of control suites, conditional
+expressions and comprehension generators. Sibling `elif` alternatives and the
+handlers/cleanup of one `try` stay at the same depth. Each comprehension generator
+adds one level; its filters do not add a suite. Nested declarations begin a new
+control-depth scope. Count every parameter kind, excluding conventional `self`
+or `cls` only on a non-static method. Inspect explicit tuple result alternatives
+and direct fixed tuple annotations, including quoted annotations. Homogeneous
+variadic tuple annotations describe collections. Type aliases, inferred call
+results and decorator aliases remain semantic review boundaries; this check does
+not perform type inference or replace strict typing. Ruff C901 separately owns
+cyclomatic complexity.
+
+`source_structure` assembles function measurements; `structure_limits` applies
+the bounds. Files above 300 lines require locality review, and the 500-line
+production / 750-line test ceilings are unconditional. The 200-line file target
+is not a hard ceiling. Functions above 40 logical lines need review; above 60
+exceed the limit. Other maxima are nesting three, five semantic parameters and
+three anonymous tuple fields. Reports identify the path, symbol, source line,
+observed value and bound. All findings currently refuse the scan: approved
+exception/review matching and CI evidence wiring remain pending under #22.
+
+The tools directory now receives the critical 95% statement and branch floors,
+including helpers whose filenames do not begin with `check_`. Passing the source
+checker does not establish coverage, rule-registry freshness or complete quality
+adoption. Boundary fixtures and deliberate-fault evidence calibrate the checker;
+its passing fixture is distinct from the repository's still-failing adoption scan.
 
 ## Command ownership
 

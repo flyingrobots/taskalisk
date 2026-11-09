@@ -96,6 +96,22 @@
       "tracking": "https://github.com/flyingrobots/taskalisk/issues/22",
       "expires": "2027-02-08",
       "review_condition": "Command construction or fixture ownership changes"
+    },
+    {
+      "id": "PY-STRUCTURE-ARGV",
+      "rule": "PY-SUPPRESSIONS",
+      "diagnostic": "S603",
+      "path": "tests/test_structure_scan.py",
+      "symbol": "StructureScan.test_cli_emits_json_and_exit_status_for_both_control_and_violation",
+      "mechanism": "noqa",
+      "reason": "The interpreter and checker module are fixed; only an owned fixture root varies, without a shell.",
+      "risk": "Changing interpreter/module resolution or fixture ownership could invalidate the execution boundary.",
+      "compensating_check": "Real CLI passing and rejecting controls with a ten-second deadline and exact JSON/exit assertions",
+      "owner": "Taskalisk maintainers",
+      "approver": "Codex under James's delegated decisions",
+      "tracking": "https://github.com/flyingrobots/taskalisk/issues/22",
+      "expires": "2027-02-08",
+      "review_condition": "Command construction, module resolution or fixture ownership changes"
     }
   ]
 }

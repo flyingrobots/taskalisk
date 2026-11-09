@@ -133,11 +133,13 @@ class CoverageGate(unittest.TestCase):
 
     def test_validation_tools_receive_the_critical_floor(self) -> None:
         """The gate itself must meet the validation-component coverage requirement."""
-        path = "tools/check_coverage.py"
         (self.root / "tools").mkdir()
-        (self.root / path).write_text("pass\n", encoding="utf-8")
-        self.summaries[path] = counters(94, 100)
-        self.assert_refused(self.report(), f"{path}: statements 94/100 below 95%")
+        for name in ("check_coverage", "source_structure", "structure_limits"):
+            path = f"tools/{name}.py"
+            (self.root / path).write_text("pass\n", encoding="utf-8")
+            self.summaries[path] = counters(94, 100)
+            self.assert_refused(self.report(), f"{path}: statements 94/100 below 95%")
+            self.summaries[path] = counters()
 
     def test_rounded_percentage_cannot_meet_a_floor(self) -> None:
         """A value rounded to 95.00% still fails when its exact ratio is lower."""
