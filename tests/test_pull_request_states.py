@@ -10,6 +10,8 @@ from fixture_models import FakePrState
 
 
 class PullRequestStates(Harness):
+    """Derive task status and priority only from admitted PR review states."""
+
     def state_with_prs(self, drafts: Sequence[object], extra: str = "") -> FakePrState:
         """Supply explicit PR states, including malformed states for refusal tests."""
         return {
@@ -32,7 +34,8 @@ class PullRequestStates(Harness):
             ],
         }
 
-    def test_trusted_pr_states_keep_priority_and_render(self):
+    def test_trusted_pr_states_keep_priority_and_render(self) -> None:
+        """Trusted PRs retain the expected status, priority and rendered state."""
         for drafts, expected in [
             ([True], "wip"),
             ([False], "in-review"),
@@ -52,7 +55,8 @@ class PullRequestStates(Harness):
                 self.assertIn(f"| {expected} |", rendered.stdout)
                 self.assertIn(f"({expected})", rendered.stdout)
 
-    def test_untrusted_ready_pr_does_not_promote_a_trusted_draft(self):
+    def test_untrusted_ready_pr_does_not_promote_a_trusted_draft(self) -> None:
+        """Untrusted ready PR does not promote a trusted draft."""
         for foreign, author in [(True, "owner"), (False, STRANGER)]:
             with self.subTest(foreign=foreign, author=author):
                 state = self.state_with_prs([True, False])
@@ -74,14 +78,16 @@ class PullRequestStates(Harness):
                     [11],
                 )
 
-    def test_active_without_a_pr_stays_in_progress(self):
+    def test_active_without_a_pr_stays_in_progress(self) -> None:
+        """An active task without a linked PR retains its in-progress status."""
         p = self.run_dag(self.state_with_prs([], ".status: active"), "--from-github")
         self.assertEqual(p.returncode, 0, p.stdout)
         node = self.node(self.out(p), f"{HOME}#1")
         self.assertEqual(node["status"], "in-progress")
         self.assertEqual(node["priority_score"], 1010)
 
-    def test_missing_or_invalid_draft_state_fails_closed(self):
+    def test_missing_or_invalid_draft_state_fails_closed(self) -> None:
+        """Missing or invalid draft state fails closed."""
         for prefix in [[], [True]]:
             for value in [None, "false", 0]:
                 with self.subTest(prefix=prefix, value=value):

@@ -5,7 +5,10 @@ from fake_values import field, fields, items, records
 
 
 class DiscoveryTrust(TrustFixture):
-    def test_untrusted_seed_is_listed_and_never_a_node(self):
+    """Refuse incomplete trust evidence and contain untrusted graph contributions."""
+
+    def test_untrusted_seed_is_listed_and_never_a_node(self) -> None:
+        """Untrusted seed is listed and never a node."""
         state = plan_state()
         state["issues"][f"{HOME}#77"] = issue(
             177, "Free money", fm(f"{HOME}#77"), options={"author": STRANGER, "association": "NONE"}
@@ -23,7 +26,8 @@ class DiscoveryTrust(TrustFixture):
         self.assertEqual(entry["author"], STRANGER)
         self.assertNotIn("title", entry)
 
-    def test_untrusted_seed_referenced_by_a_trusted_task_blocks_it(self):
+    def test_untrusted_seed_referenced_by_a_trusted_task_blocks_it(self) -> None:
+        """Untrusted seed referenced by a trusted task blocks it."""
         state = plan_state()
         state["issues"][f"{HOME}#77"] = issue(
             177, "Stranger", fm(f"{HOME}#77"), options={"author": STRANGER, "association": "NONE"}
@@ -40,7 +44,8 @@ class DiscoveryTrust(TrustFixture):
             f"{HOME}#77", [b["id"] for b in records(r["conflict_free_frontier_batch"])]
         )
 
-    def test_untrusted_editor_makes_a_trusted_issue_an_opaque_blocker(self):
+    def test_untrusted_editor_makes_a_trusted_issue_an_opaque_blocker(self) -> None:
+        """Untrusted editor makes a trusted issue an opaque blocker."""
         state = plan_state()
         state["issues"][f"{HOME}#1"]["editors"] = ["owner", STRANGER]
         r = self.out(self.run_dag(state, "--from-github", "--root", f"{HOME}#9"))
@@ -51,25 +56,29 @@ class DiscoveryTrust(TrustFixture):
         self.assertEqual(self.node(r, f"{HOME}#2")["open_parents"], [f"{HOME}#1"])
         self.assertNotIn(f"{HOME}#1", [b["id"] for b in records(r["conflict_free_frontier_batch"])])
 
-    def test_null_edit_history_connection_exits_2(self):
+    def test_null_edit_history_connection_exits_2(self) -> None:
+        """Null edit history connection exits 2."""
         state = plan_state()
         state["graphql_null_edits"] = True
         p = self.run_dag(state, "--from-github", "--root", f"{HOME}#9")
         self.assertEqual(p.returncode, 2, p.stdout)
 
-    def test_wrong_shape_issue_response_exits_2(self):
+    def test_wrong_shape_issue_response_exits_2(self) -> None:
+        """Wrong shape issue response exits 2."""
         state = plan_state()
         state["issue_get_returns_list"] = True
         p = self.run_dag(state, "--from-github", "--root", f"{HOME}#9")
         self.assertEqual(p.returncode, 2, p.stdout)
 
-    def test_wrong_shape_listing_page_exits_2(self):
+    def test_wrong_shape_listing_page_exits_2(self) -> None:
+        """Wrong shape listing page exits 2."""
         state = plan_state()
         state["issues_list_returns_object"] = True
         p = self.run_dag(state, "--from-github")
         self.assertEqual(p.returncode, 2, p.stdout)
 
-    def test_stranger_seed_costs_no_permission_lookup(self):
+    def test_stranger_seed_costs_no_permission_lookup(self) -> None:
+        """Stranger seed costs no permission lookup."""
         state = plan_state()
         state["issues"][f"{HOME}#77"] = issue(
             177, "Flood", fm(f"{HOME}#77"), options={"author": STRANGER, "association": "NONE"}
@@ -77,7 +86,8 @@ class DiscoveryTrust(TrustFixture):
         self.run_dag(state, "--from-github")
         self.assertFalse(any("collaborators/mallory" in " ".join(c) for c in self.calls()))
 
-    def test_mis_cased_reference_is_not_reported_as_transferred(self):
+    def test_mis_cased_reference_is_not_reported_as_transferred(self) -> None:
+        """Casing differences do not report an issue as transferred."""
         state = plan_state()
         state["issues"][f"{HOME}#1"]["body"] = fm(f"{HOME}#1", blocked_by=["FlyingRobots/Echo#5"])
         state["issues"]["FlyingRobots/Echo#5"] = state["issues"].pop(f"{ECHO}#5")
@@ -86,13 +96,15 @@ class DiscoveryTrust(TrustFixture):
         self.assertEqual(p.returncode, 0, r)
         self.assertNotIn(f"{HOME}#1", fields(field(r, "frontmatter", "violations")))
 
-    def test_compare_mode_fails_closed_on_a_gh_error(self):
+    def test_compare_mode_fails_closed_on_a_gh_error(self) -> None:
+        """A failed GitHub dependency lookup makes comparison exit 2."""
         state = plan_state()
         state["blocked_by_fail"] = True
         p = self.run_dag(state, "--from-github", "--root", f"{HOME}#9", "--compare-relationships")
         self.assertEqual(p.returncode, 2, p.stdout)
 
-    def test_home_owner_with_capitals_compiles_and_links_prs(self):
+    def test_home_owner_with_capitals_compiles_and_links_prs(self) -> None:
+        """Mixed-case home repository names still resolve and link the same task."""
         state = plan_state()
         state["home"] = "FlyingRobots/Geordi"
         state["issues"] = {
@@ -123,7 +135,8 @@ class DiscoveryTrust(TrustFixture):
         self.assertEqual(self.node(r, f"{HOME}#2")["status"], "in-review")
         self.assertEqual(len([i for i in self.ids(r) if i.endswith("#2")]), 1)
 
-    def test_stranger_seed_costs_no_edit_history_query(self):
+    def test_stranger_seed_costs_no_edit_history_query(self) -> None:
+        """Stranger seed costs no edit history query."""
         state = plan_state()
         state["issues"][f"{HOME}#77"] = issue(
             177, "Flood", fm(f"{HOME}#77"), options={"author": STRANGER, "association": "NONE"}
@@ -134,7 +147,8 @@ class DiscoveryTrust(TrustFixture):
         ]
         self.assertEqual(graphql_calls, [])
 
-    def test_parsed_body_is_the_one_whose_editors_were_checked(self):
+    def test_parsed_body_is_the_one_whose_editors_were_checked(self) -> None:
+        """Parsed body is the one whose editors were checked."""
         state = plan_state()
         state["issues"][f"{HOME}#2"]["graphql_body"] = fm(
             f"{HOME}#2", blocked_by=[f"{HOME}#1", f"{ECHO}#6"]
@@ -142,7 +156,8 @@ class DiscoveryTrust(TrustFixture):
         r = self.out(self.run_dag(state, "--from-github"))
         self.assertEqual(self.node(r, f"{HOME}#2")["open_parents"], [f"{ECHO}#6", f"{HOME}#1"])
 
-    def test_missing_cursor_with_another_page_exits_2(self):
+    def test_missing_cursor_with_another_page_exits_2(self) -> None:
+        """Missing cursor with another page exits 2."""
         state = plan_state()
         state["edits_page_size"] = 1
         state["graphql_no_cursor"] = True
@@ -150,7 +165,8 @@ class DiscoveryTrust(TrustFixture):
         p = self.run_dag(state, "--from-github", "--root", f"{HOME}#9")
         self.assertEqual(p.returncode, 2, p.stdout)
 
-    def test_trust_owner_widens_the_scope(self):
+    def test_trust_owner_widens_the_scope(self) -> None:
+        """The explicit trust-owner option admits references owned by that additional owner."""
         state = plan_state()
         state["issues"][f"{HOME}#1"]["body"] = fm(f"{HOME}#1", blocked_by=["partner/lib#1"])
         state["issues"]["partner/lib#1"] = issue(
@@ -164,7 +180,8 @@ class DiscoveryTrust(TrustFixture):
         self.assertEqual(p.returncode, 0, r)
         self.assertIn("partner/lib#1", self.ids(r))
 
-    def test_untrusted_root_is_listed_not_a_node(self):
+    def test_untrusted_root_is_listed_not_a_node(self) -> None:
+        """An untrusted explicit root appears in the exclusion report without a graph node."""
         state = plan_state()
         state["issues"][f"{HOME}#77"] = issue(
             177, "Stranger", fm(f"{HOME}#77"), options={"author": STRANGER, "association": "NONE"}
@@ -175,12 +192,14 @@ class DiscoveryTrust(TrustFixture):
         self.assertEqual(self.ids(r), [])
         self.assertEqual(self.untrusted_ids(r), [f"{HOME}#77"])
 
-    def test_root_outside_the_scope_is_refused(self):
+    def test_root_outside_the_scope_is_refused(self) -> None:
+        """Root outside the scope is refused."""
         p = self.run_dag(plan_state(), "--from-github", "--root", "mallory/trap#1")
         self.assertEqual(p.returncode, 2, p.stdout)
         self.assertNotIn(["api", "repos/mallory/trap/issues/1"], self.calls())
 
-    def test_untrusted_descendants_do_not_inflate_ranking(self):
+    def test_untrusted_descendants_do_not_inflate_ranking(self) -> None:
+        """Untrusted descendants do not inflate ranking."""
         base = self.out(self.run_dag(plan_state(), "--from-github"))
         state = plan_state()
         for n in range(50, 60):
@@ -196,19 +215,22 @@ class DiscoveryTrust(TrustFixture):
             self.node(base, f"{HOME}#2")["priority_score"],
         )
 
-    def test_trust_lookup_failure_fails_closed(self):
+    def test_trust_lookup_failure_fails_closed(self) -> None:
+        """Trust lookup failure fails closed."""
         state = plan_state()
         state["fail_graphql"] = True
         p = self.run_dag(state, "--from-github")
         self.assertEqual(p.returncode, 2, p.stdout)
 
-    def test_edit_history_is_paginated(self):
+    def test_edit_history_is_paginated(self) -> None:
+        """Edit history is paginated."""
         state = plan_state()
         state["edits_page_size"] = 2
         state["issues"][f"{HOME}#1"]["editors"] = ["owner", "owner", "owner", STRANGER]
         r = self.out(self.run_dag(state, "--from-github", "--root", f"{HOME}#9"))
         self.assertIn(f"{HOME}#1", self.untrusted_ids(r))
 
-    def test_trust_flags_require_from_github(self):
+    def test_trust_flags_require_from_github(self) -> None:
+        """Trust flags are rejected unless --from-github selects GitHub compilation."""
         p = self.run_dag(plan_state(), "--trust", STRANGER)
         self.assertNotEqual(p.returncode, 0)

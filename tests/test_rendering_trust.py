@@ -5,7 +5,10 @@ from fake_values import field, records
 
 
 class RenderingTrust(TrustFixture):
-    def test_closed_not_planned_untrusted_blocker_leaks_no_title(self):
+    """Keep untrusted titles and markup from changing rendered plans."""
+
+    def test_closed_not_planned_untrusted_blocker_leaks_no_title(self) -> None:
+        """A closed untrusted blocker exposes no title in not-planned diagnostics."""
         state = plan_state()
         state["issues"][f"{HOME}#1"]["body"] = fm(
             f"{HOME}#1", blocked_by=[f"{ECHO}#5", f"{ECHO}#99"]
@@ -29,7 +32,8 @@ class RenderingTrust(TrustFixture):
             "(untrusted issue)",
         )
 
-    def test_rendered_cells_escape_links_and_resource_pipes(self):
+    def test_rendered_cells_escape_links_and_resource_pipes(self) -> None:
+        """Rendered issue titles and resource keys cannot create Markdown links or cells."""
         state = plan_state()
         state["issues"][f"{HOME}#1"]["title"] = "[click](https://example.invalid)"
         state["issues"][f"{ECHO}#5"]["body"] = fm(
@@ -39,7 +43,8 @@ class RenderingTrust(TrustFixture):
         self.assertNotIn("[click](https://example.invalid)", p.stdout)
         self.assertIn("a\\|b", p.stdout)
 
-    def test_untrusted_titles_never_render(self):
+    def test_untrusted_titles_never_render(self) -> None:
+        """Untrusted titles never render."""
         state = plan_state()
         state["issues"][f"{HOME}#1"]["editors"] = ["owner", STRANGER]
         state["issues"][f"{HOME}#1"]["title"] = "<img src=x onerror=alert(1)> PWNED"
@@ -47,7 +52,8 @@ class RenderingTrust(TrustFixture):
         self.assertEqual(p.returncode, 0, p.stdout[-400:])
         self.assertNotIn("PWNED", p.stdout)
 
-    def test_rendered_cells_escape_html(self):
+    def test_rendered_cells_escape_html(self) -> None:
+        """Rendered table cells escape HTML markup."""
         state = plan_state()
         state["issues"][f"{HOME}#1"]["title"] = "Home <one>"
         p = self.run_dag(state, "--from-github", "--root", f"{HOME}#9", "--emit-roadmap")

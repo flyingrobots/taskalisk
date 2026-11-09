@@ -9,13 +9,17 @@ from fake_values import field, items, text
 
 
 class QualifiedReferences(Harness):
+    """Require explicit repository identity in stored and CLI references."""
+
     def run_with(self, body_for_1: str) -> tuple[CompletedProcess[str], dict[str, object]]:
+        """Compile the container closure after replacing one task body."""
         state = plan_state()
         state["issues"][f"{HOME}#1"]["body"] = body_for_1
         p = self.run_dag(state, "--from-github", "--root", f"{HOME}#9")
         return p, self.out(p)
 
-    def test_bare_blocker_number_is_invalid(self):
+    def test_bare_blocker_number_is_invalid(self) -> None:
+        """Bare blocker number is invalid."""
         p, r = self.run_with(fm(f"{HOME}#1", blocked_by=["#2"]))
         self.assertEqual(p.returncode, 1, r)
         self.assertTrue(
@@ -25,7 +29,8 @@ class QualifiedReferences(Harness):
             )
         )
 
-    def test_bare_id_is_invalid(self):
+    def test_bare_id_is_invalid(self) -> None:
+        """Bare ID is invalid."""
         p, r = self.run_with(fm("#1", blocked_by=[f"{ECHO}#5"]))
         self.assertEqual(p.returncode, 1, r)
         self.assertTrue(
@@ -35,7 +40,8 @@ class QualifiedReferences(Harness):
             )
         )
 
-    def test_retired_schema_is_invalid(self):
+    def test_retired_schema_is_invalid(self) -> None:
+        """Retired schema is invalid."""
         p, r = self.run_with(
             fm(f"{HOME}#1", blocked_by=[f"{ECHO}#5"]).replace("issue-dag/2", "issue-dag/1")
         )
@@ -47,12 +53,14 @@ class QualifiedReferences(Harness):
             )
         )
 
-    def test_bare_cli_references_are_rejected(self):
+    def test_bare_cli_references_are_rejected(self) -> None:
+        """Bare CLI references are rejected."""
         for args in (["--add-edge", f"#5->{HOME}#2"], ["--root", "#9"]):
             p = self.run_dag(plan_state(), "--from-github", *args)
             self.assertNotEqual(p.returncode, 0, args)
 
-    def test_transferred_reference_is_reported(self):
+    def test_transferred_reference_is_reported(self) -> None:
+        """Transferred reference is reported."""
         state = plan_state()
         state["moved"] = {f"{ECHO}#6": f"{BUNNY}#66"}
         state["issues"][f"{BUNNY}#66"] = state["issues"].pop(f"{ECHO}#6")
@@ -66,6 +74,7 @@ class QualifiedReferences(Harness):
             )
         )
 
-    def test_output_ids_are_always_qualified(self):
+    def test_output_ids_are_always_qualified(self) -> None:
+        """Output IDs are always qualified."""
         r = self.out(self.run_dag(plan_state(), "--from-github", "--root", f"{HOME}#9"))
         self.assertTrue(all("/" in i.split("#")[0] for i in self.ids(r)))

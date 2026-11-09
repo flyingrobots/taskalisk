@@ -5,7 +5,10 @@ from fake_values import field
 
 
 class MutationTrust(TrustFixture):
-    def test_add_edge_rolls_back_when_the_recompile_cannot_run(self):
+    """Refuse unauthorized edits and verify the existing rollback boundary."""
+
+    def test_add_edge_rolls_back_when_the_recompile_cannot_run(self) -> None:
+        """Add edge rolls back when the recompile cannot run."""
         state = plan_state()
         state["fail_graphql_for"] = [
             f"{HOME}#1"
@@ -17,7 +20,8 @@ class MutationTrust(TrustFixture):
         self.assertTrue(field(r, "mutation", "rolled_back"))
         self.assertEqual(self.current_body(f"{HOME}#2"), before)
 
-    def test_add_edge_aborts_when_a_trust_lookup_records_an_error(self):
+    def test_add_edge_aborts_when_a_trust_lookup_records_an_error(self) -> None:
+        """Add edge aborts when a trust lookup records an error."""
         state = plan_state()
         state["contents_fail"] = True
         before = state["issues"][f"{HOME}#2"]["body"]
@@ -28,7 +32,8 @@ class MutationTrust(TrustFixture):
         self.assertEqual(self.current_body(f"{HOME}#2"), before)
         self.assertFalse(any("PATCH" in c for c in self.calls()))
 
-    def test_add_edge_refuses_a_pull_request_child(self):
+    def test_add_edge_refuses_a_pull_request_child(self) -> None:
+        """Add edge refuses a pull request child."""
         state = plan_state()
         state["issues"][f"{HOME}#300"] = issue(
             300, "A pull request", fm(f"{HOME}#300"), options={"is_pr": True}
@@ -37,7 +42,8 @@ class MutationTrust(TrustFixture):
         self.assertEqual(p.returncode, 1, p.stdout)
         self.assertFalse(any("PATCH" in c for c in self.calls()))
 
-    def test_add_edge_cycle_rolls_back_even_when_drift_lookup_fails(self):
+    def test_add_edge_cycle_rolls_back_even_when_drift_lookup_fails(self) -> None:
+        """Add edge cycle rolls back even when drift lookup fails."""
         state = plan_state()
         state["blocked_by_fail"] = True
         before = state["issues"][f"{ECHO}#5"]["body"]
@@ -55,7 +61,8 @@ class MutationTrust(TrustFixture):
         self.assertTrue(field(r, "mutation", "rolled_back"))
         self.assertEqual(self.current_body(f"{ECHO}#5"), before)
 
-    def test_remove_edge_to_an_out_of_scope_parent_is_allowed(self):
+    def test_remove_edge_to_an_out_of_scope_parent_is_allowed(self) -> None:
+        """Remove edge to an out of scope parent is allowed."""
         state = plan_state()
         state["issues"][f"{HOME}#1"]["body"] = fm(
             f"{HOME}#1", blocked_by=[f"{ECHO}#5", "mallory/trap#1"]
@@ -71,7 +78,8 @@ class MutationTrust(TrustFixture):
         self.assertEqual(p.returncode, 0, p.stdout[-500:])
         self.assertIn(f".blocked_by: [{ECHO}#5]", self.current_body(f"{HOME}#1"))
 
-    def test_add_edge_refuses_an_untrusted_child_without_writing(self):
+    def test_add_edge_refuses_an_untrusted_child_without_writing(self) -> None:
+        """Add edge refuses an untrusted child without writing."""
         state = plan_state()
         state["issues"][f"{HOME}#2"].update(author=STRANGER, association="NONE")
         before = state["issues"][f"{HOME}#2"]["body"]
@@ -80,7 +88,8 @@ class MutationTrust(TrustFixture):
         self.assertEqual(self.current_body(f"{HOME}#2"), before)
         self.assertFalse(any("PATCH" in c for c in self.calls()))
 
-    def test_add_edge_refuses_a_parent_outside_the_scope(self):
+    def test_add_edge_refuses_a_parent_outside_the_scope(self) -> None:
+        """Add edge refuses a parent outside the scope."""
         p = self.run_dag(plan_state(), "--from-github", "--add-edge", f"mallory/trap#1->{HOME}#2")
         self.assertEqual(p.returncode, 1, p.stdout)
         self.assertFalse(any("PATCH" in c for c in self.calls()))

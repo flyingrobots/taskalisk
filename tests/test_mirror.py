@@ -5,7 +5,10 @@ from fake_values import fields, items
 
 
 class Mirror(Harness):
-    def test_relationship_drift_is_reported(self):
+    """Compare relationship mirrors and render the discovered roadmap."""
+
+    def test_relationship_drift_is_reported(self) -> None:
+        """Relationship drift is reported."""
         state = plan_state()
         state["blocked_by"] = {f"{HOME}#2": [f"{HOME}#1"], f"{HOME}#1": [f"{BUNNY}#110"]}
         r = self.out(
@@ -16,7 +19,8 @@ class Mirror(Harness):
         self.assertIn(f"{BUNNY}#110 -> {HOME}#1", items(d["only_in_github"]))
         self.assertNotIn(f"{HOME}#1 -> {HOME}#2", items(d["only_in_frontmatter"]))
 
-    def test_roadmap_renders(self):
+    def test_roadmap_renders(self) -> None:
+        """The generated roadmap includes a discovered task from another repository."""
         p = self.run_dag(plan_state(), "--from-github", "--root", f"{HOME}#9", "--emit-roadmap")
         self.assertEqual(p.returncode, 0, p.stdout[-600:])
         self.assertIn(f"{ECHO}#6", p.stdout)

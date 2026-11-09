@@ -8,14 +8,18 @@ from fixture_models import FakePrAuthor, FakePullRequest
 
 
 class PullRequestTrust(TrustFixture):
-    def test_pr_inventory_requests_the_trust_fields(self):
+    """Require same-repository branches and trusted authors before linking PRs."""
+
+    def test_pr_inventory_requests_the_trust_fields(self) -> None:
+        """PR inventory requests the trust fields."""
         self.run_dag(plan_state(), "--from-github")
         call = next(c for c in self.calls() if c[:2] == ["pr", "list"])
         fields = call[call.index("--json") + 1].split(",")
         self.assertIn("author", fields)
         self.assertIn("isCrossRepository", fields)
 
-    def test_pull_requests_in_the_rest_list_are_not_seeds(self):
+    def test_pull_requests_in_the_rest_list_are_not_seeds(self) -> None:
+        """PR records in the REST issue listing never become issue seeds."""
         state = plan_state()
         state["issues"][f"{HOME}#300"] = issue(
             300, "A pull request", fm(f"{HOME}#300"), options={"is_pr": True}
@@ -23,7 +27,8 @@ class PullRequestTrust(TrustFixture):
         r = self.out(self.run_dag(state, "--from-github"))
         self.assertNotIn(f"{HOME}#300", self.ids(r))
 
-    def test_fork_pr_does_not_mark_a_task_in_flight(self):
+    def test_fork_pr_does_not_mark_a_task_in_flight(self) -> None:
+        """Fork PR does not mark a task in flight."""
         state = plan_state()
         state["prs"] = [
             {
@@ -44,7 +49,8 @@ class PullRequestTrust(TrustFixture):
             records(field(r, "source", "untrusted_linked_prs"))[0]["closes"], [f"{HOME}#2"]
         )
 
-    def test_same_repository_pr_by_a_trusted_author_marks_in_flight(self):
+    def test_same_repository_pr_by_a_trusted_author_marks_in_flight(self) -> None:
+        """A PR from the same repository links its task when its author is trusted."""
         state = plan_state()
         state["prs"] = [
             {
@@ -63,7 +69,8 @@ class PullRequestTrust(TrustFixture):
         self.assertEqual(self.node(r, f"{HOME}#2")["status"], "in-review")
         self.assertEqual(field(r, "source", "untrusted_linked_prs"), [])
 
-    def test_same_repository_pr_by_an_untrusted_or_missing_author_is_untrusted(self):
+    def test_same_repository_pr_by_an_untrusted_or_missing_author_is_untrusted(self) -> None:
+        """A PR from the same repository still needs a trusted author to link its task."""
         authors: tuple[FakePrAuthor | None, ...] = ({"login": STRANGER, "is_bot": False}, None)
         for author in authors:
             state = plan_state()
@@ -84,7 +91,8 @@ class PullRequestTrust(TrustFixture):
             self.assertEqual(self.node(r, f"{HOME}#2")["linked_open_prs"], [])
             self.assertEqual(len(records(field(r, "source", "untrusted_linked_prs"))), 1)
 
-    def test_pr_without_trust_fields_is_untrusted(self):
+    def test_pr_without_trust_fields_is_untrusted(self) -> None:
+        """PR without trust fields is untrusted."""
         state = plan_state()
         state["prs"] = [
             {

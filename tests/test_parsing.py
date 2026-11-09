@@ -9,7 +9,10 @@ from fake_values import field
 
 
 class Parsing(Harness):
-    def test_verify_dag_spec_still_works(self):
+    """Preserve read-only planning from a hand-written DAG specification."""
+
+    def test_verify_dag_spec_still_works(self) -> None:
+        """The hand-written two-node spec retains its critical path."""
         spec = self.tmp / "dag.json"
         spec.write_text(
             json.dumps(
