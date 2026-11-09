@@ -142,9 +142,15 @@ area: free-form notes have no prefix
 8. **Strict Gate Integrity & Read-Only Boundaries**
    - `--from-github` without `--add-edge`/`--remove-edge`, `--verify-dag`, and
      the inventory mode are strictly read-only. The only GitHub writes the
-     script performs are edits of a child's `.blocked_by` line. An
-     `--add-edge` that creates a cycle restores the child's previous body
-     before the run fails.
+     script performs are edits of a child's `.blocked_by` line. Edge edits
+     compile the proposed graph in memory before writing, including the
+     edited child even when explicit roots exclude it. Invalid graphs and
+     failed lookups cause no PATCH. There is no rollback write.
+   - **Edge writes use optimistic checks, not atomic transactions.** The
+     child is reread and its identity, body, author and editors checked before
+     PATCH; an observed body change refuses the write. The authenticated
+     writer must also pass the trust gate. Changes after the final reread,
+     including edits to other graph nodes, can still race with PATCH.
    - Never resolve review threads without a verifying fix and never push to
      `origin/main` to bypass PR checks.
 9. **Trust Gate and Data Boundary** (`docs/threat-model.md`)
@@ -234,8 +240,22 @@ area: free-form notes have no prefix
    python3 <this-skill>/scripts/taskalisk.py --from-github --remove-edge "flyingrobots/geordi#1080->flyingrobots/geordi#1052"
    ```
    `parent->child` means *parent blocks child*. The script rewrites only the
-   child's `.blocked_by` line, recompiles, and restores the old body on a
-   cycle. The child must have valid task frontmatter.
+   child's `.blocked_by` line in memory and compiles that proposed graph
+   before PATCH. The child must have valid task frontmatter. A final reread
+   refuses observed changes (exit `1`); lookup failures exit `2`. The writer
+   must be identifiable through `gh api user` and trusted for the child repo;
+   app credentials that cannot identify an actor through that endpoint are
+   refused. Bots require explicit `--trust x[bot]` or `--trust app/x`.
+
+   This is optimistic validation: GitHub provides no documented conditional
+   issue PATCH contract, so another edit after the final reread can still be
+   overwritten, and another edge can invalidate the checked graph. The
+   returned graph describes the validated proposal, not a post-write snapshot.
+   On an uncertain PATCH failure, `mutation.changed` is `null` and
+   `mutation.write_outcome` tells you to inspect the issue before rerunning.
+   The compiler neither retries nor restores an old body. A no-op makes no
+   PATCH and requires no writer-identity lookup. Removal can repair an
+   out-of-scope blocker without fetching that parent.
 
 3. **Drift against GitHub relationships (read-only):**
    ```bash

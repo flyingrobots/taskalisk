@@ -81,6 +81,15 @@ def graphql(state, args):
     if it is None:
         print(json.dumps({"data": {"repository": {"issue": None}}, "errors": [{"message": "Could not resolve to an Issue"}]}))
         sys.exit(1)
+    change = state.get("history_change") or {}
+    if change.get("issue") == key:
+        counts = state.setdefault("history_reads", {})
+        counts[key] = counts.get(key, 0) + 1
+        if counts[key] == change["read"]:
+            for field in ("body", "editors"):
+                if field in change:
+                    it[field] = change[field]
+        save(state)
     author = author_of(state, it)
     # The creation edit is by the author actor, with the author's own type.
     editors = it.get("editors", [{"login": author, "type": it.get("author_type", "User")}])
@@ -135,6 +144,10 @@ def main(argv):
     if args[:1] == ["-X"]:
         method, args = args[1], args[2:]
     path = args[0]
+    if path == "user":
+        if state.get("writer_fail"):
+            fail("gh: Cannot identify authenticated writer (HTTP 403)")
+        print(json.dumps(state.get("writer", {"login": "owner", "type": "User"}))); return
     m = re.fullmatch(r"repos/([^/]+/[^/]+)/issues\?state=open&per_page=\d+", path)
     if m:
         # The REST list: open issues of that repository, pull requests included, like GitHub.
@@ -179,6 +192,14 @@ def main(argv):
         if method == "PATCH":
             payload = json.loads(sys.stdin.read())
             state["issues"][key]["body"] = payload["body"]
+            it = state["issues"][key]
+            editors = it.setdefault("editors", [{"login": author_of(state, it), "type": it.get("author_type", "User")}])
+            editors.append(state.get("writer", {"login": "owner", "type": "User"}))
+            if state.get("patch_error_after_apply"):
+                if "body_after_patch" in state:
+                    it["body"] = state["body_after_patch"]
+                save(state)
+                fail("gh: Connection lost after PATCH (fake)")
             save(state); print("{}"); return
         if "--jq" in args and args[args.index("--jq") + 1] == ".id":
             print(state["issues"][key]["id"]); return

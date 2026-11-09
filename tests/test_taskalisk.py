@@ -279,19 +279,116 @@ class Mutation(Harness):
         self.assertEqual(p.returncode, 0, p.stdout)
         self.assertIn(f".blocked_by: [{ECHO}#5]", self.current()["issues"][f"{ECHO}#6"]["body"])
 
-    def test_cycle_restores_the_original_body(self):
+    def test_cycle_is_rejected_before_any_patch(self):
         state = plan_state()
         before = state["issues"][f"{ECHO}#5"]["body"]
         p = self.run_dag(state, "--from-github", "--root", f"{HOME}#9", "--add-edge", f"{HOME}#2->{ECHO}#5")
         r = self.out(p)
         self.assertEqual(p.returncode, 1, r)
-        self.assertTrue(r["mutation"]["rolled_back"])
+        self.assertFalse(any("PATCH" in call for call in self.calls()))
         self.assertEqual(self.current()["issues"][f"{ECHO}#5"]["body"], before)
 
     def test_remove_edge(self):
         p = self.run_dag(plan_state(), "--from-github", "--root", f"{HOME}#9", "--remove-edge", f"{HOME}#1->{HOME}#2")
         self.assertEqual(p.returncode, 0, p.stdout)
         self.assertIn(".blocked_by: []", self.current()["issues"][f"{HOME}#2"]["body"])
+
+    def test_cycle_outside_explicit_roots_is_rejected_before_write(self):
+        p = self.run_dag(plan_state(), "--from-github", "--root", f"{ECHO}#6", "--add-edge", f"{HOME}#2->{HOME}#1")
+        self.assertEqual(p.returncode, 1, p.stdout)
+        self.assertIn("Cycle", p.stdout)
+        self.assertFalse(any("PATCH" in call for call in self.calls()))
+
+    def test_observed_concurrent_body_edit_is_preserved(self):
+        for read in (2, 3):
+            with self.subTest(read=read):
+                self.log.write_text("")
+                state = plan_state()
+                child = f"{HOME}#2"
+                newer = state["issues"][child]["body"] + "\nNew maintainer requirement.\n"
+                state["history_change"] = {"issue": child, "read": read, "body": newer}
+                p = self.run_dag(state, "--from-github", "--add-edge", f"{ECHO}#6->{child}")
+                self.assertEqual(p.returncode, 1, p.stdout)
+                self.assertIn(child, p.stdout)
+                self.assertEqual(self.current()["issues"][child]["body"], newer)
+                self.assertFalse(any("PATCH" in call for call in self.calls()))
+                self.log.write_text("")
+
+    def test_new_untrusted_editor_with_same_body_refuses_write(self):
+        state = plan_state()
+        child = f"{HOME}#2"
+        state["history_change"] = {"issue": child, "read": 3, "editors": ["owner", STRANGER]}
+        p = self.run_dag(state, "--from-github", "--add-edge", f"{ECHO}#6->{child}")
+        self.assertEqual(p.returncode, 1, p.stdout)
+        self.assertIn("untrusted", p.stdout)
+        self.assertFalse(any("PATCH" in call for call in self.calls()))
+
+    def test_unknown_or_untrusted_writer_is_refused(self):
+        for actor, code in [({}, 2), ({"login": "owner", "type": []}, 2),
+                            ({"login": "ci", "type": "Bot"}, 1),
+                            ({"login": STRANGER, "type": "User"}, 1)]:
+            with self.subTest(actor=actor):
+                self.log.write_text("")
+                state = plan_state()
+                state["writer"] = actor
+                p = self.run_dag(state, "--from-github", "--add-edge", f"{ECHO}#6->{HOME}#2")
+                self.assertEqual(p.returncode, code, p.stdout)
+                self.assertIn("writer", p.stdout)
+                self.assertFalse(any("PATCH" in call for call in self.calls()))
+                self.log.write_text("")
+
+    def test_trusted_bot_writer_is_recorded_and_stays_trusted(self):
+        state = plan_state()
+        actor = {"login": "ci[bot]", "type": "Bot"}
+        state["writer"] = actor
+        p = self.run_dag(state, "--from-github", "--add-edge", f"{ECHO}#6->{HOME}#2", "--trust", "app/ci")
+        self.assertEqual(p.returncode, 0, p.stdout)
+        after = self.current()
+        self.assertEqual(after["issues"][f"{HOME}#2"]["editors"], [{"login": "owner", "type": "User"}, actor])
+        again = self.run_dag(after, "--from-github", "--trust", "ci[bot]")
+        self.assertEqual(again.returncode, 0, again.stdout)
+        self.assertEqual(self.out(again)["source"]["untrusted_issues"], [])
+
+    def test_inventory_or_relationship_failure_happens_before_write(self):
+        for failure, flags in [("issues_list_returns_object", []), ("blocked_by_fail", ["--compare-relationships"]), ("writer_fail", [])]:
+            with self.subTest(failure=failure):
+                self.log.write_text("")
+                state = plan_state()
+                state[failure] = True
+                p = self.run_dag(state, "--from-github", "--add-edge", f"{ECHO}#6->{HOME}#2", *flags)
+                self.assertEqual(p.returncode, 2, p.stdout)
+                self.assertFalse(any("PATCH" in call for call in self.calls()))
+                self.log.write_text("")
+
+    def test_uncertain_patch_does_not_overwrite_newer_body(self):
+        state = plan_state()
+        state["patch_error_after_apply"] = True
+        state["body_after_patch"] = "A concurrent maintainer's replacement body."
+        p = self.run_dag(state, "--from-github", "--add-edge", f"{ECHO}#6->{HOME}#2")
+        self.assertEqual(p.returncode, 2, p.stdout)
+        result = self.out(p)
+        self.assertIn("mutation", result)
+        self.assertIsNone(result["mutation"]["changed"])
+        self.assertIn("unknown", result["mutation"]["write_outcome"])
+        self.assertEqual(len([call for call in self.calls() if "PATCH" in call]), 1)
+        self.assertEqual(self.current()["issues"][f"{HOME}#2"]["body"], state["body_after_patch"])
+
+    def test_noop_does_not_patch_or_require_writer_identity(self):
+        state = plan_state()
+        state["writer_fail"] = True
+        p = self.run_dag(state, "--from-github", "--add-edge", f"{HOME}#1->{HOME}#2")
+        self.assertEqual(p.returncode, 0, p.stdout)
+        self.assertFalse(self.out(p)["mutation"]["changed"])
+        self.assertFalse(any("PATCH" in call or call == ["api", "user"] for call in self.calls()))
+
+    def test_transferred_child_is_rejected_before_trust_or_write(self):
+        state = plan_state()
+        state["moved"] = {f"{HOME}#2": f"{ECHO}#5"}
+        state["issues"][f"{ECHO}#5"].update(author=STRANGER, association="NONE")
+        p = self.run_dag(state, "--from-github", "--add-edge", f"{ECHO}#6->{HOME}#2")
+        self.assertEqual(p.returncode, 1, p.stdout)
+        self.assertIn("transferred", p.stdout)
+        self.assertFalse(any("PATCH" in call for call in self.calls()))
 
     def test_owner_is_required_for_another_repository(self):
         p = self.run_dag(plan_state(), "--from-github", "--add-edge", "echo#5->#2")
@@ -413,14 +510,15 @@ class Trust(Harness):
         self.assertNotIn("SECRET STRANGER TITLE", p.stdout)
         self.assertEqual(self.out(p)["source"]["not_planned_parents"][0]["title"], "(untrusted issue)")
 
-    def test_add_edge_rolls_back_when_the_recompile_cannot_run(self):
+    def test_add_edge_makes_no_write_when_prevalidation_cannot_run(self):
         state = plan_state()
         state["fail_graphql_for"] = [f"{HOME}#1"]  # the child (#2) can be checked; the recompile fails on #1
         before = state["issues"][f"{HOME}#2"]["body"]
         p = self.run_dag(state, "--from-github", "--add-edge", f"{ECHO}#6->{HOME}#2")
         r = self.out(p)
         self.assertEqual(p.returncode, 2, r)
-        self.assertTrue(r["mutation"]["rolled_back"])
+        self.assertFalse(r["mutation"]["changed"])
+        self.assertFalse(any("PATCH" in call for call in self.calls()))
         self.assertEqual(self.current()["issues"][f"{HOME}#2"]["body"], before)
 
     def test_add_edge_aborts_when_a_trust_lookup_records_an_error(self):
@@ -561,14 +659,14 @@ class Trust(Harness):
         self.assertEqual(self.node(r, f"{HOME}#2")["status"], "in-progress")
         self.assertEqual(len([i for i in self.ids(r) if i.endswith("#2")]), 1)
 
-    def test_add_edge_cycle_rolls_back_even_when_drift_lookup_fails(self):
+    def test_add_edge_cycle_never_writes_when_drift_lookup_fails(self):
         state = plan_state()
         state["blocked_by_fail"] = True
         before = state["issues"][f"{ECHO}#5"]["body"]
         p = self.run_dag(state, "--from-github", "--root", f"{HOME}#9", "--add-edge", f"{HOME}#2->{ECHO}#5", "--compare-relationships")
         r = self.out(p)
         self.assertEqual(p.returncode, 2, r)
-        self.assertTrue(r["mutation"]["rolled_back"])
+        self.assertFalse(any("PATCH" in call for call in self.calls()))
         self.assertEqual(self.current()["issues"][f"{ECHO}#5"]["body"], before)
 
     def test_stranger_seed_costs_no_edit_history_query(self):

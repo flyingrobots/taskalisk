@@ -20,9 +20,9 @@ Modes:
       Trust flags: --trust <login>, --trust-owner <owner>, --trust-repo
       <owner/repo>, --trust-codeowners (docs/threat-model.md).
   --from-github --add-edge "owner/repo#1080->owner/repo#1052" [--reason "..."]
-      Adds the parent to the child's frontmatter `.blocked_by`, then
-      recompiles. If the edge creates a cycle the old body is restored and
-      the run fails.
+      Validates the proposed graph before adding the parent to `.blocked_by`.
+      A final reread detects observed conflicts; it is not an atomic PATCH.
+      Failed writes are never blindly retried or rolled back.
   --from-github --remove-edge "owner/repo#1080->owner/repo#1052"
       Removes the parent from the child's `.blocked_by`.
   --from-github --compare-relationships
@@ -811,7 +811,7 @@ class TrustPolicy:
                 return
 
 
-def collect_frontmatter_dag(repo: str, roots: list[str], errors: list[dict[str, str]], trust: dict[str, Any] | None = None) -> dict[str, Any]:
+def collect_frontmatter_dag(repo: str, roots: list[str], errors: list[dict[str, str]], trust: dict[str, Any] | None = None, edit: dict[str, Any] | None = None) -> dict[str, Any]:
     """Build (merged, nodes) from issue frontmatter, across repositories."""
     empty: dict[str, Any] = {"merged": set(), "nodes": {}, "containers": [], "slug": None}
     slug = gh_repo_slug(repo, errors)
@@ -840,6 +840,9 @@ def collect_frontmatter_dag(repo: str, roots: list[str], errors: list[dict[str, 
             seeds.add(r)
     if errors:
         return empty
+    if edit:
+        # The edited child must be validated even outside the requested roots/home seeds.
+        seeds.add(edit["child"])
     queue.extend(sorted(seeds))
 
     # A PR links a task only from a same-repository branch by a trusted author (C4).
@@ -923,7 +926,15 @@ def collect_frontmatter_dag(repo: str, roots: list[str], errors: list[dict[str, 
             # Always an opaque record: a trusted issue that references it must stay blocked (C3).
             # Unreferenced untrusted seeds are dropped after discovery, below.
             records[ref] = {"kind": "opaque", "untrusted": True, "blocked_by": [], "children": [], "holds": [], "meters": [], "status": "blocked", "size_hours": None, "type": None}
+            if edit and ref == edit["child"]:
+                errors.append({"source": f"frontmatter of {nid}", "error": "edited child became untrusted; rerun after review"})
+                break
             continue
+        if edit and ref == edit["child"]:
+            if meta["body"] != edit["old_body"]:
+                errors.append({"source": f"frontmatter of {nid}", "error": "body changed during validation; rerun the edit"})
+                break
+            meta["body"] = edit["new_body"]
         fields, problems = parse_frontmatter(meta["body"])
         if fields is None:
             if ref in seeds and not roots:
@@ -1395,36 +1406,51 @@ def verify_and_layer_dag(dag_path: str, min_confidence: float, emit_mermaid: boo
     return emit(with_artifact_hash(result), emit_mermaid)
 
 
-def mutate_edge(repo: str, home: str, parent: IssueRef, child: IssueRef, add: bool, errors: list[dict[str, str]], policy: TrustPolicy) -> dict[str, Any] | None:
-    """Edit the child's frontmatter .blocked_by. Returns {"child": ref, "old_body": str} or None."""
-    # The child is always checked. The parent's scope matters only when an edge is added:
-    # removing a reference to an out-of-scope issue is how an operator repairs such a reference.
-    for ref in ((parent, child) if add else (child,)):
-        if not policy.in_scope(ref[0]):
-            errors.append({"source": f"edge {node_id(*parent)}->{node_id(*child)}", "error": f"{node_id(*ref)} is outside the trusted repositories"})
-            return None
+def read_edge_child(repo: str, child: IssueRef, errors: list[dict[str, str]], policy: TrustPolicy) -> dict[str, Any] | None:
+    """Read the exact child and the body whose editor history passes the trust gate."""
+    source = f"frontmatter of {node_id(*child)}"
     obj = gh_get_issue(repo, child, errors)
     if obj is None:
         return None
+    actual_slug = slug_from_repository_url(str(obj.get("repository_url") or ""))
+    if actual_slug is None or not isinstance(obj.get("number"), int):
+        errors.append({"source": f"gh api repos/{child[0]}/issues/{child[1]}", "error": "issue has no parseable identity"})
+        return None
+    actual = (actual_slug.lower(), obj["number"])
+    if actual != child:
+        errors.append({"source": source, "error": f"reference {node_id(*child)} moved to {node_id(*actual)} (transferred); update the frontmatter"})
+        return None
     if obj.get("pull_request"):
-        errors.append({"source": f"edge {node_id(*parent)}->{node_id(*child)}", "error": f"{node_id(*child)} is a pull request, not an issue"})
+        errors.append({"source": source, "error": f"{node_id(*child)} is a pull request, not an issue"})
         return None
     meta = issue_meta(obj)
     trusted, reasons = policy.author_trusted(child[0], meta)
-    body = meta["body"]
     if trusted:
         history = gh_issue_edit_history(repo, child, errors)
         if history is None:
             return None
-        body = history["body"]
+        meta["body"] = history["body"]
         trusted, reasons = policy.editors_trusted(child[0], meta.get("author"), history["editors"], meta.get("author_type"))
     if errors:
         # A trust lookup that recorded an error (for example a failed CODEOWNERS fetch) never permits a write.
         return None
     if not trusted:
         # Never write into a stranger's issue, even with the permission to do so (C3).
-        errors.append({"source": f"frontmatter of {node_id(child[0], child[1], home)}", "error": "child is untrusted: " + "; ".join(reasons)})
+        errors.append({"source": source, "error": "child is untrusted: " + "; ".join(reasons)})
         return None
+    return meta
+
+
+def prepare_edge(repo: str, home: str, parent: IssueRef, child: IssueRef, add: bool, errors: list[dict[str, str]], policy: TrustPolicy) -> dict[str, Any] | None:
+    """Prepare an in-memory edit; no GitHub writes happen here."""
+    for ref in ((parent, child) if add else (child,)):
+        if not policy.in_scope(ref[0]):
+            errors.append({"source": f"edge {node_id(*parent)}->{node_id(*child)}", "error": f"{node_id(*ref)} is outside the trusted repositories"})
+            return None
+    meta = read_edge_child(repo, child, errors, policy)
+    if meta is None:
+        return None
+    body = meta["body"]
     fields, problems = parse_frontmatter(body)
     if fields is None or problems:
         errors.append({"source": f"frontmatter of {node_id(child[0], child[1], home)}", "error": "missing or unparseable frontmatter"})
@@ -1442,15 +1468,30 @@ def mutate_edge(repo: str, home: str, parent: IssueRef, child: IssueRef, add: bo
     if new_body is None:
         errors.append({"source": f"frontmatter of {node_id(child[0], child[1], home)}", "error": "cannot rewrite .blocked_by"})
         return None
-    if new_body != body and not gh_patch_body(repo, child, new_body, errors):
-        return None
-    return {"child": child, "old_body": body, "changed": new_body != body}
+    return {"child": child, "old_body": body, "new_body": new_body, "changed": new_body != body}
+
+
+def trusted_writer(repo: str, child: IssueRef, meta: dict[str, Any], errors: list[dict[str, str]], policy: TrustPolicy) -> bool:
+    """The authenticated PATCH author must not make its own edit untrusted."""
+    ok, raw, err = run_cmd_checked(["gh", "api", "user"], cwd=repo)
+    if not ok:
+        errors.append({"source": "gh api user", "error": err or "cannot identify the writer"})
+        return False
+    actor = parse_json(raw, "gh api user", errors)
+    if not isinstance(actor, dict) or not isinstance(actor.get("login"), str) or not actor["login"] or actor.get("type") not in ("User", "Bot"):
+        errors.append({"source": "gh api user", "error": "cannot identify the writer's login and actor type"})
+        return False
+    same_author = normalize_login(actor["login"], actor["type"]) == normalize_login(meta.get("author"), meta.get("author_type"))
+    trusted, why = policy.login_trusted(child[0], actor["login"], meta.get("association") if same_author else None, actor["type"])
+    if not trusted:
+        errors.append({"source": f"frontmatter of {node_id(*child)}", "error": f"writer is untrusted: {why}"})
+    return trusted and not errors
 
 
 def compile_from_github(repo: str, roots: list[str], min_confidence: float, emit_mermaid: bool, add_edge: str | None, remove_edge: str | None, reason: str, emit_roadmap: bool = False, capacities: dict[str, int] | None = None, compare: bool = False, trust: dict[str, Any] | None = None) -> int:
     errors: list[dict[str, str]] = []
     mutation: dict[str, Any] | None = None
-    undo: dict[str, Any] | None = None
+    edit: dict[str, Any] | None = None
     trust = trust or {}
 
     if add_edge or remove_edge:
@@ -1468,23 +1509,19 @@ def compile_from_github(repo: str, roots: list[str], min_confidence: float, emit
             print(json.dumps({"ok": False, "error": f"Self-edge rejected: {node_id(child[0], child[1], slug)}"}))
             return 1
         policy = TrustPolicy(repo, slug, trust.get("owners", []), trust.get("repos", []), trust.get("logins", []), bool(trust.get("codeowners")), errors)
-        undo = mutate_edge(repo, slug, parent, child, add=bool(add_edge), errors=errors, policy=policy)
-        if undo is None:
+        edit = prepare_edge(repo, slug, parent, child, add=bool(add_edge), errors=errors, policy=policy)
+        if edit is None:
             print(json.dumps({"ok": False, "error": "Frontmatter edit failed", "github_errors": errors}, indent=2))
             return 2 if any(e["source"].startswith("gh ") for e in errors) else 1
         child_id = node_id(child[0], child[1], slug)
-        mutation = {"type": "add_blocked_by" if add_edge else "remove_blocked_by", "parent": node_id(parent[0], parent[1], slug), "child": child_id, "changed": undo["changed"], "reason": reason, "recorded_in": f"frontmatter of {child_id} (the issue edit history is the ledger)"}
+        mutation = {"type": "add_blocked_by" if add_edge else "remove_blocked_by", "parent": node_id(parent[0], parent[1], slug), "child": child_id, "changed": False, "write_attempted": False, "reason": reason, "recorded_in": f"frontmatter of {child_id} (the issue edit history is the ledger)", "concurrency": "optimistic; changes after the final reread can race with PATCH"}
+        if roots and child_id not in roots:
+            roots = [*roots, child_id]
 
-    source = collect_frontmatter_dag(repo, roots, errors, trust)
+    source = collect_frontmatter_dag(repo, roots, errors, trust, edit)
     if errors:
-        if mutation and mutation["type"] == "add_blocked_by" and undo and undo["changed"]:
-            # The recompile that would have caught a cycle did not run; do not leave the unchecked edge on GitHub.
-            rb_errors: list[dict[str, str]] = []
-            mutation["rolled_back"] = gh_patch_body(repo, undo["child"], undo["old_body"], rb_errors)
-            if rb_errors:
-                mutation["rollback_errors"] = rb_errors
         print(json.dumps({"ok": False, "error": "GitHub inventory failed; refusing to compile a partial graph", "github_errors": errors, "mutation": mutation}, indent=2))
-        return 2
+        return 1 if edit and all(e["source"].startswith("frontmatter of ") for e in errors) else 2
 
     result = compile_and_analyze_dag(source["merged"], source["nodes"], min_confidence=min_confidence, capacities=capacities)
     result["source"] = {
@@ -1508,22 +1545,37 @@ def compile_from_github(repo: str, roots: list[str], min_confidence: float, emit
     if compare:
         result["relationship_drift"] = compare_relationships(repo, source, rel_errors)
     if rel_errors:
-        # A failed gh call is never an empty drift report (doctrine 4); the run fails below, after any rollback.
+        # Every requested lookup must finish before publication.
         result["ok"] = False
         result["error"] = "GitHub relationship lookup failed"
         result["github_errors"] = rel_errors
     if mutation:
         result["mutation"] = mutation
 
-    if not result.get("ok") and mutation and mutation["type"] == "add_blocked_by" and undo and undo["changed"]:
-        # Restore the child's body so a cycle never persists in the truth source, whatever made the run fail.
-        rb_errors: list[dict[str, str]] = []
-        result["mutation"]["rolled_back"] = gh_patch_body(repo, undo["child"], undo["old_body"], rb_errors)
-        if rb_errors:
-            result["mutation"]["rollback_errors"] = rb_errors
+    write_errors: list[dict[str, str]] = []
+    if result.get("ok") and edit and edit["changed"] and mutation:
+        # Do not reuse permission/CODEOWNERS caches for the final admission check.
+        policy = TrustPolicy(repo, source["slug"], trust.get("owners", []), trust.get("repos", []), trust.get("logins", []), bool(trust.get("codeowners")), write_errors)
+        current = read_edge_child(repo, edit["child"], write_errors, policy)
+        if current is not None and current["body"] != edit["old_body"]:
+            write_errors.append({"source": f"frontmatter of {mutation['child']}", "error": "body changed before PATCH; rerun the edit"})
+        if current is not None and not write_errors:
+            trusted_writer(repo, edit["child"], current, write_errors, policy)
+        if not write_errors:
+            mutation["write_attempted"] = True
+            if gh_patch_body(repo, edit["child"], edit["new_body"], write_errors):
+                mutation["changed"] = True
+            else:
+                # A transport failure does not prove that GitHub rejected the write.
+                mutation["changed"] = None
+                mutation["write_outcome"] = "unknown; inspect the issue before rerunning"
+        if write_errors:
+            result["ok"] = False
+            result["error"] = "Edge write refused or failed; no rollback attempted"
+            result["github_errors"] = write_errors
 
     code = emit(with_artifact_hash(result), emit_mermaid, emit_roadmap)
-    return 2 if rel_errors else code
+    return 2 if rel_errors or any(e["source"].startswith("gh ") for e in write_errors) else code
 
 
 def parse_capacities(items: list[str]) -> dict[str, int] | None:
@@ -1547,8 +1599,8 @@ def main() -> int:
     parser.add_argument("--verify-dag", default=None, help="Path to a hand-written DAG JSON specification to verify and layer")
     parser.add_argument("--min-confidence", type=float, default=DEFAULT_MIN_CONFIDENCE, help=f"Minimum confidence for hard edges in --verify-dag specs (default {DEFAULT_MIN_CONFIDENCE})")
     parser.add_argument("--emit-mermaid", action="store_true", help="Output a transitively-reduced Mermaid flowchart TD")
-    parser.add_argument("--add-edge", default=None, help="Add 'owner/repo#parent->owner/repo#child' to the child's frontmatter .blocked_by, then recompile (rolls back on cycle).")
-    parser.add_argument("--remove-edge", default=None, help="Remove 'owner/repo#parent->owner/repo#child' from the child's frontmatter .blocked_by, then recompile.")
+    parser.add_argument("--add-edge", default=None, help="Validate 'owner/repo#parent->owner/repo#child' in memory, then edit .blocked_by after an optimistic conflict check (not atomic; no rollback).")
+    parser.add_argument("--remove-edge", default=None, help="Validate removal of 'owner/repo#parent->owner/repo#child' in memory, then edit .blocked_by after an optimistic conflict check (not atomic; no rollback).")
     parser.add_argument("--reason", default="taskalisk edge update", help="Rationale echoed in the output for the mutation (GitHub timeline is the ledger)")
     parser.add_argument("--emit-roadmap", action="store_true", help="With --from-github: print the generated ROADMAP.md block (between BEGIN/END markers)")
     parser.add_argument("--trust", action="append", default=[], metavar="LOGIN", help="With --from-github: a login trusted as author or editor everywhere (repeatable)")
