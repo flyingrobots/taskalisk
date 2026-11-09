@@ -10,6 +10,7 @@ from typing import cast
 
 CRITICAL_MODULES = (
     "authorization",
+    "cli",
     "identities",
     "frontmatter",
     "issue_refs",
@@ -17,6 +18,7 @@ CRITICAL_MODULES = (
     "discovery",
     "process",
     "modes",
+    "output",
     "spec_checks",
     "spec_file",
     "spec_values",

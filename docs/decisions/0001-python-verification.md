@@ -69,6 +69,12 @@ malformed responses. Copied fixture mappings are written back explicitly before
 saving mutations. Provider typing does not prove fidelity to GitHub; the separate
 101-editor contract checks that the fake honors the query's `first:100` limit.
 
+An optional `patch_failures` fixture selects failed PATCH attempts by ordinal.
+Only fixtures using that option persist a `patch_count`; a selected refusal
+records the attempt before returning HTTP 500 without changing the issue body.
+This distinguishes initial write failure from rollback failure and checks retry
+counts. It models an observed refusal, not remote atomicity or cancellation.
+
 ## Alternatives and consequences
 
 A language port would enlarge the change and introduce another compatibility
@@ -95,6 +101,7 @@ they do not waive typing, coverage, source limits or behavioral checks.
 | Ruff S603, `process_capture.run_limited` | Internal callers supply executable argument vectors without a shell. A compromised executable or PATH remains outside the I/O guard's boundary. | Real local-process tests exercise bounded I/O, refusal and cleanup. | Re-review when command producers or executable resolution change. |
 | Ruff S603, `FakeGh.run_fake` | The test invokes the fixed Python interpreter and owned fake-provider file, without a shell. A change to either path would change this assumption. | Provider-contract tests use a five-second deadline and check pagination, termination and invalid fixture limits. | Re-review when command construction or fixture ownership changes. |
 | Ruff S603, `StructureScan.test_cli_emits_json_and_exit_status_for_both_control_and_violation` | The interpreter and checker module are fixed; only the owned fixture root varies, without a shell. Module resolution remains part of the trusted checkout boundary. | Real CLI controls check successful and rejected JSON/exit results with a ten-second deadline. | Re-review when command construction, module resolution or fixture ownership changes. |
+| Ruff T201, `output.write_text` | This one sink intentionally emits the public stdout protocol, including its terminating newline. Future callers could disclose private data or change framing. | Named CLI refusal/rendering tests, deliberate output/selection faults and byte-for-byte CLI comparisons. | Re-review when the output contract or callers change. |
 
 The machine-readable records in `exceptions.json` own identifiers and expiry.
 Registry validation is pending under #22; the file alone is not enforcement.
@@ -151,6 +158,37 @@ including helpers whose filenames do not begin with `check_`. Passing the source
 checker does not establish coverage, rule-registry freshness or complete quality
 adoption. Boundary fixtures and deliberate-fault evidence calibrate the checker;
 its passing fixture is distinct from the repository's still-failing adoption scan.
+
+## Command routing and mutation ownership
+
+`cli_parser` owns option declarations, defaults, help and the namespace attributes
+populated by argparse. These annotations describe that fixed parser contract;
+they do not validate GitHub data. `cli_validation` preserves conflict-check order
+and rejects incompatible flags before provider calls. `cli` selects inventory,
+local verification or GitHub planning. The last repeated semaphore capacity wins.
+When both render flags are present, roadmap output retains precedence.
+
+`modes_values` describes planning configuration, the requested edge expression,
+its parsed endpoints and one edit's policy/error context. `modes` coordinates
+effects; `modes_results` attaches discovery and relationship diagnostics to the
+graph result. `modes_admission` checks scope, rejects PR children and requires
+author/editor trust before an edit. `modes_mutation` validates task frontmatter,
+rewrites its dependency field and skips PATCH for an unchanged body.
+
+`modes_edit` owns syntax/self-edge refusal, public mutation evidence and the
+existing failed-add rollback. It reuses the parsed qualified edge without a
+second parse or an assertion that can disappear under optimization. Repository
+identity lookup still precedes self-edge refusal. A failed relationship lookup
+still produces exit 2 after required rollback. Issue #1 owns the replacement
+optimistic write/recovery contract and its documented remote race; this split
+does not establish atomic writes or safe concurrent rollback.
+
+`output.OutputView` selects successful JSON, Mermaid or roadmap rendering.
+Failures retain JSON. `output.write_text` is the one stdout sink; `write_json`
+preserves each existing compact or indented error convention. The CLI and output
+families receive critical 95% statement and branch floors. `TrustPolicy` consumes
+the existing trust-options record, keeping identity normalization and human/bot
+decision order unchanged. Read its complete implementation when changing it.
 
 ## Command ownership
 

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 
-from .authorization_values import TrustDescription
+from .authorization_values import TrustDescription, TrustOptions
 from .github_history_values import HistoryEditor
 from .github_issue_values import IssueMeta
 from .identities import BOT_KEY_PREFIX, normalize_login, parse_codeowners
@@ -35,19 +35,19 @@ class TrustPolicy:
         self,
         repo: str,
         home_slug: str,
-        owners: list[str],
-        repos: list[str],
-        logins: list[str],
-        codeowners: bool,
+        options: TrustOptions,
         errors: list[dict[str, str]],
     ) -> None:
-        # GitHub owner, repository and login names are case-insensitive; compare them folded.
         """Store normalized trust settings and empty per-run lookup caches."""
+        # GitHub owner, repository and login names are case-insensitive; compare them folded.
         self.repo = repo
-        self.owners = {home_slug.split("/", 1)[0].lower(), *(o.lower() for o in owners)}
-        self.repos = {r.lower() for r in repos}
-        self.logins = {normalize_login(l) for l in logins}
-        self.codeowners = codeowners
+        self.owners = {
+            home_slug.split("/", 1)[0].lower(),
+            *(owner.lower() for owner in options.get("owners", [])),
+        }
+        self.repos = {repo.lower() for repo in options.get("repos", [])}
+        self.logins = {normalize_login(login) for login in options.get("logins", [])}
+        self.codeowners = bool(options.get("codeowners"))
         self.errors = errors
         self._repo_logins: dict[str, set[str]] = defaultdict(set)
         self._teams: dict[str, list[str]] = {}
@@ -87,6 +87,12 @@ class TrustPolicy:
             return False, "bot actors are trusted only by --trust <login>[bot]"
         if not self.in_scope(slug):
             return False, f"{slug} is outside the trusted repositories"
+        return self._human_trusted(slug, login, login_key, association)
+
+    def _human_trusted(
+        self, slug: str, login: str, login_key: str, association: str | None
+    ) -> tuple[bool, str]:
+        """Check scoped human evidence after explicit identity and bot rules have run."""
         self._load_codeowners(slug)
         if login_key in self._repo_logins.get(slug.lower(), set()):
             return True, "CODEOWNERS"
@@ -184,7 +190,7 @@ class TrustPolicy:
             )
             if ok:
                 logins, teams = parse_codeowners(raw)
-                self._repo_logins[slug_key] |= {l.lower() for l in logins}
+                self._repo_logins[slug_key] |= {login.lower() for login in logins}
                 if teams:
                     self._teams[slug_key] = teams
                 return

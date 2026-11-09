@@ -14,6 +14,7 @@ from tools.check_coverage import object_fields, read_counts
 CHECKER = Path(__file__).resolve().parents[1] / "tools" / "check_coverage.py"
 CRITICAL = (
     "authorization",
+    "cli",
     "identities",
     "frontmatter",
     "issue_refs",
@@ -21,6 +22,7 @@ CRITICAL = (
     "discovery",
     "process",
     "modes",
+    "output",
     "spec_checks",
     "spec_file",
     "spec_values",
@@ -117,6 +119,16 @@ class CoverageGate(unittest.TestCase):
     def test_discovery_admission_and_its_helpers_receive_the_critical_floor(self) -> None:
         """Moving scope and trust decisions cannot lower their verification requirement."""
         for module in ("discovery", "discovery_admission", "discovery_walk"):
+            path = f"{PREFIX}{module}.py"
+            (self.root / path).write_text("pass\n", encoding="utf-8")
+            with self.subTest(module=module):
+                self.summaries[path] = counters(100, 94)
+                self.assert_refused(self.report(), f"{path}: branches 94/100 below 95%")
+            self.summaries[path] = counters()
+
+    def test_cli_validation_and_output_receive_the_critical_floor(self) -> None:
+        """Operator validation and failure rendering keep the critical branch requirement."""
+        for module in ("cli", "cli_parser", "cli_validation", "output"):
             path = f"{PREFIX}{module}.py"
             (self.root / path).write_text("pass\n", encoding="utf-8")
             with self.subTest(module=module):

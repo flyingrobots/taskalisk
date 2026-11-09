@@ -112,6 +112,22 @@
       "tracking": "https://github.com/flyingrobots/taskalisk/issues/22",
       "expires": "2027-02-08",
       "review_condition": "Command construction, module resolution or fixture ownership changes"
+    },
+    {
+      "id": "PY-CLI-OUTPUT",
+      "rule": "PY-SUPPRESSIONS",
+      "diagnostic": "T201",
+      "path": "skills/taskalisk/scripts/taskalisk_core/output.py",
+      "symbol": "write_text",
+      "mechanism": "noqa",
+      "reason": "This single sink intentionally emits the public CLI protocol on stdout, including its final newline.",
+      "risk": "A future caller could disclose a private payload or change protocol framing.",
+      "compensating_check": "Named CLI refusal/rendering tests, deliberate output/selection faults, and byte-for-byte CLI comparisons",
+      "owner": "Taskalisk maintainers",
+      "approver": "Codex under James's delegated decisions",
+      "tracking": "https://github.com/flyingrobots/taskalisk/issues/22",
+      "expires": "2027-02-08",
+      "review_condition": "Output contract or callers change"
     }
   ]
 }

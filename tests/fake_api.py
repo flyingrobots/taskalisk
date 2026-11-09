@@ -112,6 +112,17 @@ def contents(state: dict[str, object], request: ApiRequest) -> bool:
     return True
 
 
+def fail_selected_patch(state: dict[str, object]) -> None:
+    """Persist an enabled fault fixture's attempt count and reject its selected writes."""
+    if "patch_failures" not in state:
+        return
+    count = integer(state.get("patch_count", 0)) + 1
+    state["patch_count"] = count
+    save(state)
+    if count in [integer(value) for value in items(state["patch_failures"])]:
+        fail("gh: Internal Server Error (HTTP 500)")
+
+
 def issue_body(
     state: dict[str, object], request: ApiRequest, key: str, records: dict[str, dict[str, object]]
 ) -> None:
@@ -120,6 +131,7 @@ def issue_body(
         emit([])
         return
     if request.method == "PATCH":
+        fail_selected_patch(state)
         payload: object = json.loads(sys.stdin.read())
         records[key]["body"] = fields(payload)["body"]
         state["issues"] = records

@@ -24,15 +24,7 @@ def collect_frontmatter_dag(
     if slug is None:
         return empty
     trust = trust or {}
-    policy = TrustPolicy(
-        repo,
-        slug,
-        trust.get("owners", []),
-        trust.get("repos", []),
-        trust.get("logins", []),
-        bool(trust.get("codeowners")),
-        errors,
-    )
+    policy = TrustPolicy(repo, slug, trust, errors)
     context: DiscoveryContext = {
         "repo": repo,
         "slug": slug,

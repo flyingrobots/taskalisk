@@ -118,6 +118,8 @@ class FakeState(_StateFields, total=False):
     issues_list_raw: str
     blocked_by_fail: bool
     collaborators_forbidden: bool
+    patch_failures: list[int]
+    patch_count: int
     contents_fail: bool
     graphql_null_edits: bool
     issue_get_returns_list: bool
