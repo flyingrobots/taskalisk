@@ -61,6 +61,14 @@ fields, such as a deliberately non-boolean PR draft state, remain `object` until
 the actual adapter checks them. Moving builder options preserves the existing
 values and call arguments through differential output and normalized AST checks.
 
+The fake provider's entrypoint routes through `fake_api` and `fake_history`;
+`fake_fixture` owns state I/O and issue projection. `fake_values` checks decoded
+containers and scalar types independently of production admission code. Values
+inside wire records remain `object` where fault injection intentionally permits
+malformed responses. Copied fixture mappings are written back explicitly before
+saving mutations. Provider typing does not prove fidelity to GitHub; the separate
+101-editor contract checks that the fake honors the query's `first:100` limit.
+
 ## Alternatives and consequences
 
 A language port would enlarge the change and introduce another compatibility
