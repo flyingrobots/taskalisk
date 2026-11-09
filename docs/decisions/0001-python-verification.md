@@ -57,3 +57,15 @@ Decomposition will require the pending feature branches to merge main and adapt
 their changes to the new module ownership. They must rerun their acceptance
 checks and receive fresh review on the integrated head. Issue #22 is recorded
 as their prerequisite. No new merge waiver is granted by this decision.
+
+## Narrow lint decisions
+
+Approving owner: Codex, exercising James's delegated implementation decisions.
+These decisions concern diagnostics that conflict with the chosen, tested boundary;
+they do not waive typing, coverage, source limits or behavioral checks.
+
+| Diagnostic and scope | Reason and risk | Compensating verification | Review condition |
+| --- | --- | --- | --- |
+| Ruff PT009, TestCase assertions in `tests/*.py` | The local policy prescribes unittest. Native assertions preserve its diagnostics and subtest behavior; no product assertion is exempted. | Diagnostic RED runs exercise the actual assertions. | Remove if the repository changes test frameworks; review with every lint-policy update. |
+| Ruff S603, the marked coverage-gate test invocation | The executable and checker are fixed; only owned fixture paths vary. A changed command producer could invalidate that assumption. | Tests invoke the real checker with a fixed argument vector and timeout, without a shell. | Remove or re-review if the command or path producer changes. |
+| Ruff T201, marked coverage-checker prints | These lines intentionally emit CLI diagnostics. Unintended payload disclosure remains a review concern. | CLI tests assert specific failures; output contains coverage paths and counts. | Re-review when the output contract changes. |

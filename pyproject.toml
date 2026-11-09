@@ -31,6 +31,10 @@ select = [
 [tool.ruff.lint.pydocstyle]
 convention = "google"
 
+[tool.ruff.lint.per-file-ignores]
+# The repository-prescribed unittest runner uses TestCase assertions and subtests.
+"tests/*.py" = ["PT009"]
+
 [tool.ruff.lint.mccabe]
 max-complexity = 10
 
@@ -40,7 +44,7 @@ max-branches = 10
 max-statements = 60
 
 [tool.pyright]
-include = ["skills/taskalisk/scripts", "tests"]
+include = ["skills/taskalisk/scripts", "tests", "tools"]
 typeCheckingMode = "strict"
 pythonVersion = "3.9"
 venvPath = "."
@@ -48,7 +52,7 @@ venv = ".venv"
 
 [tool.coverage.run]
 branch = true
-source = ["skills/taskalisk/scripts", "tests"]
+source = ["skills/taskalisk/scripts", "tests", "tools"]
 parallel = true
 patch = ["subprocess"]
 relative_files = true
