@@ -19,13 +19,15 @@ from .defaults import (
     PRIORITY_IN_FLIGHT_WEIGHT,
     PRIORITY_PARKED_WEIGHT,
 )
+from .frontmatter_values import Meter
+from .graph_values import DependencyEntry, GraphNode, NormalizedDependency
 
 
 def strip_merged_hint(ref: str) -> str:
     return ref.replace(MERGED_HINT, "").strip()
 
 
-def normalize_dep_entry(dep: str | dict[str, Any]) -> dict[str, Any]:
+def normalize_dep_entry(dep: DependencyEntry) -> NormalizedDependency:
     if isinstance(dep, str):
         return {
             "from": strip_merged_hint(dep),
@@ -60,7 +62,7 @@ def any_lock_conflict(required: set[str], held: set[str]) -> bool:
 
 def compile_and_analyze_dag(
     merged: set[str],
-    nodes: dict[str, dict[str, Any]],
+    nodes: dict[str, GraphNode],
     min_confidence: float = DEFAULT_MIN_CONFIDENCE,
     capacities: dict[str, int] | None = None,
 ) -> dict[str, Any]:
@@ -212,8 +214,8 @@ def compile_and_analyze_dag(
             + remaining[nid] * PRIORITY_DEPTH_WEIGHT
             + len(reduced_children[nid])
         )
-        holds = meta.get("holds", meta.get("resources", [])) or []
-        meters = meta.get("meters", []) or []
+        holds: list[str] = meta.get("holds", meta.get("resources", [])) or []
+        meters: list[Meter] = meta.get("meters", []) or []
         waves[level[nid]].append(
             {
                 "id": nid,

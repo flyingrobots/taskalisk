@@ -148,6 +148,34 @@ is distinct from failure through the error collection; domain adapters decide
 whether a nullable field is valid. CLI witnesses check that malformed issue-list
 bytes reach structured exit 2 instead of hiding work behind an empty frontier.
 
+## Local specification admission
+
+`spec_file` opens `--verify-dag` input without waiting for a FIFO writer, checks
+that the opened descriptor names a regular file, and reads at most 32 MiB plus
+one byte to detect overflow. A path may be a symlink to a regular file. The
+descriptor check avoids a separate path-check/open race; this is not an atomic
+snapshot of file contents or a filesystem I/O deadline. Decode strict UTF-8 and
+reuse the JSON byte, depth, token, duplicate-key and numeric limits above.
+
+`spec_checks` and `spec_values` validate every consumed field before graph
+analysis. Reject malformed input with structured exit 1 and no partial plan.
+An empty object still means an empty plan. Node IDs remain arbitrary nonempty
+text; dependency objects retain their defaults, and textual dependencies retain
+merged hints. `depends_on` wins over `prerequisites`; `holds` wins over `resources`,
+including when the primary field is empty or null. Null holds/meters mean none.
+Unknown metadata and shadowed aliases remain unused.
+
+Require actual Booleans, finite numeric confidence from zero through one,
+positive integral estimates/counts, textual display fields and nonempty resource
+names. Nullable URL, milestone and estimate fields remain nullable. Local linked
+PR summaries are display data; validation does not establish GitHub trust.
+
+`graph_values` describes admitted graph inputs. Discovery may also retain invalid
+frontmatter scalar values alongside violations, so these annotations preserve
+diagnostic output instead of laundering invalid fields into valid defaults.
+Typing input does not complete result typing, source-size or coverage adoption.
+The three local-admission modules each require the critical 95% floor.
+
 ## REST issue field admission
 
 `github_issue_values` admits the REST fields consumed by discovery and author

@@ -20,6 +20,9 @@ CRITICAL = (
     "github",
     "process",
     "modes",
+    "spec_checks",
+    "spec_file",
+    "spec_values",
 )
 PREFIX = "skills/taskalisk/scripts/taskalisk_core/"
 
@@ -100,6 +103,15 @@ class CoverageGate(unittest.TestCase):
         path = f"{PREFIX}graph.py"
         self.summaries[path] = counters(89, 100)
         self.assert_refused(self.report(), f"{path}: statements 89/100 below 90%")
+
+    def test_local_spec_admission_receives_the_critical_floor(self) -> None:
+        """File, scalar and domain admission each need independent 95% coverage."""
+        for module in ("spec_checks", "spec_file", "spec_values"):
+            path = f"{PREFIX}{module}.py"
+            with self.subTest(module=module):
+                self.summaries[path] = counters(94, 100)
+                self.assert_refused(self.report(), f"{path}: statements 94/100 below 95%")
+            self.summaries[path] = counters()
 
     def test_missing_component_cannot_disappear_from_the_report(self) -> None:
         """A source file missing from measurement fails closed."""

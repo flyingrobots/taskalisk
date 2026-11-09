@@ -16,6 +16,9 @@ CRITICAL_MODULES = (
     "github",
     "process",
     "modes",
+    "spec_checks",
+    "spec_file",
+    "spec_values",
 )
 CORE = "skills/taskalisk/scripts/taskalisk_core/"
 ROOTS = ("skills/taskalisk/scripts", "tests", "tools")

@@ -3,18 +3,18 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 
 from .authorization import TrustPolicy
 from .authorization_values import TrustOptions
 from .discovery import collect_frontmatter_dag, compare_relationships
 from .frontmatter import FM_SCHEMA, parse_frontmatter, rewrite_blocked_by, validate_frontmatter
 from .github import gh_get_issue, gh_issue_edit_history, gh_patch_body, gh_repo_slug, issue_meta
-from .graph import compile_and_analyze_dag, strip_merged_hint
+from .graph import compile_and_analyze_dag
 from .issue_refs import IssueRef, node_id, parse_edge_arg
 from .mutation_values import EdgeMutation, EdgeUndo
 from .output import emit, with_artifact_hash
 from .process import sanitize_home
+from .spec_file import read_spec
 
 # --------------------------------------------------------------------------- #
 # Modes
@@ -23,19 +23,13 @@ from .process import sanitize_home
 
 def verify_and_layer_dag(dag_path: str, min_confidence: float, emit_mermaid: bool) -> int:
     try:
-        data = json.loads(Path(dag_path).read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
+        data = read_spec(dag_path)
+    except (OSError, TypeError, ValueError) as exc:
         print(
             json.dumps({"ok": False, "error": f"Cannot read DAG spec: {sanitize_home(str(exc))}"})
         )
         return 1
-    if not isinstance(data, dict) or not isinstance(data.get("nodes", {}), dict):
-        print(
-            json.dumps({"ok": False, "error": "DAG spec must be an object with a 'nodes' object"})
-        )
-        return 1
-    merged = {strip_merged_hint(str(m)) for m in data.get("merged", [])}
-    result = compile_and_analyze_dag(merged, data.get("nodes", {}), min_confidence=min_confidence)
+    result = compile_and_analyze_dag(data["merged"], data["nodes"], min_confidence=min_confidence)
     return emit(with_artifact_hash(result), emit_mermaid)
 
 

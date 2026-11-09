@@ -20,6 +20,7 @@ from .github import (
     issue_meta,
 )
 from .github_issue_values import IssueMeta
+from .graph_values import Dependency, GraphNode, LinkedPr
 from .inventory import branches_for_issue, list_branches
 from .issue_refs import IssueRef, node_id, parse_issue_ref
 
@@ -75,7 +76,7 @@ def collect_frontmatter_dag(
     queue.extend(sorted(seeds))
 
     # A PR links a task only from a same-repository branch by a trusted author (C4).
-    prs_by_issue: dict[IssueRef, list[dict[str, Any]]] = defaultdict(list)
+    prs_by_issue: dict[IssueRef, list[LinkedPr]] = defaultdict(list)
     untrusted_prs: list[dict[str, Any]] = []
     for pr in prs:
         closes = pr["closes"]
@@ -235,7 +236,7 @@ def collect_frontmatter_dag(
         del records[ref]
 
     merged: set[str] = set()
-    nodes: dict[str, dict[str, Any]] = {}
+    nodes: dict[str, GraphNode] = {}
     for ref, rec in records.items():
         nid = node_id(ref[0], ref[1], slug)
         meta = fetched[ref]
@@ -252,7 +253,7 @@ def collect_frontmatter_dag(
         if meta["state"] == "closed":
             merged.add(nid)
             continue
-        depends_on = []
+        depends_on: list[Dependency] = []
         for blk in rec["blocked_by"]:
             bid = node_id(blk[0], blk[1], slug)
             brec = records.get(blk)
