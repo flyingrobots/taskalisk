@@ -85,6 +85,7 @@ they do not waive typing, coverage, source limits or behavioral checks.
 | Ruff S603, the marked coverage-gate test invocation | The executable and checker are fixed; only owned fixture paths vary. A changed command producer could invalidate that assumption. | Tests invoke the real checker with a fixed argument vector and timeout, without a shell. | Remove or re-review if the command or path producer changes. |
 | Ruff T201, marked coverage-checker prints | These lines intentionally emit CLI diagnostics. Unintended payload disclosure remains a review concern. | CLI tests assert specific failures; output contains coverage paths and counts. | Re-review when the output contract changes. |
 | Ruff S603, `process_capture.run_limited` | Internal callers supply executable argument vectors without a shell. A compromised executable or PATH remains outside the I/O guard's boundary. | Real local-process tests exercise bounded I/O, refusal and cleanup. | Re-review when command producers or executable resolution change. |
+| Ruff S603, `FakeGh.run_fake` | The test invokes the fixed Python interpreter and owned fake-provider file, without a shell. A change to either path would change this assumption. | Provider-contract tests use a five-second deadline and check pagination, termination and invalid fixture limits. | Re-review when command construction or fixture ownership changes. |
 
 The machine-readable records in `exceptions.json` own identifiers and expiry.
 Registry validation is pending under #22; the file alone is not enforcement.

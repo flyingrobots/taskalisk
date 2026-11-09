@@ -80,6 +80,22 @@
       "tracking": "https://github.com/flyingrobots/taskalisk/issues/22",
       "expires": "2027-02-08",
       "review_condition": "Executable resolution or command producer changes"
+    },
+    {
+      "id": "PY-FAKE-PROVIDER-ARGV",
+      "rule": "PY-SUPPRESSIONS",
+      "diagnostic": "S603",
+      "path": "tests/test_fake_gh.py",
+      "symbol": "FakeGh.run_fake",
+      "mechanism": "noqa",
+      "reason": "The interpreter and owned fake-provider path are fixed; query arguments are passed without a shell.",
+      "risk": "A change to executable or provider path construction could invalidate fixture ownership.",
+      "compensating_check": "Real fake-provider contract tests with a five-second deadline and exact pagination/refusal checks",
+      "owner": "Taskalisk maintainers",
+      "approver": "Codex under James's delegated decisions",
+      "tracking": "https://github.com/flyingrobots/taskalisk/issues/22",
+      "expires": "2027-02-08",
+      "review_condition": "Command construction or fixture ownership changes"
     }
   ]
 }

@@ -27,6 +27,7 @@ import json
 import os
 import re
 import sys
+from typing import NoReturn
 
 
 def load():
@@ -72,9 +73,18 @@ def strip(state, obj):
     return obj
 
 
-def fail(msg):
+def fail(msg: str) -> NoReturn:
+    """Terminate a simulated provider failure with its stderr diagnostic."""
     sys.stderr.write(msg + "\n")
     sys.exit(1)
+
+
+def edit_page_size(state: dict[str, object]) -> int:
+    """Allow smaller test pages without exceeding the query's first:100 request."""
+    value = state.get("edits_page_size", 100)
+    if type(value) is not int or not 1 <= value <= 100:
+        fail("fake gh: edits_page_size must be an integer from 1 to 100")
+    return value
 
 
 def graphql(state, args):
@@ -113,7 +123,7 @@ def graphql(state, args):
     author = author_of(state, it)
     # The creation edit is by the author actor, with the author's own type.
     editors = it.get("editors", [{"login": author, "type": it.get("author_type", "User")}])
-    page = int(state.get("edits_page_size", 1000))
+    page = edit_page_size(state)
     start = int(variables.get("after") or 0)
     chunk = editors[start : start + page]
     has_next = start + page < len(editors)
