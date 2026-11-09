@@ -102,7 +102,7 @@ control and whether it exists.
 | T10 | The agent runs with the operator's primary token and no branch protection. | A manipulated agent can push to `main`, edit any issue, or act across every repository the token sees. | High | C14 policy |
 | T11 | Checkout of a branch the executor did not create. | Hook and script execution; attacker agent instructions. | Critical | C10, C11 planned (#15, #10) |
 | T12 | A `pr-review:<login>=APPROVED` predicate matched against any review; a `skill:` verdict produced by an agent that read attacker text. | Forged gate pass. | High | C12, C13 planned (#14) |
-| T13 | `--add-edge` writes before checking for a cycle and never compares the body it read with the body it overwrites. | Lost concurrent edits; a cycle visible on GitHub for a window. | Medium | #1 |
+| T13 | An edge edit publishes an invalid graph or overwrites a concurrent body edit. | Lost concurrent edits; invalid planning state. | Medium | Prevalidation and optimistic conflict checks implemented (#1); final-read/PATCH race remains |
 | T14 | A flood of issues fills the list limit. | The compiler fails closed: planning stops. | Medium | C15 documented, not implemented |
 | T15 | The prompt file in a predictable temporary path. | Local symlink or read by another user. | Low | C16 planned (#13) |
 | T16 | TLS interception. | Forged issue data; also forged code. | Out of scope beyond fail-closed | `gh` refuses plain HTTP; never add a downgrade |
@@ -422,6 +422,20 @@ the file. It never widens the scope (C2).
 
 ## 9. Residual risks and open decisions
 
+- **Edge-write concurrency (T13).** The proposed graph is compiled before
+  PATCH, including an edited child outside explicit roots. Identity, body and
+  editor trust are reread; the authenticated writer must pass the same trust
+  policy. Observed conflicts refuse the write. Mutation regressions cover
+  cycles with zero PATCH calls, changed bodies/editors, writer admission,
+  lookup failures, no-ops and uncertain write outcomes. There is no blind
+  rollback. This is the optimistic contract accepted for #1 on 2026-11-08:
+  GitHub's issue-update endpoint has no documented conditional PATCH
+  contract. A change after the final reread can still be overwritten, and
+  concurrent changes to other issues can invalidate the proposed graph.
+  API failure after PATCH does not establish whether it applied; inspect
+  the issue before retrying. The returned graph is the validated proposal,
+  not a new post-write observation. App credentials that cannot identify
+  their writer via `gh api user` are refused rather than guessed.
 - **C15** needs a decision: which write-gated signal seeds discovery once a
   flood reaches the list limit.
 - **Repositories the operator cannot administer.** The permission endpoint
