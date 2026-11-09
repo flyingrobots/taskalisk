@@ -246,6 +246,30 @@ values as text; valid inputs retain the same rendering. Explicit field projectio
 keeps container children out of the public excluded-container summary. These
 types neither establish approval nor alter issue #1's write/rollback contract.
 
+## Discovery phases
+
+`discovery` retains provider order while coordinating seed selection, PR-link
+admission, issue traversal and node projection. `discovery_state` gives each pass
+its own evidence and diagnostics. `discovery_seeds` caches REST author metadata
+or admits explicit scoped roots; `discovery_prs` checks same-repository branches
+and author permissions only for PRs that name closing references.
+
+`discovery_admission` checks scope before fetching, then the author before edit
+history. Its explicit skip/stop outcomes distinguish an invalid reference from
+a lookup failure that must stop traversal. `discovery_walk` owns queue order,
+format validation and opaque/untrusted records. `discovery_projection` builds
+the final nodes and closure diagnostics only after all required lookups succeed.
+The discovery family receives the critical 95% statement and branch floors.
+
+Diagnostic `referenced_by` lists deliberately share the traversal's lists. A
+later trusted seed may reference an earlier untrusted seed; copying its list too
+early would lose that evidence. Prune only unreferenced untrusted seeds after the
+walk. Referenced untrusted issues retain opaque blocker records without their
+titles, dependencies, holds or meters. Named CLI witnesses and deliberate faults
+check these ordering and refusal boundaries. Fixed and bounded generated CLI
+comparisons check output, exit status, fixture state and provider calls against
+the preceding implementation; they do not prove equivalence for every input.
+
 ## Graph phases
 
 `graph` coordinates four pure phases. `graph_dependencies` owns completion-state

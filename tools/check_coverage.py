@@ -14,6 +14,7 @@ CRITICAL_MODULES = (
     "frontmatter",
     "issue_refs",
     "github",
+    "discovery",
     "process",
     "modes",
     "spec_checks",

@@ -18,6 +18,7 @@ CRITICAL = (
     "frontmatter",
     "issue_refs",
     "github",
+    "discovery",
     "process",
     "modes",
     "spec_checks",
@@ -111,6 +112,16 @@ class CoverageGate(unittest.TestCase):
             with self.subTest(module=module):
                 self.summaries[path] = counters(94, 100)
                 self.assert_refused(self.report(), f"{path}: statements 94/100 below 95%")
+            self.summaries[path] = counters()
+
+    def test_discovery_admission_and_its_helpers_receive_the_critical_floor(self) -> None:
+        """Moving scope and trust decisions cannot lower their verification requirement."""
+        for module in ("discovery", "discovery_admission", "discovery_walk"):
+            path = f"{PREFIX}{module}.py"
+            (self.root / path).write_text("pass\n", encoding="utf-8")
+            with self.subTest(module=module):
+                self.summaries[path] = counters(100, 94)
+                self.assert_refused(self.report(), f"{path}: branches 94/100 below 95%")
             self.summaries[path] = counters()
 
     def test_missing_component_cannot_disappear_from_the_report(self) -> None:
