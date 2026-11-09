@@ -204,7 +204,12 @@ A PR marks a task in flight only when `isCrossRepository` is false (the head
 is a branch of the same repository) **and** its author is trusted under C1's
 login rule. Every other PR that closes a task is listed in
 `source.untrusted_linked_prs` and has no effect on status or ranking. A
-missing field is untrusted.
+missing/null author or `isCrossRepository` field is untrusted. Present author
+objects require a textual login and Boolean `is_bot`. Malformed PR numbers,
+closing references, required text or Boolean fields stop the run with exit 2;
+they are not ordinary trust exclusions. All rows must pass field admission
+before any PR contributes linking evidence. A closing reference must name its
+repository explicitly; it never defaults to the home repository.
 
 ### C5. Output escaping — implemented
 

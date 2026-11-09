@@ -20,9 +20,11 @@ class PullRequestStates(Harness):
             "prs": [
                 {
                     "number": 10 + i,
+                    "title": "Work",
+                    "headRefName": "task/work",
                     "isDraft": draft,
                     "url": f"https://github.com/{HOME}/pull/{10 + i}",
-                    "author": {"login": "owner"},
+                    "author": {"login": "owner", "is_bot": False},
                     "isCrossRepository": False,
                     "closingIssuesReferences": [closing(1)],
                 }
@@ -54,7 +56,9 @@ class PullRequestStates(Harness):
         for foreign, author in [(True, "owner"), (False, STRANGER)]:
             with self.subTest(foreign=foreign, author=author):
                 state = self.state_with_prs([True, False])
-                state["prs"][1].update(isCrossRepository=foreign, author={"login": author})
+                state["prs"][1].update(
+                    isCrossRepository=foreign, author={"login": author, "is_bot": False}
+                )
                 p = self.run_dag(state, "--from-github")
                 self.assertEqual(p.returncode, 0, p.stdout)
                 result = self.out(p)

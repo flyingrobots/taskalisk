@@ -77,27 +77,16 @@ def collect_frontmatter_dag(
     prs_by_issue: dict[IssueRef, list[dict[str, Any]]] = defaultdict(list)
     untrusted_prs: list[dict[str, Any]] = []
     for pr in prs:
-        closes: list[IssueRef] = []
-        for ref in pr.get("closingIssuesReferences", []) or []:
-            if isinstance(ref, dict) and "number" in ref:
-                repo_info = ref.get("repository") or {}
-                owner = (repo_info.get("owner") or {}).get("login")
-                ref_slug = (
-                    f"{owner}/{repo_info['name']}".lower()
-                    if owner and repo_info.get("name")
-                    else slug
-                )
-                closes.append((ref_slug, int(ref["number"])))
+        closes = pr["closes"]
         if not closes:
             continue
-        author = (pr.get("author") or {}).get("login")
-        cross = pr.get("isCrossRepository")
+        identity = pr["author"]
+        author = identity["login"] if identity else None
+        cross = pr["cross_repository"]
         ok, why = (
             (False, "head is not a branch of this repository")
             if cross is not False
-            else policy.login_trusted(
-                slug, author, None, "Bot" if (pr.get("author") or {}).get("is_bot") else None
-            )
+            else policy.login_trusted(slug, author, None, identity["type"] if identity else None)
         )
         if errors:
             return empty
@@ -113,14 +102,6 @@ def collect_frontmatter_dag(
                 }
             )
             continue
-        if not isinstance(pr.get("isDraft"), bool):
-            errors.append(
-                {
-                    "source": "gh pr list",
-                    "error": f"PR {pr.get('number')} has no boolean isDraft; refusing an unknown review state",
-                }
-            )
-            return empty
         for c in closes:
             prs_by_issue[c].append(
                 {"number": pr["number"], "isDraft": pr["isDraft"], "url": pr.get("url")}

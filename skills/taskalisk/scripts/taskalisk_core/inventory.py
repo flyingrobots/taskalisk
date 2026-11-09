@@ -116,7 +116,7 @@ def collect_github_inventory(
                 "url": iss.get("url"),
             }
         )
-    return {"open_prs": prs, "open_issues": summarized}
+    return {"open_prs": [pr["wire"] for pr in prs], "open_issues": summarized}
 
 
 def list_branches(repo: str, errors: list[dict[str, str]]) -> list[str]:

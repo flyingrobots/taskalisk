@@ -101,9 +101,11 @@ class DiscoveryTrust(TrustFixture):
         state["prs"] = [
             {
                 "number": 8,
+                "title": "Work",
+                "headRefName": "task/work",
                 "isDraft": False,
                 "url": "u",
-                "author": {"login": "owner"},
+                "author": {"login": "owner", "is_bot": False},
                 "isCrossRepository": False,
                 "closingIssuesReferences": [
                     {

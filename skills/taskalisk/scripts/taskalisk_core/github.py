@@ -13,11 +13,13 @@ from .github_json import (
     parse_json_list,
     parse_paginated_arrays,
 )
+from .github_pr_values import PullRequest, parse_pull_request
 from .issue_refs import IssueRef
 from .process import run_cmd_checked
 
 
-def gh_list_open_prs(repo: str, errors: list[dict[str, str]]) -> list[dict[str, Any]]:
+def gh_list_open_prs(repo: str, errors: list[dict[str, str]]) -> list[PullRequest]:
+    """Return a complete checked PR inventory or a structured run error."""
     cmd = [
         "gh",
         "pr",
@@ -42,7 +44,13 @@ def gh_list_open_prs(repo: str, errors: list[dict[str, str]]) -> list[dict[str, 
                 "error": f"Result filled --limit {GH_PR_LIST_LIMIT}; possible truncation",
             }
         )
-    return prs
+    if errors:
+        return []
+    try:
+        return [parse_pull_request(pr) for pr in prs]
+    except (TypeError, ValueError) as exc:
+        errors.append({"source": "gh pr list", "error": str(exc)})
+        return []
 
 
 def gh_list_open_issues(

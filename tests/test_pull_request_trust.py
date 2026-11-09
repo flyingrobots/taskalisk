@@ -28,9 +28,11 @@ class PullRequestTrust(TrustFixture):
         state["prs"] = [
             {
                 "number": 7,
+                "title": "Work",
+                "headRefName": "task/work",
                 "isDraft": True,
                 "url": "u",
-                "author": {"login": STRANGER},
+                "author": {"login": STRANGER, "is_bot": False},
                 "isCrossRepository": True,
                 "closingIssuesReferences": [closing(2)],
             }
@@ -47,9 +49,11 @@ class PullRequestTrust(TrustFixture):
         state["prs"] = [
             {
                 "number": 8,
+                "title": "Work",
+                "headRefName": "task/work",
                 "isDraft": False,
                 "url": "u",
-                "author": {"login": "owner"},
+                "author": {"login": "owner", "is_bot": False},
                 "isCrossRepository": False,
                 "closingIssuesReferences": [closing(2)],
             }
@@ -60,11 +64,13 @@ class PullRequestTrust(TrustFixture):
         self.assertEqual(field(r, "source", "untrusted_linked_prs"), [])
 
     def test_same_repository_pr_by_an_untrusted_or_missing_author_is_untrusted(self):
-        authors: tuple[FakePrAuthor | None, ...] = ({"login": STRANGER}, None)
+        authors: tuple[FakePrAuthor | None, ...] = ({"login": STRANGER, "is_bot": False}, None)
         for author in authors:
             state = plan_state()
             pr: FakePullRequest = {
                 "number": 8,
+                "title": "Work",
+                "headRefName": "task/work",
                 "isDraft": False,
                 "url": "u",
                 "isCrossRepository": False,
@@ -81,7 +87,14 @@ class PullRequestTrust(TrustFixture):
     def test_pr_without_trust_fields_is_untrusted(self):
         state = plan_state()
         state["prs"] = [
-            {"number": 9, "isDraft": False, "url": "u", "closingIssuesReferences": [closing(2)]}
+            {
+                "number": 9,
+                "title": "Work",
+                "headRefName": "task/work",
+                "isDraft": False,
+                "url": "u",
+                "closingIssuesReferences": [closing(2)],
+            }
         ]
         r = self.out(self.run_dag(state, "--from-github"))
         self.assertEqual(self.node(r, f"{HOME}#2")["status"], "open")

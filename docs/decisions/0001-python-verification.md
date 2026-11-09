@@ -171,6 +171,29 @@ These checks validate consumed fields, not every field in GitHub's schema.
 They do not add approval, atomic writes or concurrent-body detection; issue #1
 retains ownership of the optimistic write contract.
 
+## PR field admission
+
+`github_pr_values` checks the CLI PR inventory before linking. PR and closing-issue
+numbers must be positive integers without coercion; every closing reference
+requires a repository owner and name. Missing identity never defaults to the
+home repository. Require Boolean draft, bot and foreign-branch evidence rather
+than interpreting truthiness. Missing/null author or foreign-branch evidence
+remains unknown for the trust policy to deny. A present malformed value is a
+run error, even on a PR that would otherwise be excluded or has no closing links.
+
+The [GitHub CLI author export](https://github.com/cli/cli/blob/v2.101.0/api/queries_issue.go#L294)
+emits `is_bot` and uses `app/` logins for bots. Its
+[closing-reference export](https://github.com/cli/cli/blob/v2.101.0/api/export_pr.go#L221)
+includes repository owner/name. Fixture examples supply those fields explicitly;
+the fake does not silently fill missing values. These references establish the
+observed CLI 2.101.0 boundary, not compatibility with every CLI version.
+
+Keep checked domain fields separate from opaque inventory-only wire metadata,
+so the public inventory retains its existing shape. Validate every row before
+returning any PRs: a malformed later row rejects the whole inventory. These
+checks do not add cross-repository fetching or establish completeness of nested
+closing-reference pagination; issue #3 owns that discovery work.
+
 ## Edit-history field admission
 
 `github_history_values` validates the nested GraphQL envelope, textual body,
