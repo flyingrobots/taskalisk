@@ -69,7 +69,7 @@ from typing import Any
 # Completed = GitHub closed. GitHub treats a closed blocker as satisfied,
 # whatever the reason; "not_planned" parents are reported separately.
 COMPLETED_STATUSES = {"merged", "closed", "done", "completed"}
-IN_FLIGHT_STATUSES = {"ready-to-merge", "in-progress", "active"}
+IN_FLIGHT_STATUSES = {"ready-to-merge", "in-progress", "active", "wip", "in-review"}
 FRONTIER_STATUS = "open-frontier"
 BLOCKED_STATUS = "blocked"
 
@@ -866,8 +866,11 @@ def collect_frontmatter_dag(repo: str, roots: list[str], errors: list[dict[str, 
         if not ok:
             untrusted_prs.append({"number": pr.get("number"), "url": pr.get("url"), "author": author, "cross_repository": cross, "closes": [node_id(*c) for c in closes], "reason": why})
             continue
+        if not isinstance(pr.get("isDraft"), bool):
+            errors.append({"source": "gh pr list", "error": f"PR {pr.get('number')} has no boolean isDraft; refusing an unknown review state"})
+            return empty
         for c in closes:
-            prs_by_issue[c].append({"number": pr["number"], "isDraft": pr.get("isDraft", False), "url": pr.get("url")})
+            prs_by_issue[c].append({"number": pr["number"], "isDraft": pr["isDraft"], "url": pr.get("url")})
 
     seen: set[IssueRef] = set()
     referenced_by: dict[IssueRef, list[str]] = defaultdict(list)
@@ -990,7 +993,9 @@ def collect_frontmatter_dag(repo: str, roots: list[str], errors: list[dict[str, 
         untrusted_node = bool(rec.get("untrusted"))
         linked = prs_by_issue.get(ref, []) if ref[0] == slug and not untrusted_node else []
         status = rec["status"] or "open"
-        if status == "active" or linked:
+        if linked:
+            status = "in-review" if any(not pr["isDraft"] for pr in linked) else "wip"
+        elif status == "active":
             status = "in-progress"
         elif status == "parked":
             status = PARKED_STATUS
