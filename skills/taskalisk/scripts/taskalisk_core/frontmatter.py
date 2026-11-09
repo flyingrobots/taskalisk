@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import re
-from typing import Any
 
+from .frontmatter_values import FrontmatterRecord, ParsedFields
 from .issue_refs import IssueRef, format_ref_relative, node_id, parse_issue_ref
 
 # --------------------------------------------------------------------------- #
@@ -47,7 +47,7 @@ FM_LINE_RE = re.compile(r"(?P<key>\.?[A-Za-z_][A-Za-z0-9_-]*)[ \t]*:[ \t]*(?P<va
 METER_RE = re.compile(r"(?P<name>[A-Za-z0-9_./-]+)(?:\*(?P<slots>[1-9][0-9]*))?")
 
 
-def _fm_scalar(text: str) -> Any:
+def _fm_scalar(text: str) -> str | int:
     text = text.strip()
     if len(text) >= 2 and text[0] == text[-1] and text[0] in "\"'":
         return text[1:-1]
@@ -56,7 +56,7 @@ def _fm_scalar(text: str) -> Any:
     return text
 
 
-def parse_frontmatter(body: str) -> tuple[dict[str, Any] | None, list[str]]:
+def parse_frontmatter(body: str) -> tuple[ParsedFields | None, list[str]]:
     """Return (fields, problems). fields is None when the body has no frontmatter block.
 
     The accepted YAML subset is flat: `key: scalar` or `key: [a, b]`. Anything
@@ -65,7 +65,7 @@ def parse_frontmatter(body: str) -> tuple[dict[str, Any] | None, list[str]]:
     m = FM_BLOCK_RE.match(body or "")
     if not m:
         return None, []
-    fields: dict[str, Any] = {}
+    fields: ParsedFields = {}
     problems: list[str] = []
     for n, raw in enumerate(m.group("yaml").splitlines(), start=1):
         line = raw.rstrip()
@@ -90,51 +90,123 @@ def parse_frontmatter(body: str) -> tuple[dict[str, Any] | None, list[str]]:
     return fields, problems
 
 
-def validate_frontmatter(
-    fields: dict[str, Any], self_ref: IssueRef
-) -> tuple[dict[str, Any], list[str], list[str]]:
-    """Return (record, violations, warnings). References resolve relative to self_ref's repository."""
-    v: list[str] = []
-    w: list[str] = []
-    slug = self_ref[0]
-    for key in sorted(k for k in fields if k.startswith(FM_PREFIX) and k not in FM_KEYS):
-        v.append(f"unknown key {key}")
+def _validate_identity(fields: ParsedFields, self_ref: IssueRef) -> list[str]:
+    """Check schema, identity and kind before reading structural fields."""
+    violations = [
+        f"unknown key {key}"
+        for key in sorted(key for key in fields if key.startswith(FM_PREFIX) and key not in FM_KEYS)
+    ]
     dag = fields.get(".dag")
     if isinstance(dag, str) and dag in FM_RETIRED_SCHEMAS:
-        v.append(f".dag {dag} is retired: {FM_RETIRED_SCHEMAS[dag]}")
+        violations.append(f".dag {dag} is retired: {FM_RETIRED_SCHEMAS[dag]}")
     elif dag != FM_SCHEMA:
-        v.append(f".dag must be {FM_SCHEMA}")
+        violations.append(f".dag must be {FM_SCHEMA}")
     own = parse_issue_ref(str(fields.get(".id", "")))
     if own is None:
-        v.append(f".id {fields.get('.id')!r} must be owner/repo#N")
+        violations.append(f".id {fields.get('.id')!r} must be owner/repo#N")
     elif own != self_ref:
-        v.append(
+        violations.append(
             f".id {fields.get('.id')} does not name this issue ({node_id(*self_ref)}); was it transferred or copied?"
         )
     kind = fields.get(".kind")
     if not isinstance(kind, str) or kind not in FM_KINDS:
-        v.append(".kind must be task or container")
+        violations.append(".kind must be task or container")
+    return violations
 
-    def refs(key: str) -> list[IssueRef]:
-        raw = fields.get(key, [])
-        if not isinstance(raw, list):
-            v.append(f"{key} must be a list")
-            return []
-        out: list[IssueRef] = []
-        for item in raw:
-            r = parse_issue_ref(item)
-            if r is None:
-                v.append(
-                    f"{key}: invalid reference {item!r} (use owner/repo#N; bare numbers are not allowed)"
-                )
-            elif r == self_ref:
-                v.append(f"{key}: self reference")
-            else:
-                out.append(r)
-        return out
 
-    record: dict[str, Any] = {
-        "kind": kind,
+def _references(
+    fields: ParsedFields, key: str, self_ref: IssueRef, violations: list[str]
+) -> list[IssueRef]:
+    """Parse a reference list and retain its exact refusal diagnostics."""
+    raw = fields.get(key, [])
+    if not isinstance(raw, list):
+        violations.append(f"{key} must be a list")
+        return []
+    references: list[IssueRef] = []
+    for item in raw:
+        reference = parse_issue_ref(item)
+        if reference is None:
+            violations.append(
+                f"{key}: invalid reference {item!r} (use owner/repo#N; bare numbers are not allowed)"
+            )
+        elif reference == self_ref:
+            violations.append(f"{key}: self reference")
+        else:
+            references.append(reference)
+    return references
+
+
+def _read_structure(
+    fields: ParsedFields, self_ref: IssueRef, record: FrontmatterRecord, violations: list[str]
+) -> None:
+    """Keep task dependencies distinct from container membership."""
+    if record["kind"] == "task":
+        task_type = fields.get(".type")
+        if not isinstance(task_type, str) or task_type not in FM_TYPES:
+            violations.append(".type must be one of " + ", ".join(sorted(FM_TYPES)))
+        if ".blocked_by" not in fields:
+            violations.append("a task needs .blocked_by (use [] for none)")
+        if ".children" in fields:
+            violations.append("a task must not have .children")
+        record["blocked_by"] = _references(fields, ".blocked_by", self_ref, violations)
+    elif record["kind"] == "container":
+        if ".children" not in fields:
+            violations.append("a container needs .children")
+        if fields.get(".blocked_by"):
+            violations.append("a container must not have .blocked_by")
+        record["children"] = _references(fields, ".children", self_ref, violations)
+
+
+def _read_resources(fields: ParsedFields, record: FrontmatterRecord, violations: list[str]) -> None:
+    """Normalize exclusive keys and decode semaphore requests."""
+    holds = fields.get(".holds", [])
+    # The parser constructs lists of strings; empty keys are still invalid.
+    if not isinstance(holds, list) or not all(holds):
+        violations.append(".holds must be a list of git-locks keys")
+    else:
+        record["holds"] = sorted(set(holds))
+    meters = fields.get(".meters", [])
+    if not isinstance(meters, list):
+        violations.append(".meters must be a list")
+        return
+    for item in meters:
+        match = METER_RE.fullmatch(item)
+        if not match:
+            violations.append(f".meters: invalid entry {item!r} (use name or name*N)")
+        else:
+            record["meters"].append(
+                {"name": match.group("name"), "slots": int(match.group("slots") or 1)}
+            )
+
+
+def _check_status_and_size(
+    record: FrontmatterRecord, violations: list[str], warnings: list[str]
+) -> None:
+    """Reject invalid scheduling fields and warn about oversized tasks."""
+    status = record["status"]
+    if status is not None and (not isinstance(status, str) or status not in FM_STATUSES):
+        violations.append(".status must be active, parked, or blocked")
+    size = record["size_hours"]
+    if size is None:
+        return
+    if not isinstance(size, int) or size <= 0:
+        violations.append(".size_hours must be a positive integer")
+    elif size > FM_SIZE_WARN_HOURS:
+        warnings.append(
+            f".size_hours {size} is above {FM_SIZE_WARN_HOURS}; the card is probably not atomic"
+        )
+
+
+def validate_frontmatter(
+    fields: ParsedFields, self_ref: IssueRef
+) -> tuple[FrontmatterRecord, list[str], list[str]]:
+    """Validate parser output; nonempty violations forbid dispatch.
+
+    References must be qualified. Scalar fields remain visible in the record even
+    when invalid; the accompanying violations are the admission decision.
+    """
+    record: FrontmatterRecord = {
+        "kind": fields.get(".kind"),
         "type": fields.get(".type"),
         "blocked_by": [],
         "children": [],
@@ -143,50 +215,12 @@ def validate_frontmatter(
         "status": fields.get(".status"),
         "size_hours": fields.get(".size_hours"),
     }
-    if kind == "task":
-        task_type = fields.get(".type")
-        if not isinstance(task_type, str) or task_type not in FM_TYPES:
-            v.append(".type must be one of " + ", ".join(sorted(FM_TYPES)))
-        if ".blocked_by" not in fields:
-            v.append("a task needs .blocked_by (use [] for none)")
-        if ".children" in fields:
-            v.append("a task must not have .children")
-        record["blocked_by"] = refs(".blocked_by")
-    elif kind == "container":
-        if ".children" not in fields:
-            v.append("a container needs .children")
-        if fields.get(".blocked_by"):
-            v.append("a container must not have .blocked_by")
-        record["children"] = refs(".children")
-    holds = fields.get(".holds", [])
-    if not isinstance(holds, list) or not all(isinstance(h, str) and h for h in holds):
-        v.append(".holds must be a list of git-locks keys")
-    else:
-        record["holds"] = sorted(set(holds))
-    meters = fields.get(".meters", [])
-    if not isinstance(meters, list):
-        v.append(".meters must be a list")
-    else:
-        for item in meters:
-            mm = METER_RE.fullmatch(item)
-            if not mm:
-                v.append(f".meters: invalid entry {item!r} (use name or name*N)")
-            else:
-                record["meters"].append(
-                    {"name": mm.group("name"), "slots": int(mm.group("slots") or 1)}
-                )
-    status = record["status"]
-    if status is not None and (not isinstance(status, str) or status not in FM_STATUSES):
-        v.append(".status must be active, parked, or blocked")
-    size = record["size_hours"]
-    if size is not None:
-        if not isinstance(size, int) or size <= 0:
-            v.append(".size_hours must be a positive integer")
-        elif size > FM_SIZE_WARN_HOURS:
-            w.append(
-                f".size_hours {size} is above {FM_SIZE_WARN_HOURS}; the card is probably not atomic"
-            )
-    return record, v, w
+    violations = _validate_identity(fields, self_ref)
+    warnings: list[str] = []
+    _read_structure(fields, self_ref, record, violations)
+    _read_resources(fields, record, violations)
+    _check_status_and_size(record, violations, warnings)
+    return record, violations, warnings
 
 
 def rewrite_blocked_by(body: str, refs: list[IssueRef], base_slug: str) -> str | None:

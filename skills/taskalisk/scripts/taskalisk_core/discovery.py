@@ -8,6 +8,7 @@ from typing import Any
 from .authorization import TrustPolicy
 from .defaults import PARKED_STATUS
 from .frontmatter import parse_frontmatter, validate_frontmatter
+from .frontmatter_values import FrontmatterRecord
 from .github import (
     gh_blocked_by,
     gh_get_issue,
@@ -126,7 +127,7 @@ def collect_frontmatter_dag(
 
     seen: set[IssueRef] = set()
     referenced_by: dict[IssueRef, list[str]] = defaultdict(list)
-    records: dict[IssueRef, dict[str, Any]] = {}
+    records: dict[IssueRef, FrontmatterRecord] = {}
     violations: dict[str, list[str]] = {}
     warnings: dict[str, list[str]] = {}
     unmodeled_seeds: list[dict[str, Any]] = []
