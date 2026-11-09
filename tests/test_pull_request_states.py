@@ -1,10 +1,16 @@
 """Check PullRequestStates behavior through the public CLI."""
 
+from __future__ import annotations
+
+from collections.abc import Sequence
+
 from cli_fixture import HOME, STRANGER, Harness, closing, fm, issue
+from fixture_models import FakePrState
 
 
 class PullRequestStates(Harness):
-    def state_with_prs(self, drafts, extra=""):
+    def state_with_prs(self, drafts: Sequence[object], extra: str = "") -> FakePrState:
+        """Supply explicit PR states, including malformed states for refusal tests."""
         return {
             "home": HOME,
             "blocked_by": {},

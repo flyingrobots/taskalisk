@@ -41,7 +41,7 @@ class ActorTrust(TrustFixture):
     def test_member_association_alone_is_not_trusted(self):
         state = plan_state()
         state["issues"][f"{HOME}#77"] = issue(
-            177, "Org member", fm(f"{HOME}#77"), author="pat", association="MEMBER"
+            177, "Org member", fm(f"{HOME}#77"), options={"author": "pat", "association": "MEMBER"}
         )
         r = self.out(self.run_dag(state, "--from-github"))
         self.assertIn(f"{HOME}#77", self.untrusted_ids(r))
@@ -51,7 +51,10 @@ class ActorTrust(TrustFixture):
         state["issues"][f"{HOME}#1"]["editors"] = ["owner", "Carol"]
         state["issues"][f"{HOME}#1"]["body"] = fm(f"{HOME}#1", blocked_by=["Partner/Lib#1"])
         state["issues"]["Partner/Lib#1"] = issue(
-            4242, "Partner lib", fm("Partner/Lib#1"), author="pat", association="OWNER"
+            4242,
+            "Partner lib",
+            fm("Partner/Lib#1"),
+            options={"author": "pat", "association": "OWNER"},
         )
         p = self.run_dag(
             state,
@@ -105,9 +108,7 @@ class ActorTrust(TrustFixture):
             177,
             "Automated",
             fm(f"{HOME}#77"),
-            author="deploy-bot",
-            association="OWNER",
-            author_type="Bot",
+            options={"author": "deploy-bot", "association": "OWNER", "author_type": "Bot"},
         )
         r = self.out(self.run_dag(state, "--from-github"))
         self.assertIn(f"{HOME}#77", self.untrusted_ids(r))
@@ -134,9 +135,7 @@ class ActorTrust(TrustFixture):
             177,
             "Automated",
             fm(f"{HOME}#77"),
-            author="deploy-bot[bot]",
-            association="NONE",
-            author_type="Bot",
+            options={"author": "deploy-bot[bot]", "association": "NONE", "author_type": "Bot"},
         )
         for spelling in ("deploy-bot[bot]", "app/deploy-bot"):
             r = self.out(self.run_dag(state, "--from-github", "--trust", spelling))
@@ -161,9 +160,7 @@ class ActorTrust(TrustFixture):
             178,
             "Impostor",
             fm(f"{HOME}#78"),
-            author="ci-worker",
-            association="NONE",
-            author_type="User",
+            options={"author": "ci-worker", "association": "NONE", "author_type": "User"},
         )
         r = self.out(self.run_dag(state, "--from-github", "--trust", "ci-worker[bot]"))
         self.assertIn(f"{HOME}#78", self.untrusted_ids(r))
@@ -173,7 +170,10 @@ class ActorTrust(TrustFixture):
         state = plan_state()
         state["issues"][f"{HOME}#1"]["body"] = fm(f"{HOME}#1", blocked_by=["mallory/trap#1"])
         state["issues"]["mallory/trap#1"] = issue(
-            31337, "Trap", fm("mallory/trap#1"), author=STRANGER, association="OWNER"
+            31337,
+            "Trap",
+            fm("mallory/trap#1"),
+            options={"author": STRANGER, "association": "OWNER"},
         )
         p = self.run_dag(state, "--from-github", "--root", f"{HOME}#9")
         r = self.out(p)

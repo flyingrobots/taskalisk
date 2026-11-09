@@ -29,7 +29,9 @@ class MutationTrust(TrustFixture):
 
     def test_add_edge_refuses_a_pull_request_child(self):
         state = plan_state()
-        state["issues"][f"{HOME}#300"] = issue(300, "A pull request", fm(f"{HOME}#300"), is_pr=True)
+        state["issues"][f"{HOME}#300"] = issue(
+            300, "A pull request", fm(f"{HOME}#300"), options={"is_pr": True}
+        )
         p = self.run_dag(state, "--from-github", "--add-edge", f"{HOME}#1->{HOME}#300")
         self.assertEqual(p.returncode, 1, p.stdout)
         self.assertFalse(any("PATCH" in c for c in self.calls()))

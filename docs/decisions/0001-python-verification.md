@@ -54,6 +54,13 @@ The fake GitHub adapter is the repository-prescribed offline boundary. It is
 not evidence of atomic GitHub writes or of live authentication interoperability.
 Read-only backlog compilation remains a separate required integration check.
 
+`tests/fixture_models.py` describes synthetic fixture construction, and
+`fixture_builders.py` owns the reusable frontmatter, issue and backlog builders.
+These types do not admit external data into production. Fault-injected wire
+fields, such as a deliberately non-boolean PR draft state, remain `object` until
+the actual adapter checks them. Moving builder options preserves the existing
+values and call arguments through differential output and normalized AST checks.
+
 ## Alternatives and consequences
 
 A language port would enlarge the change and introduce another compatibility

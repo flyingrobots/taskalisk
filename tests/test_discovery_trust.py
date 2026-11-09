@@ -7,7 +7,7 @@ class DiscoveryTrust(TrustFixture):
     def test_untrusted_seed_is_listed_and_never_a_node(self):
         state = plan_state()
         state["issues"][f"{HOME}#77"] = issue(
-            177, "Free money", fm(f"{HOME}#77"), author=STRANGER, association="NONE"
+            177, "Free money", fm(f"{HOME}#77"), options={"author": STRANGER, "association": "NONE"}
         )
         p = self.run_dag(state, "--from-github")
         r = self.out(p)
@@ -21,7 +21,7 @@ class DiscoveryTrust(TrustFixture):
     def test_untrusted_seed_referenced_by_a_trusted_task_blocks_it(self):
         state = plan_state()
         state["issues"][f"{HOME}#77"] = issue(
-            177, "Stranger", fm(f"{HOME}#77"), author=STRANGER, association="NONE"
+            177, "Stranger", fm(f"{HOME}#77"), options={"author": STRANGER, "association": "NONE"}
         )
         state["issues"][f"{HOME}#2"]["body"] = fm(
             f"{HOME}#2", blocked_by=[f"{HOME}#1", f"{HOME}#77"]
@@ -65,7 +65,7 @@ class DiscoveryTrust(TrustFixture):
     def test_stranger_seed_costs_no_permission_lookup(self):
         state = plan_state()
         state["issues"][f"{HOME}#77"] = issue(
-            177, "Flood", fm(f"{HOME}#77"), author=STRANGER, association="NONE"
+            177, "Flood", fm(f"{HOME}#77"), options={"author": STRANGER, "association": "NONE"}
         )
         self.run_dag(state, "--from-github")
         self.assertFalse(any("collaborators/mallory" in " ".join(c) for c in self.calls()))
@@ -117,7 +117,7 @@ class DiscoveryTrust(TrustFixture):
     def test_stranger_seed_costs_no_edit_history_query(self):
         state = plan_state()
         state["issues"][f"{HOME}#77"] = issue(
-            177, "Flood", fm(f"{HOME}#77"), author=STRANGER, association="NONE"
+            177, "Flood", fm(f"{HOME}#77"), options={"author": STRANGER, "association": "NONE"}
         )
         self.run_dag(state, "--from-github")
         graphql_calls = [
@@ -145,7 +145,10 @@ class DiscoveryTrust(TrustFixture):
         state = plan_state()
         state["issues"][f"{HOME}#1"]["body"] = fm(f"{HOME}#1", blocked_by=["partner/lib#1"])
         state["issues"]["partner/lib#1"] = issue(
-            4242, "Partner lib", fm("partner/lib#1"), author="pat", association="OWNER"
+            4242,
+            "Partner lib",
+            fm("partner/lib#1"),
+            options={"author": "pat", "association": "OWNER"},
         )
         p = self.run_dag(state, "--from-github", "--root", f"{HOME}#9", "--trust-owner", "partner")
         r = self.out(p)
@@ -155,7 +158,7 @@ class DiscoveryTrust(TrustFixture):
     def test_untrusted_root_is_listed_not_a_node(self):
         state = plan_state()
         state["issues"][f"{HOME}#77"] = issue(
-            177, "Stranger", fm(f"{HOME}#77"), author=STRANGER, association="NONE"
+            177, "Stranger", fm(f"{HOME}#77"), options={"author": STRANGER, "association": "NONE"}
         )
         p = self.run_dag(state, "--from-github", "--root", f"{HOME}#77")
         r = self.out(p)
@@ -176,8 +179,7 @@ class DiscoveryTrust(TrustFixture):
                 1000 + n,
                 "Fake dependent",
                 fm(f"{HOME}#{n}", blocked_by=[f"{HOME}#2"]),
-                author=STRANGER,
-                association="NONE",
+                options={"author": STRANGER, "association": "NONE"},
             )
         r = self.out(self.run_dag(state, "--from-github"))
         self.assertEqual(

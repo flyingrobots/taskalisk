@@ -1,6 +1,7 @@
 """Check PullRequestTrust behavior through the public CLI."""
 
 from cli_fixture import HOME, STRANGER, TrustFixture, closing, fm, issue, plan_state
+from fixture_models import FakePullRequest
 
 
 class PullRequestTrust(TrustFixture):
@@ -13,7 +14,9 @@ class PullRequestTrust(TrustFixture):
 
     def test_pull_requests_in_the_rest_list_are_not_seeds(self):
         state = plan_state()
-        state["issues"][f"{HOME}#300"] = issue(300, "A pull request", fm(f"{HOME}#300"), is_pr=True)
+        state["issues"][f"{HOME}#300"] = issue(
+            300, "A pull request", fm(f"{HOME}#300"), options={"is_pr": True}
+        )
         r = self.out(self.run_dag(state, "--from-github"))
         self.assertNotIn(f"{HOME}#300", self.ids(r))
 
@@ -54,7 +57,7 @@ class PullRequestTrust(TrustFixture):
     def test_same_repository_pr_by_an_untrusted_or_missing_author_is_untrusted(self):
         for author in ({"login": STRANGER}, None):
             state = plan_state()
-            pr = {
+            pr: FakePullRequest = {
                 "number": 8,
                 "isDraft": False,
                 "url": "u",

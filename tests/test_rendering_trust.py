@@ -13,10 +13,12 @@ class RenderingTrust(TrustFixture):
             5099,
             "SECRET STRANGER TITLE",
             fm(f"{ECHO}#99"),
-            state="closed",
-            reason="not_planned",
-            author=STRANGER,
-            association="NONE",
+            options={
+                "state": "closed",
+                "reason": "not_planned",
+                "author": STRANGER,
+                "association": "NONE",
+            },
         )
         p = self.run_dag(state, "--from-github", "--root", f"{HOME}#9")
         self.assertEqual(p.returncode, 0, p.stdout[-400:])
