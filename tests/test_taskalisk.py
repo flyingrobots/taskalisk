@@ -320,6 +320,110 @@ class PullRequestStates(Harness):
                     self.assertNotIn("waves", self.out(p))
 
 
+class CrossRepositoryPRs(Harness):
+    def remote_state(self, drafts=()):
+        return {"home": HOME, "collaborators": {HOME: ["owner"], ECHO: ["remote-writer"]},
+                "issues": {
+                    f"{HOME}#1": issue(101, "Home", fm(f"{HOME}#1", blocked_by=[f"{ECHO}#1"])),
+                    f"{ECHO}#1": issue(501, "Remote", fm(f"{ECHO}#1"))},
+                "prs_by_repo": {ECHO: [{"number": 10 + i, "isDraft": draft,
+                    "url": f"https://github.com/{ECHO}/pull/{10 + i}",
+                    "author": {"login": "remote-writer"}, "isCrossRepository": False,
+                    "closingIssuesReferences": [closing(1, ECHO)]} for i, draft in enumerate(drafts)]}}
+
+    def test_remote_pr_states_are_linked_without_number_collisions(self):
+        for drafts, expected in [([True], "wip"), ([False], "in-review"),
+                                 ([True, False], "in-review"), ([False, True], "in-review")]:
+            with self.subTest(drafts=drafts):
+                state = self.remote_state(drafts)
+                state["prs"] = [{"number": 10, "isDraft": True, "author": {"login": "owner"},
+                    "isCrossRepository": False, "closingIssuesReferences": [closing(1)]}]
+                p = self.run_dag(state, "--from-github")
+                self.assertEqual(p.returncode, 0, p.stdout)
+                result = self.out(p)
+                remote = self.node(result, f"{ECHO}#1")
+                self.assertEqual(remote["status"], expected)
+                self.assertGreaterEqual(remote["priority_score"], 1000)
+                self.assertEqual([pr["isDraft"] for pr in remote["linked_open_prs"]], drafts)
+                self.assertEqual(self.node(result, f"{HOME}#1")["status"], "wip")
+
+    def test_remote_trust_uses_remote_repository_and_reports_rejections(self):
+        for foreign, author in [(True, "remote-writer"), (False, "owner")]:
+            with self.subTest(foreign=foreign, author=author):
+                state = self.remote_state([True, False])
+                state["prs_by_repo"][ECHO][1].update(isCrossRepository=foreign, author={"login": author})
+                p = self.run_dag(state, "--from-github")
+                self.assertEqual(p.returncode, 0, p.stdout)
+                result = self.out(p)
+                self.assertEqual(self.node(result, f"{ECHO}#1")["status"], "wip")
+                rejected = result["source"]["untrusted_linked_prs"]
+                self.assertEqual([(pr["repository"], pr["number"]) for pr in rejected], [(ECHO, 11)])
+
+    def test_remote_inventory_failure_and_bad_shape_fail_closed(self):
+        for field, value in [("pr_list_fail_for", [ECHO]),
+                             ("pr_list_shape_for", {ECHO: {}}),
+                             ("pr_list_shape_for", {ECHO: [None]}),
+                             ("pr_list_shape_for", {ECHO: [{}] * 1000})]:
+            with self.subTest(field=field, shape=type(value).__name__):
+                state = self.remote_state()
+                state[field] = value
+                p = self.run_dag(state, "--from-github")
+                self.assertEqual(p.returncode, 2, p.stdout)
+                self.assertNotIn("waves", self.out(p))
+
+    def test_remote_empty_inventory_and_home_branch_coverage(self):
+        state = self.remote_state()
+        p = self.run_dag(state, "--from-github")
+        self.assertEqual(p.returncode, 0, p.stdout)
+        result = self.out(p)
+        self.assertEqual(self.node(result, f"{ECHO}#1")["status"], "open")
+        self.assertIn("recoverable_branches_repository", result["source"])
+        self.assertEqual(result["source"]["recoverable_branches_repository"], HOME)
+        queries = [call for call in self.calls() if call[:2] == ["pr", "list"]]
+        repos = [call[call.index("--repo") + 1] if "--repo" in call else HOME for call in queries]
+        self.assertEqual(sorted(repos), sorted([HOME, ECHO]))
+
+    def test_only_trusted_open_task_repositories_get_extra_pr_queries(self):
+        for mode in ["closed", "untrusted", "container", "out-of-scope"]:
+            with self.subTest(mode=mode):
+                self.log.write_text("")
+                state = self.remote_state()
+                remote = state["issues"][f"{ECHO}#1"]
+                if mode == "closed":
+                    remote["state"] = "closed"
+                elif mode == "untrusted":
+                    remote.update(author=STRANGER, association="NONE")
+                elif mode == "container":
+                    state["issues"][f"{HOME}#1"]["body"] = fm(f"{HOME}#1", kind="container", children=[f"{ECHO}#1"])
+                    remote["body"] = fm(f"{ECHO}#1", kind="container", children=[])
+                else:
+                    state["issues"][f"{HOME}#1"]["body"] = fm(f"{HOME}#1", blocked_by=["stranger/repo#1"])
+                p = self.run_dag(state, "--from-github")
+                self.assertEqual(p.returncode, 1 if mode == "out-of-scope" else 0, p.stdout)
+                queries = [c for c in self.calls() if c[:2] == ["pr", "list"]]
+                self.assertEqual(len(queries), 1)
+
+    def test_multiple_tasks_share_one_remote_query_and_active_fallback(self):
+        state = self.remote_state()
+        state["issues"][f"{ECHO}#1"]["body"] = fm(f"{ECHO}#1", blocked_by=[f"{ECHO}#2"])
+        state["issues"][f"{ECHO}#2"] = issue(502, "Remote active", fm(f"{ECHO}#2", extra=".status: active"))
+        p = self.run_dag(state, "--from-github")
+        self.assertEqual(p.returncode, 0, p.stdout)
+        self.assertEqual(self.node(self.out(p), f"{ECHO}#2")["status"], "in-progress")
+        queries = [c for c in self.calls() if c[:2] == ["pr", "list"] and "--repo" in c]
+        self.assertEqual(len(queries), 1)
+
+    def test_malformed_remote_closing_references_fail_closed(self):
+        for refs in [None, {}, [None], [{"number": "oops"}],
+                     [{"number": 1, "repository": {"owner": []}}]]:
+            with self.subTest(refs=refs):
+                state = self.remote_state([True])
+                state["prs_by_repo"][ECHO][0]["closingIssuesReferences"] = refs
+                p = self.run_dag(state, "--from-github")
+                self.assertEqual(p.returncode, 2, p.stdout + p.stderr)
+                self.assertNotIn("waves", self.out(p))
+
+
 class Mutation(Harness):
     def test_add_edge_rewrites_only_the_blocked_by_line(self):
         state = plan_state()

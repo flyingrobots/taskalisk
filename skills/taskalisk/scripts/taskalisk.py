@@ -227,19 +227,25 @@ def collect_unmerged_branches(repo: str, errors: list[dict[str, str]]) -> dict[s
     }
 
 
-def gh_list_open_prs(repo: str, errors: list[dict[str, str]]) -> list[dict[str, Any]]:
+def gh_list_open_prs(repo: str, errors: list[dict[str, str]], slug: str | None = None) -> list[dict[str, Any]]:
     cmd = [
         "gh", "pr", "list", "--state", "open", "--limit", str(GH_PR_LIST_LIMIT),
         # author and isCrossRepository feed the PR trust check (C4); without them every PR is untrusted.
         "--json", "number,title,headRefName,isDraft,url,closingIssuesReferences,author,isCrossRepository",
     ]
+    if slug:
+        cmd += ["--repo", slug]
+    source = "gh pr list" + (f" --repo {slug}" if slug else "")
     ok, raw, err = run_cmd_checked(cmd, cwd=repo)
     if not ok:
-        errors.append({"source": "gh pr list", "error": err or "command failed"})
+        errors.append({"source": source, "error": err or "command failed"})
         return []
-    prs = parse_json_list(raw, "gh pr list", errors)
+    prs = parse_json_list(raw, source, errors)
     if len(prs) >= GH_PR_LIST_LIMIT:
-        errors.append({"source": "gh pr list", "error": f"Result filled --limit {GH_PR_LIST_LIMIT}; possible truncation"})
+        errors.append({"source": source, "error": f"Result filled --limit {GH_PR_LIST_LIMIT}; possible truncation"})
+    if any(not isinstance(pr, dict) for pr in prs):
+        errors.append({"source": source, "error": "PR list contains a non-object record"})
+        return []
     return prs
 
 
@@ -811,6 +817,52 @@ class TrustPolicy:
                 return
 
 
+def collect_trusted_pr_links(repo: str, slug: str, prs: list[dict[str, Any]], policy: TrustPolicy, prs_by_issue: dict[IssueRef, list[dict[str, Any]]], untrusted_prs: list[dict[str, Any]], errors: list[dict[str, str]]) -> None:
+    """Apply the same PR trust and draft-state rules for every inventoried repository."""
+    source = f"gh pr list --repo {slug}"
+    for pr in prs:
+        closes: list[IssueRef] = []
+        refs = pr.get("closingIssuesReferences")
+        if not isinstance(refs, list):
+            errors.append({"source": source, "error": "PR has no readable closingIssuesReferences list"})
+            return
+        for ref in refs:
+            if not isinstance(ref, dict) or type(ref.get("number")) is not int or ref["number"] < 1:
+                errors.append({"source": source, "error": "PR has an invalid closing issue reference"})
+                return
+            ref_slug = slug
+            if "repository" in ref:
+                repo_info = ref["repository"]
+                owner = repo_info.get("owner") if isinstance(repo_info, dict) else None
+                if not isinstance(owner, dict) or not isinstance(owner.get("login"), str) or not isinstance(repo_info.get("name"), str):
+                    errors.append({"source": source, "error": "PR closing reference has no readable repository identity"})
+                    return
+                ref_slug = f"{owner['login']}/{repo_info['name']}".lower()
+            parsed = parse_issue_ref(f"{ref_slug}#{ref['number']}")
+            if parsed is None:
+                errors.append({"source": source, "error": "PR closing reference has an invalid repository identity"})
+                return
+            closes.append(parsed)
+        if not closes:
+            continue
+        if type(pr.get("number")) is not int or pr["number"] < 1 or (pr.get("author") is not None and not isinstance(pr["author"], dict)):
+            errors.append({"source": source, "error": "PR has an invalid number or author record"})
+            return
+        author = (pr.get("author") or {}).get("login")
+        cross = pr.get("isCrossRepository")
+        ok, why = (False, "head is not a branch of this repository") if cross is not False else policy.login_trusted(slug, author, None, "Bot" if (pr.get("author") or {}).get("is_bot") else None)
+        if errors:
+            return
+        if not ok:
+            untrusted_prs.append({"repository": slug, "number": pr.get("number"), "url": pr.get("url"), "author": author, "cross_repository": cross, "closes": [node_id(*c) for c in closes], "reason": why})
+            continue
+        if not isinstance(pr.get("isDraft"), bool):
+            errors.append({"source": source, "error": f"PR {pr.get('number')} has no boolean isDraft; refusing an unknown review state"})
+            return
+        for c in closes:
+            prs_by_issue[c].append({"repository": slug, "number": pr["number"], "isDraft": pr["isDraft"], "url": pr.get("url")})
+
+
 def collect_frontmatter_dag(repo: str, roots: list[str], errors: list[dict[str, str]], trust: dict[str, Any] | None = None) -> dict[str, Any]:
     """Build (merged, nodes) from issue frontmatter, across repositories."""
     empty: dict[str, Any] = {"merged": set(), "nodes": {}, "containers": [], "slug": None}
@@ -842,32 +894,11 @@ def collect_frontmatter_dag(repo: str, roots: list[str], errors: list[dict[str, 
         return empty
     queue.extend(sorted(seeds))
 
-    # A PR links a task only from a same-repository branch by a trusted author (C4).
     prs_by_issue: dict[IssueRef, list[dict[str, Any]]] = defaultdict(list)
     untrusted_prs: list[dict[str, Any]] = []
-    for pr in prs:
-        closes: list[IssueRef] = []
-        for ref in pr.get("closingIssuesReferences", []) or []:
-            if isinstance(ref, dict) and "number" in ref:
-                repo_info = ref.get("repository") or {}
-                owner = (repo_info.get("owner") or {}).get("login")
-                ref_slug = f"{owner}/{repo_info['name']}".lower() if owner and repo_info.get("name") else slug
-                closes.append((ref_slug, int(ref["number"])))
-        if not closes:
-            continue
-        author = (pr.get("author") or {}).get("login")
-        cross = pr.get("isCrossRepository")
-        ok, why = (False, "head is not a branch of this repository") if cross is not False else policy.login_trusted(slug, author, None, "Bot" if (pr.get("author") or {}).get("is_bot") else None)
-        if errors:
-            return empty
-        if not ok:
-            untrusted_prs.append({"number": pr.get("number"), "url": pr.get("url"), "author": author, "cross_repository": cross, "closes": [node_id(*c) for c in closes], "reason": why})
-            continue
-        if not isinstance(pr.get("isDraft"), bool):
-            errors.append({"source": "gh pr list", "error": f"PR {pr.get('number')} has no boolean isDraft; refusing an unknown review state"})
-            return empty
-        for c in closes:
-            prs_by_issue[c].append({"number": pr["number"], "isDraft": pr["isDraft"], "url": pr.get("url")})
+    collect_trusted_pr_links(repo, slug, prs, policy, prs_by_issue, untrusted_prs, errors)
+    if errors:
+        return empty
 
     seen: set[IssueRef] = set()
     referenced_by: dict[IssueRef, list[str]] = defaultdict(list)
@@ -954,6 +985,18 @@ def collect_frontmatter_dag(repo: str, roots: list[str], errors: list[dict[str, 
     for ref in [r for r, rec in records.items() if rec.get("untrusted") and r in seeds and not referenced_by.get(r)]:
         del records[ref]
 
+    # Query each discovered task repository once, after issue admission. PR links
+    # cannot expand issue discovery or bring an out-of-scope repository into it.
+    pr_repositories = sorted({ref[0] for ref, rec in records.items()
+                              if rec["kind"] == "task" and fetched[ref]["state"] == "open"} - {slug})
+    for pr_slug in pr_repositories:
+        remote_prs = gh_list_open_prs(repo, errors, pr_slug)
+        if errors:
+            return empty
+        collect_trusted_pr_links(repo, pr_slug, remote_prs, policy, prs_by_issue, untrusted_prs, errors)
+        if errors:
+            return empty
+
     merged: set[str] = set()
     nodes: dict[str, dict[str, Any]] = {}
     for ref, rec in records.items():
@@ -980,7 +1023,7 @@ def collect_frontmatter_dag(repo: str, roots: list[str], errors: list[dict[str, 
                 not_planned.append({"parent": bid, "child": nid, "title": btitle})
             depends_on.append({"from": bid, "type": "frontmatter", "isHard": True, "confidence": 1.0, "evidence": evidence})
         untrusted_node = bool(rec.get("untrusted"))
-        linked = prs_by_issue.get(ref, []) if ref[0] == slug and not untrusted_node else []
+        linked = prs_by_issue.get(ref, []) if not untrusted_node else []
         status = rec["status"] or "open"
         if linked:
             status = "in-review" if any(not pr["isDraft"] for pr in linked) else "wip"
@@ -1497,6 +1540,7 @@ def compile_from_github(repo: str, roots: list[str], min_confidence: float, emit
         "schema": FM_SCHEMA,
         "repository": source.get("slug"),
         "roots": roots,
+        "recoverable_branches_repository": source.get("slug"),
         "trust": source["trust"],
         "containers_excluded": [{k: c[k] for k in ("id", "number", "title")} for c in source["containers"]],
         "unmodeled_open_issues": source["unmodeled_open_issues"],
