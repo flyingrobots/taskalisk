@@ -47,9 +47,10 @@ decisions; the paper gives the arguments.
 
 Taskalisk reports violations. It never deletes a worktree, closes an issue or
 opens a pull request. Cleanup is done by whoever merges. A new `audit`
-command checks the rules; `plan` withholds a task from dispatch only when its
-work has branch commits and no open pull request. Cleanup findings never block
-dispatch (#33).
+command checks the rules. Of the lifecycle findings, only one withholds a task
+from dispatch in `plan`: branch commits with no open pull request. Cleanup
+findings never block dispatch (#33). Deferral and graph rules withhold tasks
+for their own reasons (Decision 7).
 
 ### 2. Rust, with a hexagonal architecture — Decided
 
