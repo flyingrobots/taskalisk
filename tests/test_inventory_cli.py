@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 
-from cli_fixture import HOME, Harness
+from cli_fixture import ECHO, HOME, Harness, fm, issue
 from fake_values import field, records
 from fixture_inventory import inventory_issue
 from fixture_pr import pull_request
@@ -99,3 +99,77 @@ class InventoryCli(Harness):
             )
         with self.subTest(check="prs"):
             self.assertEqual(field(self.out(result), "github", "open_prs"), [pull_request()])
+
+    def test_transport_failures_are_not_successful_empty_inventories(self) -> None:
+        """Both list commands fail with a source-specific error and no admitted rows."""
+        for command, field_name in [("pr", "open_prs"), ("issue", "open_issues")]:
+            with self.subTest(command=command):
+                state = self.inventory_state([inventory_issue()])
+                state["fail_command"] = [command, "list"]
+                result = self.run_dag(state)
+                self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+                report = self.out(result)
+                self.assertEqual(field(report, "github", field_name), [])
+                self.assertEqual(
+                    [error["source"] for error in records(report["inventory_errors"])],
+                    [f"gh {command} list"],
+                )
+                self.assertIn("selected command unavailable", result.stdout)
+
+    def test_full_pr_list_refuses_truncation_with_a_one_below_control(self) -> None:
+        """The configured 500-row cap is inclusive; a 499-row inventory is retained."""
+        for count, expected_exit in [(499, 0), (500, 2)]:
+            with self.subTest(count=count):
+                state = self.inventory_state([])
+                state["prs"] = [
+                    dict(pull_request(), number=number) for number in range(1, count + 1)
+                ]
+                result = self.run_dag(state)
+                self.assertEqual(result.returncode, expected_exit, result.stdout + result.stderr)
+                report = self.out(result)
+                self.assertEqual(
+                    len(records(field(report, "github", "open_prs"))), 499 if count == 499 else 0
+                )
+                self.assertEqual(bool(report["inventory_errors"]), count == 500)
+
+    def test_full_issue_list_refuses_truncation_and_forwards_milestone(self) -> None:
+        """The issue cap is inclusive and the operator's milestone reaches the provider."""
+        for count, expected_exit in [(999, 0), (1000, 2)]:
+            with self.subTest(count=count):
+                rows = [dict(inventory_issue(), number=number) for number in range(1, count + 1)]
+                result = self.run_dag(self.inventory_state(rows), "--milestone", "Release")
+                self.assertEqual(result.returncode, expected_exit, result.stdout + result.stderr)
+                report = self.out(result)
+                self.assertEqual(
+                    len(records(field(report, "github", "open_issues"))), 999 if count == 999 else 0
+                )
+                self.assertEqual(bool(report["inventory_errors"]), count == 1000)
+                self.assertEqual(self.calls()[-1][-2:], ["--milestone", "Release"])
+
+    def test_inventory_projects_only_open_home_issues_without_raw_override(self) -> None:
+        """The fake provider's default path preserves labels and filters unrelated rows."""
+        state = {
+            "home": HOME,
+            "blocked_by": {},
+            "issues": {
+                f"{HOME}#1": issue(101, "Open home", fm(f"{HOME}#1")),
+                f"{HOME}#2": issue(
+                    102, "Closed home", fm(f"{HOME}#2"), options={"state": "closed"}
+                ),
+                f"{ECHO}#1": issue(201, "Foreign", fm(f"{ECHO}#1")),
+            },
+        }
+        result = self.run_dag(state)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(
+            field(self.out(result), "github", "open_issues"),
+            [
+                {
+                    "number": 1,
+                    "title": "Open home",
+                    "url": f"https://github.com/{HOME}/issues/1",
+                    "labels": [],
+                    "milestone": None,
+                }
+            ],
+        )

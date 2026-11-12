@@ -23,6 +23,7 @@ CRITICAL = (
     "process",
     "modes",
     "output",
+    "rendering",
     "spec_checks",
     "spec_file",
     "spec_values",
@@ -141,6 +142,14 @@ class CoverageGate(unittest.TestCase):
         path = f"{PREFIX}authorization.py"
         del self.summaries[path]
         self.assert_refused(self.report(), f"{path}: missing coverage")
+
+    def test_security_sensitive_rendering_keeps_both_critical_floors(self) -> None:
+        """C5's escaping boundary cannot inherit the ordinary display-module floor."""
+        path = f"{PREFIX}rendering.py"
+        for measure, value in [("statements", counters(94, 100)), ("branches", counters(100, 94))]:
+            with self.subTest(measure=measure):
+                self.summaries[path] = value
+                self.assert_refused(self.report(), f"{path}: {measure} 94/100 below 95%")
 
     def test_uninstrumented_subprocess_code_fails_the_floor(self) -> None:
         """Parent-process test execution cannot stand in for CLI execution."""

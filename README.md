@@ -26,3 +26,5 @@ The verification range is CPython 3.9–3.13 on macOS and Linux; CI pins each
 interpreter patch and local development uses 3.13.15. The CLI has no runtime
 package dependencies. [The verification decision](docs/decisions/0001-python-verification.md)
 describes the ongoing gate adoption and command resource limits.
+
+For changes to the compiler, follow the [contributor verification guide](CONTRIBUTING.md).

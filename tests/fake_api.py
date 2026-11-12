@@ -127,6 +127,9 @@ def issue_body(
     state: dict[str, object], request: ApiRequest, key: str, records: dict[str, dict[str, object]]
 ) -> None:
     """Read or update an issue, preserving updates through copied fixture mappings."""
+    if request.method == "GET" and "issue_get_raw" in state:
+        sys.stdout.write(text(state["issue_get_raw"]))
+        return
     if request.method == "GET" and state.get("issue_get_returns_list"):
         emit([])
         return
@@ -138,9 +141,8 @@ def issue_body(
         save(state)
         emit({})
         return
-    if "--jq" in request.args and request.args[request.args.index("--jq") + 1] == ".id":
-        sys.stdout.write(str(records[key]["id"]) + "\n")
-        return
+    if request.method != "GET":
+        fail(f"fake gh: unsupported method {request.method}")
     emit(issue_obj(state, key, records[key]))
 
 
@@ -149,36 +151,15 @@ def dependencies(
     request: ApiRequest,
     key: str,
     records: dict[str, dict[str, object]],
-    parent_id: str | None,
 ) -> None:
-    """Serve the existing relationship mirror fixture operations."""
-    by_id = {integer(record["id"]): key for key, record in records.items()}
+    """Serve only the read-only relationship mirror used by the compiler."""
+    if request.method != "GET":
+        fail(f"fake gh: unsupported method {request.method}")
     table = fields(state["blocked_by"])
     parents = items(table.setdefault(key, []))
-    state["blocked_by"] = table
-    if request.method == "GET":
-        emit(
-            [
-                strip(state, issue_obj(state, text(parent), records[text(parent)]))
-                for parent in parents
-            ]
-        )
-        return
-    if request.method == "POST":
-        field = next(arg for arg in request.args if arg.startswith("issue_id="))
-        parent = by_id[int(field.split("=", 1)[1])]
-        if parent not in parents:
-            parents.append(parent)
-        save(state)
-        emit({})
-        return
-    if request.method == "DELETE":
-        parent = by_id[int(text(parent_id))]
-        if parent in parents:
-            parents.remove(parent)
-        save(state)
-        return
-    fail(f"fake gh: unsupported method {request.method}")
+    emit(
+        [strip(state, issue_obj(state, text(parent), records[text(parent)])) for parent in parents]
+    )
 
 
 def issue_route(state: dict[str, object], request: ApiRequest) -> None:
@@ -199,7 +180,7 @@ def issue_route(state: dict[str, object], request: ApiRequest) -> None:
     if match.group(3) and state.get("blocked_by_fail"):
         fail("gh: Internal Server Error (HTTP 500)")
     if match.group(3):
-        dependencies(state, request, key, records, match.group(4))
+        dependencies(state, request, key, records)
     else:
         issue_body(state, request, key, records)
 

@@ -126,3 +126,5 @@ class FakeState(_StateFields, total=False):
     issues_list_returns_object: bool
     graphql_no_cursor: bool
     fail_graphql: bool
+    fail_command: list[str]
+    issue_get_raw: str

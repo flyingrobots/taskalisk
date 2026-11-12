@@ -92,6 +92,19 @@ class Harness(unittest.TestCase):
         value: object = json.loads(self.state.read_text())
         return text(field(value, "issues", reference, "body"))
 
+    def run_provider(self, state: object, *args: str) -> subprocess.CompletedProcess[str]:
+        """Exercise the owned fake provider's protocol directly within five seconds."""
+        self.state.write_text(json.dumps(state), encoding="utf-8")
+        environment = dict(os.environ, FAKE_GH_STATE=str(self.state), FAKE_GH_LOG=str(self.log))
+        return subprocess.run(  # noqa: S603 -- fixed fake-provider argv; PY-PROVIDER-FIXTURE-ARGV
+            [sys.executable, str(FAKE_GH), *args],
+            capture_output=True,
+            text=True,
+            env=environment,
+            timeout=5,
+            check=False,
+        )
+
     def calls(self) -> list[list[str]]:
         """Require recorded argv arrays with text arguments in their original order."""
         calls: list[list[str]] = []

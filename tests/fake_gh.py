@@ -41,6 +41,9 @@ def main(argv: list[str]) -> None:
     with open(os.environ["FAKE_GH_LOG"], "a", encoding="utf-8") as stream:
         stream.write(json.dumps(argv) + "\n")
     state = load()
+    failure = [text(arg) for arg in items(state.get("fail_command", []))]
+    if failure and argv[: len(failure)] == failure:
+        fail("gh: selected command unavailable (fake)")
     if argv[:2] == ["repo", "view"]:
         sys.stdout.write(text(state["home"]) + "\n")
     elif argv[:2] == ["issue", "list"]:

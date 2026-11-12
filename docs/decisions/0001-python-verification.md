@@ -75,6 +75,17 @@ records the attempt before returning HTTP 500 without changing the issue body.
 This distinguishes initial write failure from rollback failure and checks retry
 counts. It models an observed refusal, not remote atomicity or cancellation.
 
+The `fail_command` fixture selects an exact command prefix for transport refusal;
+unrelated commands retain their normal behavior. `issue_get_raw` selects raw
+single-issue response bytes for admission tests. The provider accepts the used
+issue-body PATCH and read-only relationship routes; obsolete native relationship
+POST/DELETE support and the unused database-ID helper are removed. Protocol tests
+require unsupported writes to leave persisted fixture state intact. These are
+fixture guarantees, not additional production mutation capabilities.
+
+The [contributor guide](../../CONTRIBUTING.md) gives the local verification sequence,
+module/risk map, evidence requirements and current adoption gaps.
+
 ## Alternatives and consequences
 
 A language port would enlarge the change and introduce another compatibility
@@ -104,6 +115,7 @@ they do not waive typing, coverage, source limits or behavioral checks.
 | Ruff T201, `output.write_text` | This one sink intentionally emits the public stdout protocol, including its terminating newline. Future callers could disclose private data or change framing. | Named CLI refusal/rendering tests, deliberate output/selection faults and byte-for-byte CLI comparisons. | Re-review when the output contract or callers change. |
 | Ruff S603, `Harness.setUp` | A resolved Git executable initializes an owned temporary repository with fixed arguments and no shell. Executable resolution remains trusted. | Real-Git inventory and CLI tests exercise creation with a ten-second direct-child deadline. | Re-review when command construction, executable resolution or fixture ownership changes. |
 | Ruff S603, `Harness.run_dag` | A fixed interpreter runs the compiler against owned fixtures without a shell. A direct-child deadline does not bound captured output or contain nested command groups. | Named CLI tests and deliberate behavioral faults use a thirty-second direct-child deadline; separate process tests cover production command limits. | Re-review when command construction, executable resolution or fixture ownership changes. |
+| Ruff S603, `Harness.run_provider` | A fixed interpreter runs the owned fake-provider script with explicit argv and no shell. Executable resolution and fixture ownership remain trusted. | Protocol tests check selected failures, successful controls, call logs and persisted state within a five-second direct-child deadline. This does not contain arbitrary descendants. | Re-review when executable resolution, command construction or fixture ownership changes. |
 
 The machine-readable records in `exceptions.json` own identifiers and expiry.
 Registry validation is pending under #22; the file alone is not enforcement.
@@ -159,7 +171,9 @@ The tools directory now receives the critical 95% statement and branch floors,
 including helpers whose filenames do not begin with `check_`. Passing the source
 checker does not establish coverage, rule-registry freshness or complete quality
 adoption. Boundary fixtures and deliberate-fault evidence calibrate the checker;
-its passing fixture is distinct from the repository's still-failing adoption scan.
+a passing fixture is distinct from checking the complete repository. Rendering
+also receives both critical 95% floors because it owns the C5 escaping boundary.
+Independent 94% statement and branch specimens must be rejected for that module.
 
 ## Command routing and mutation ownership
 

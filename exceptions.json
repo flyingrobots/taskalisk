@@ -160,6 +160,22 @@
       "tracking": "https://github.com/flyingrobots/taskalisk/issues/22",
       "expires": "2027-02-08",
       "review_condition": "Command construction, executable resolution or fixture ownership changes"
+    },
+    {
+      "id": "PY-PROVIDER-FIXTURE-ARGV",
+      "rule": "PY-SUPPRESSIONS",
+      "diagnostic": "S603",
+      "path": "tests/cli_fixture.py",
+      "symbol": "Harness.run_provider",
+      "mechanism": "noqa",
+      "reason": "The fixed interpreter and owned fake-provider script receive explicit argv without a shell.",
+      "risk": "Changing executable resolution or fixture ownership invalidates the boundary; the direct-child timeout does not contain arbitrary descendants.",
+      "compensating_check": "Provider-contract tests observe exact failures, successful controls, call logs and persisted state within a five-second direct-child deadline.",
+      "owner": "Taskalisk maintainers",
+      "approver": "Codex under James's delegated decisions",
+      "tracking": "https://github.com/flyingrobots/taskalisk/issues/22",
+      "expires": "2027-02-08",
+      "review_condition": "Executable resolution, command construction or fixture ownership changes"
     }
   ]
 }

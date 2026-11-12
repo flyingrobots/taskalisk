@@ -19,6 +19,7 @@ CRITICAL_MODULES = (
     "process",
     "modes",
     "output",
+    "rendering",
     "spec_checks",
     "spec_file",
     "spec_values",

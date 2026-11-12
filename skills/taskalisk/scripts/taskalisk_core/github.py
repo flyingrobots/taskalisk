@@ -167,21 +167,6 @@ def issue_meta(obj: RestIssue) -> IssueMeta:
     return obj["meta"]
 
 
-def gh_issue_database_id(
-    repo: str, slug: str, number: int, errors: list[dict[str, str]]
-) -> int | None:
-    """Read an issue database ID, recording command or conversion failures."""
-    ok, raw, err = run_cmd_checked(
-        ["gh", "api", f"repos/{slug}/issues/{number}", "--jq", ".id"], cwd=repo
-    )
-    if not ok or not raw:
-        errors.append(
-            {"source": f"gh api repos/{slug}/issues/{number}", "error": err or "command failed"}
-        )
-        return None
-    return int(raw)
-
-
 def gh_get_issue(repo: str, ref: IssueRef, errors: list[dict[str, str]]) -> RestIssue | None:
     """Admit a complete issue or report a structured transport/field failure."""
     ok, raw, err = run_cmd_checked(["gh", "api", f"repos/{ref[0]}/issues/{ref[1]}"], cwd=repo)
