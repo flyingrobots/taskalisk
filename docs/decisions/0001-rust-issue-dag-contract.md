@@ -1,6 +1,7 @@
 # 0001. Rebuild Taskalisk in Rust around a versioned issue-dag contract
 
-Status: Accepted on 2026-11-11, except where a decision is marked
+Status: Accepted by James Ross on 2026-11-11 in a working session, and
+recorded by the merge of this record, except where a decision is marked
 **Proposed**.
 
 Each decision carries one of two marks:
@@ -21,8 +22,12 @@ decisions; the paper gives the arguments.
   It blocked #1 and #3, and through them the executor chain. Its branch held
   324 passing tests and a failing coverage gate.
 - The executor is the larger part of the planned code. None of it exists.
-- 237 issues in five repositories carry `issue-dag/2` frontmatter. Their
-  references reach 13 repositories under 3 owners.
+- On 2026-11-10, listing every issue of flyingrobots/taskalisk,
+  flyingrobots/geordi, flyingrobots/echo, flyingrobots/bunny and
+  git-stunts/git-warp (at most 600 per repository; git-warp reached that
+  limit) found 237 that carry `issue-dag/2` frontmatter. Their references
+  reach 13 repositories under 3 owners. Repositories outside those five were
+  not counted.
 - A manual audit on 2026-11-10 found two worktrees that belonged to merged
   pull requests, and two merged pull requests (#16, #17) with no issue.
   Nothing in the tool reports either condition.
@@ -109,9 +114,7 @@ adding or removing them. Containers and `.children` stay.
 2. **Holds.** `.deferred` or `.status: blocked` holds a task from new dispatch
    even when it has an open pull request. What a running worker does is
    executor policy.
-3. **Containers.** A container must not carry `.blocked_by`, not even `[]`.
-   The Python accepts the empty list; that disagreement is classified in #26.
-4. **Completion by `.type`.** Code-delivery types need a merged, trusted
+3. **Completion by `.type`.** Code-delivery types need a merged, trusted
    closing pull request. Decision, research, investigation and spike issues
    may instead close with a trusted comment that links a durable record.
 
@@ -124,11 +127,18 @@ report (#34):
 - **Proposed:** an edge is satisfied only when its blocker also meets its
   completion policy.
 
+The container rule is not a `/3` change. `docs/frontmatter-model.md` already
+says, for `issue-dag/2`, that a container must not have `.blocked_by`. The
+Python accepts `.blocked_by: []` on a container because it tests whether the
+list is empty rather than whether the key is present. The rule stands as
+written; #26 classifies the Python's behaviour as a defect.
+
 ### 8. Order of work — Decided
 
 1. Write the `/2` specification and profile (#25).
 2. Reconcile the Python against it and freeze the corpus (#26).
-3. Port the core to Rust at `/2` parity (#27 to #30).
+3. Port the core to Rust at `/2` parity (#27 to #30). `--explain` (#4) is
+   built on the core after #30.
 4. Add the adapters, safe edge writes and the cutover (#31, #1, #32).
 5. Add the lifecycle audit and `compare-plans` (#33, #34).
 6. Land the `/3` changes one at a time (#35 to #37).
@@ -144,7 +154,7 @@ The format and the implementation language never change in the same step.
 | Out-edges as a second source (`.blocks`) | Two copies of one edge, and any author could block another author's task |
 | Out-edges as a verified hint | Every edge edit touches two issues; a missing hint is silent |
 | Remove containers | They are how members in other repositories are found |
-| Generate the parser from Wesley | The standard forbids a serialisation library as the format |
+| Generate the parser from Wesley | Generated types are a raw serialisation form; the parser must parse, validate and only then admit a typed record |
 | Promise that an edge edit preserves concurrent edits | GitHub documents no conditional update for issues |
 
 ## Consequences
