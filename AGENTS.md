@@ -10,6 +10,9 @@ Instructions for agents that work in this repository.
   A control marked *planned* names the issue that owes it; that issue is not
   done until the control has a test.
 - `skills/taskalisk/SKILL.md`: the skill. Doctrine 9 summarises the policy.
+- `docs/decisions/0001-rust-issue-dag-contract.md`: the decision to rebuild
+  Taskalisk in Rust around a versioned issue-dag contract, and the order of
+  that work (#25 to #37). Do not add features to the Python compiler.
 
 ## Taskalisk plans Taskalisk
 
