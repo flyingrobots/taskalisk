@@ -2,10 +2,12 @@
 only from tracked files at a committed revision."""
 import hashlib
 import importlib.util
+import os
 import pathlib
 import posixpath
 import re
 import subprocess
+import sys
 import tempfile
 import unittest
 import zipfile
@@ -67,6 +69,15 @@ class BuildSkillReleaseTest(unittest.TestCase):
         first = builder.build(ROOT, self.out / "a", "1.0.0")
         second = builder.build(ROOT, self.out / "b", "1.0.0")
         self.assertEqual(first.read_bytes(), second.read_bytes())
+
+    def test_separate_processes_with_different_hash_seeds_build_identical_bytes(self):
+        digests = set()
+        for seed in ("1", "2", "3"):
+            out = self.out / f"seed{seed}"
+            subprocess.run([sys.executable, str(ROOT / "scripts" / "build_skill_release.py"), "--version", "1.0.0",
+                            "--out", str(out)], check=True, capture_output=True, env=dict(os.environ, PYTHONHASHSEED=seed))
+            digests.add(hashlib.sha256((out / "taskalisk-v1.0.0.zip").read_bytes()).hexdigest())
+        self.assertEqual(len(digests), 1)
 
     def test_entries_carry_a_fixed_timestamp_not_the_clock_or_file_times(self):
         for name, (_, _, stamp) in self.members(builder.build(ROOT, self.out / "a", "1.0.0")).items():
@@ -160,6 +171,19 @@ class BuildSkillReleaseTest(unittest.TestCase):
         repo = make_repo(self.out, BASIC, [MODEL_LINK, ("docs/alias.md", "model.md"),
                                            ("skills/taskalisk/references/alias.md", "../../../docs/alias.md")])
         with self.assertRaisesRegex(ValueError, "not a regular file"):
+            builder.build(repo, self.out / "a", "1.0.0")
+
+    def test_a_committed_sha256sums_in_the_skill_is_refused(self):
+        repo = make_repo(self.out, dict(BASIC, **{"skills/taskalisk/SHA256SUMS": "stale\n"}), [MODEL_LINK])
+        with self.assertRaisesRegex(ValueError, "SHA256SUMS is written by the builder"):
+            builder.build(repo, self.out / "a", "1.0.0")
+
+    def test_a_link_through_a_directory_link_is_refused(self):
+        files = dict(BASIC, **{"docs/deep/model.md": "the deep model\n"})
+        links = [MODEL_LINK, ("skills/taskalisk/references/via", "../../../docs/deep"),
+                 ("skills/taskalisk/references/odd.md", "via/../../../../docs/model.md")]
+        repo = make_repo(self.out, files, links)
+        with self.assertRaisesRegex(ValueError, "plain names, through no other link"):
             builder.build(repo, self.out / "a", "1.0.0")
 
     def test_links_to_git_metadata_or_ignored_files_are_refused(self):

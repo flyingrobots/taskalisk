@@ -45,6 +45,19 @@ def tracked(root, ref):
     return entries
 
 
+def plain_target(target):
+    """Leading `..` steps, then plain names: text resolution then matches the checkout's."""
+    parts = target.split("/")
+    while parts and parts[0] == "..":
+        parts.pop(0)
+    return bool(parts) and all(part not in ("", ".", "..") for part in parts)
+
+
+def passes_through_link(resolved, entries):
+    parts = resolved.split("/")
+    return any(entries.get("/".join(parts[:i]), ("",))[0] == LINK_MODE for i in range(1, len(parts)))
+
+
 def payload(root, ref):
     """Map each archive member name to (bytes, executable)."""
     entries = tracked(root, ref)
@@ -55,12 +68,17 @@ def payload(root, ref):
         relative = path[len(SKILL):]
         if SKIPPED_PARTS & set(relative.split("/")) or relative.endswith(".pyc"):
             continue
+        if relative == "SHA256SUMS":
+            raise ValueError("SHA256SUMS is written by the builder; remove the tracked one from the skill")
         mode, oid = entries[path]
         if mode == LINK_MODE:
             target = git(root, "cat-file", "blob", oid).decode("utf-8")
             resolved = posixpath.normpath(posixpath.join(posixpath.dirname(path), target))
             if target.startswith("/") or resolved == ".." or resolved.startswith("../"):
                 raise ValueError(f"{relative} resolves outside the repository")
+            if not plain_target(target) or passes_through_link(resolved, entries):
+                raise ValueError(f"{relative} must name its target as leading ../ steps and plain names, "
+                                 "through no other link")
             if resolved not in entries:
                 raise ValueError(f"{relative} names {resolved}, which is not a tracked file")
             mode, oid = entries[resolved]

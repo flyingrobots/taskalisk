@@ -42,6 +42,11 @@ untracked file or names another link is refused. An existing output
 directory is never overwritten, and a failed build leaves none behind. The
 same revision always gives identical archive bytes.
 
+`skills/taskalisk/references/` holds symlinks. A checkout made without
+symlink support, such as Git for Windows by default, shows them as one-line
+files naming their targets; read `docs/` directly there. Release archives
+always contain the documents themselves.
+
 ## Test
 
 ```sh
