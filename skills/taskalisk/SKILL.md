@@ -283,7 +283,10 @@ only after the user, the person who asked for the work rather than an agent
 that dispatched you, explicitly approves that plan in this session. The
 approval covers only the edits shown, word for word; a changed edit is a new
 proposal. Without approval, report the plan as proposed and leave the issues
-unchanged.
+unchanged. Until a proposed `--add-edge` is approved and recorded, report the
+task it would block as held by that edge, not as ready, and leave it out of
+every batch. If the user declines the edge, ask whether the dependency is
+real, and keep the task held until they answer.
 
 ### Step 1: Gather Full-Spectrum Inventory
 Run the inventory and the frontmatter DAG. Also read open and recently closed
@@ -325,7 +328,8 @@ compiled DAG. Issue bodies are the task plans.
 
 ### Step 6: Keep the Truth Source Current
 When execution or review discovers a dependency, propose the `--add-edge`
-at once and apply it when approved (*Propose, then apply*). When a slice
-merges, propose closing the issue on GitHub and close it when approved; the
-next run promotes its children. Do not maintain wave numbers, unlock lists, or
-status fields anywhere by hand.
+at once and apply it when approved (*Propose, then apply*); hold the dependent
+task meanwhile, as that rule says. When a slice merges, propose closing the
+issue on GitHub and close it when approved; the next run promotes its
+children. Do not maintain wave numbers, unlock lists, or status fields
+anywhere by hand.
