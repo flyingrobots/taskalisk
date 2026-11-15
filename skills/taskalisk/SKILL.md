@@ -274,12 +274,16 @@ $$\text{PriorityScore}(u) = 1000 \cdot \text{InFlight}(u) + 500 \cdot \text{Park
 follows this rule: an `--add-edge` or `--remove-edge`; frontmatter added or
 changed in a body, including `.holds` and `.meters`; any other body or scope
 edit; a new issue (a split or a slice); a comment; and closing an issue. First
-print the plan: each exact command with its `--reason`; for a body edit the
-target issue and the full new frontmatter block; for a new issue its title and
-body; for a close the issue and why. Run the edits only after the user
-explicitly approves that plan in this session. The approval covers only
-the edits shown; a changed edit is a new proposal. Without approval, report
-the plan as proposed and leave the issues unchanged.
+print the plan, showing the exact text each write puts on GitHub: each
+command with its `--reason`; for a body or scope edit the target issue and the
+changed text (the full new frontmatter block, and any other changed section);
+for a new issue its title and body; for a comment its full text; for a close
+the issue, the reason (`completed` or `not_planned`) and why. Run the edits
+only after the user, the person who asked for the work rather than an agent
+that dispatched you, explicitly approves that plan in this session. The
+approval covers only the edits shown, word for word; a changed edit is a new
+proposal. Without approval, report the plan as proposed and leave the issues
+unchanged.
 
 ### Step 1: Gather Full-Spectrum Inventory
 Run the inventory and the frontmatter DAG. Also read open and recently closed
