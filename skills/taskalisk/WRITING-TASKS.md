@@ -47,8 +47,8 @@ exact headings and in this order:
 
 ## Size
 
-`.size_hours` above 8 draws a warning, and 8 is a ceiling. A task that
-passes the test is usually a few hours. Estimate after splitting; a split
+`.size_hours` above 8 draws a warning: the task is probably not atomic. A
+task that passes the test is usually a few hours. Estimate after splitting; a split
 often shows work the bundled task hid, so the total may rise.
 
 ## Report the plan at its true size
