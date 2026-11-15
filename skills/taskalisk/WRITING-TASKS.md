@@ -33,16 +33,17 @@ Each of these means the test will probably fail:
 
 ## Body sections
 
-Write each task body with these sections after the frontmatter:
+Write each task body with these sections after the frontmatter, under these
+exact headings and in this order:
 
 | Section | Holds |
 | --- | --- |
 | Outcome | The one sentence from check 1 |
 | Scope | What the pull request contains |
-| Exclusions | What a reader might expect that it leaves out, and where that work lives |
-| Acceptance checks | Exact, observable results, as a checklist |
+| Out of scope | What a reader might expect that it leaves out, and where that work lives |
 | Prerequisites | Each `.blocked_by` entry with the reason it must close first |
 | Safe intermediate state | What `main` is like after this merges and before its dependents do |
+| Acceptance | Exact, observable results, as a checklist |
 
 ## Size
 
