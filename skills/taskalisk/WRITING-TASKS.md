@@ -63,4 +63,5 @@ single-outcome tasks is the truth. When you present a plan, state:
 ## Done
 
 The proposal is ready when every task in it has passed all three checks, and
-the proposal states the count, the total hours and the work left out.
+the proposal states the task count, the total hours, the critical path with
+its hours, and the work left out.
