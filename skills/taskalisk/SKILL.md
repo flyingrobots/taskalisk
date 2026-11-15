@@ -96,6 +96,9 @@ area: free-form notes have no prefix
      issues with their own `.blocked_by` entries and a container that lists
      them in `.children`. Creating those issues follows *Propose, then apply*
      (Workflow).
+   - Before you propose a new task or a split, read
+     [`WRITING-TASKS.md`](WRITING-TASKS.md) and put every task through its
+     one-outcome test.
 3. **Typed, Evidence-Backed Edges**
    - Every compiled edge cites the frontmatter that declares it. Completion
      comes only from GitHub issue state. Parents closed as `not_planned` are
