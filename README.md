@@ -29,13 +29,18 @@ existing `taskalisk/` folder aside before installing a newer release.
 ## Build a release
 
 ```sh
-python3 scripts/build_skill_release.py --version 1.0.0 --out .runs/release-v1.0.0
+python3 scripts/build_skill_release.py --version 1.0.0 --ref v1.0.0 --out .runs/release-v1.0.0
 ```
 
-The builder replaces the links in `skills/taskalisk/references/` with the
-documents they name in `docs/`, refuses a link that leaves the repository,
-and never overwrites an output directory. Identical sources give identical
-archive bytes.
+The builder packages the files tracked under `skills/taskalisk/` at the
+committed revision `--ref` (default `HEAD`), read from Git rather than the
+working folder. Untracked, ignored and uncommitted files never enter a
+release, and a checkout without symlink support builds the same archive.
+Each link in `skills/taskalisk/references/` is replaced by the tracked
+document it names in `docs/`. A link that leaves the repository, names an
+untracked file or names another link is refused. An existing output
+directory is never overwritten, and a failed build leaves none behind. The
+same revision always gives identical archive bytes.
 
 ## Test
 
