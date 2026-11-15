@@ -17,7 +17,8 @@ Issue frontmatter is the single source of truth. Each issue's first fenced
 close first (`.blocked_by`), which issues a container groups (`.children`),
 and which shared resources the task holds (`.holds`, `.meters`). The full
 schema is [`docs/frontmatter-model.md`](../../docs/frontmatter-model.md),
-two directories up from this skill.
+in the taskalisk repository, two directories up from this skill; the other
+`docs/` links below resolve the same way.
 
 The skill keeps **zero local state**: no cached graph, no ledger file. Every
 run recompiles from GitHub issue bodies, and every mutation is an edit of an
@@ -93,7 +94,8 @@ area: free-form notes have no prefix
    - If a PR implements a proper subset of an issue, either the issue is the
      unit and the PR is a slice of it, or the slices become separate task
      issues with their own `.blocked_by` entries and a container that lists
-     them in `.children`.
+     them in `.children`. Creating those issues follows *Propose, then apply*
+     (Workflow).
 3. **Typed, Evidence-Backed Edges**
    - Every compiled edge cites the frontmatter that declares it. Completion
      comes only from GitHub issue state. Parents closed as `not_planned` are
@@ -268,11 +270,14 @@ $$\text{PriorityScore}(u) = 1000 \cdot \text{InFlight}(u) + 500 \cdot \text{Park
 
 ## Workflow
 
-**Propose, then apply.** Every issue edit is a write to GitHub: an
-`--add-edge`, a `--remove-edge`, or frontmatter added to an issue body. First
-print the plan: each exact command with its `--reason`, and for a body edit
-the target issue and the full frontmatter block. Run the edits only after the
-user explicitly approves that plan in this session. The approval covers only
+**Propose, then apply.** Every write to an issue is a write to GitHub and
+follows this rule: an `--add-edge` or `--remove-edge`; frontmatter added or
+changed in a body, including `.holds` and `.meters`; any other body or scope
+edit; a new issue (a split or a slice); a comment; and closing an issue. First
+print the plan: each exact command with its `--reason`; for a body edit the
+target issue and the full new frontmatter block; for a new issue its title and
+body; for a close the issue and why. Run the edits only after the user
+explicitly approves that plan in this session. The approval covers only
 the edits shown; a changed edit is a new proposal. Without approval, report
 the plan as proposed and leave the issues unchanged.
 
@@ -300,11 +305,13 @@ propose the `--add-edge` (or `--remove-edge` for a wrong edge), and apply the
 batch once approved (*Propose, then apply*). Recompile and inspect
 `metrics.critical_path`, `metrics.max_parallel_width`, `metrics.edge_density`,
 and `metrics.isolated_open_nodes`. If a cycle appears between two whole issues,
-split the shared foundation into a predecessor issue.
+propose splitting the shared foundation into a predecessor issue (*Propose,
+then apply*).
 
 ### Step 4: Rank the Frontier & Compute the Batch
-Wave 0 is every open task with zero open blockers. Add `.holds` or `.meters`
-only under the resource rule in doctrine 1. The batch is what several agents
+Wave 0 is every open task with zero open blockers. Propose `.holds` or
+`.meters` only under the resource rule in doctrine 1, and write them only when
+approved (*Propose, then apply*). The batch is what several agents
 can run at the same time; each still claims its run-time keys with
 `git locks with`.
 
@@ -315,5 +322,6 @@ compiled DAG. Issue bodies are the task plans.
 ### Step 6: Keep the Truth Source Current
 When execution or review discovers a dependency, propose the `--add-edge`
 at once and apply it when approved (*Propose, then apply*). When a slice
-merges, close the issue on GitHub; the next run promotes its children. Do
-not maintain wave numbers, unlock lists, or status fields anywhere by hand.
+merges, propose closing the issue on GitHub and close it when approved; the
+next run promotes its children. Do not maintain wave numbers, unlock lists, or
+status fields anywhere by hand.

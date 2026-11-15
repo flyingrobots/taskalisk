@@ -25,6 +25,8 @@ python3 skills/taskalisk/scripts/taskalisk.py --from-github
 ```
 
 - Record a discovered prerequisite with `--add-edge`, never in prose only.
+  An agent proposes this edge, and every issue write below, and applies it
+  only after the user approves (the skill's *Propose, then apply* rule).
 - Requirements, scope and acceptance checks live in the issue body. A comment
   can discuss or propose a change; the change counts once the body says it.
   When you add a requirement, update the body and, if the work grew, its
