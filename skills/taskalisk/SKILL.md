@@ -16,9 +16,9 @@ Issue frontmatter is the single source of truth. Each issue's first fenced
 `yaml` block declares what the issue is (`.kind`, `.type`), which issues must
 close first (`.blocked_by`), which issues a container groups (`.children`),
 and which shared resources the task holds (`.holds`, `.meters`). The full
-schema is [`docs/frontmatter-model.md`](../../docs/frontmatter-model.md),
-in the taskalisk repository, two directories up from this skill; the other
-`docs/` links below resolve the same way.
+schema is [`references/frontmatter-model.md`](references/frontmatter-model.md),
+inside this skill. It is the repository's `docs/frontmatter-model.md`; the
+threat model below is bundled the same way.
 
 The skill keeps **zero local state**: no cached graph, no ledger file. Every
 run recompiles from GitHub issue bodies, and every mutation is an edit of an
@@ -35,7 +35,7 @@ absolute paths in tracked documentation.
 **Security.** The repositories are public, so anyone can open an issue with
 valid frontmatter or a fork PR that says `Closes owner/repo#N`. The threat
 model and the binding policy are
-[`docs/threat-model.md`](../../docs/threat-model.md). Doctrine 9 below is its
+[`references/threat-model.md`](references/threat-model.md). Doctrine 9 below is its
 summary. Controls marked *implemented* are in the compiler with tests;
 controls marked *planned* or *policy* name the executor issue that owes them
 (#9, #10, #13, #14 or #15), and that issue is not done until the control has
@@ -142,7 +142,7 @@ area: free-form notes have no prefix
      before the run fails.
    - Never resolve review threads without a verifying fix and never push to
      `origin/main` to bypass PR checks.
-9. **Trust Gate and Data Boundary** ([`docs/threat-model.md`](../../docs/threat-model.md))
+9. **Trust Gate and Data Boundary** ([`references/threat-model.md`](references/threat-model.md))
    - **Scope first.** The closure follows references only into trusted
      repositories: the home owner's, plus `--trust-owner` and `--trust-repo`.
      A reference outside the scope is a violation; the issue is never
