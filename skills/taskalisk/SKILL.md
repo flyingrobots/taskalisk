@@ -99,6 +99,8 @@ area: free-form notes have no prefix
    - Before you propose a new task or a split, read
      [`WRITING-TASKS.md`](WRITING-TASKS.md) and put every task through its
      one-outcome test.
+   - Write each task body from the card template for its `.type` in
+     [`templates/`](templates/).
 3. **Typed, Evidence-Backed Edges**
    - Every compiled edge cites the frontmatter that declares it. Completion
      comes only from GitHub issue state. Parents closed as `not_planned` are
