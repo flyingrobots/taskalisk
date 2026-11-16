@@ -33,17 +33,25 @@ Each of these means the test will probably fail:
 
 ## Body sections
 
-Write each task body with these sections after the frontmatter, under these
-exact headings and in this order:
+After the frontmatter, write the body from the card template for the task's
+`.type`, under its exact headings and in its order:
 
-| Section | Holds |
+| `.type` | Template |
 | --- | --- |
-| Outcome | The one sentence from check 1 |
-| Scope | What the pull request contains |
-| Out of scope | What a reader might expect that it leaves out, and where that work lives |
-| Prerequisites | Each `.blocked_by` entry with the reason it must close first |
-| Safe intermediate state | What `main` is like after this merges and before its dependents do |
-| Acceptance | Exact, observable results, as a checklist |
+| `feature` | [`templates/feature.md`](templates/feature.md) |
+| `bug` | [`templates/bug.md`](templates/bug.md) |
+| `decision` | [`templates/decision.md`](templates/decision.md) |
+| `investigation` | [`templates/investigation.md`](templates/investigation.md) |
+| `research` | [`templates/research.md`](templates/research.md) |
+| `spike` | [`templates/spike.md`](templates/spike.md) |
+| `task` | [`templates/nine-section-card.md`](templates/nine-section-card.md) |
+
+Each typed template starts with the frontmatter block, so it stays the first
+fenced block in the issue; the flat card has none, so put the block above it. Copy a template into a repository's
+`.github/ISSUE_TEMPLATE/` and replace `owner/repo` in `.id` with that
+repository. Every card states the outcome from check 1 of the one-outcome
+test, explains each `.blocked_by` entry under Prerequisites, and writes
+"none" or "not applicable, because X" instead of padding a section.
 
 ## Size
 
