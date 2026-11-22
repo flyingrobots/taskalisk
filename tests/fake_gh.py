@@ -110,7 +110,12 @@ def main(argv):
         print(json.dumps(out)); return
     if argv[:2] == ["pr", "list"]:
         # Like the real gh, return only the requested --json fields.
-        prs = state.get("prs", [])
+        slug = argv[argv.index("--repo") + 1] if "--repo" in argv else state["home"]
+        if slug in state.get("pr_list_fail_for", []):
+            fail("gh: remote PR inventory unavailable (fake)")
+        if slug in state.get("pr_list_shape_for", {}):
+            print(json.dumps(state["pr_list_shape_for"][slug])); return
+        prs = state.get("prs_by_repo", {}).get(slug, state.get("prs", []) if slug == state["home"] else [])
         if "--json" in argv:
             fields = argv[argv.index("--json") + 1].split(",")
             prs = [{k: v for k, v in pr.items() if k in fields} for pr in prs]
