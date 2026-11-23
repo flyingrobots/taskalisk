@@ -5,6 +5,16 @@ The Taskalisk skill's releases. The skill version (the release tag, and `__versi
 under `skills/taskalisk/schemas/` has its own version and moves only when that message changes. A
 schema version under `Unreleased` is a draft and may change in place.
 
+## Unreleased
+
+### Added
+
+- **Canonical issue templates** in `skills/taskalisk/templates/issue/`, one for each task `.type`,
+  derived from Parley's and made project-neutral. Each opens with the frontmatter block and the six
+  body sections `WRITING-TASKS.md` requires, in order. The skill says how to install them into a
+  repository's `.github/ISSUE_TEMPLATE/`, and `tests/test_issue_templates.py` holds every template
+  to the compiler's own frontmatter validator and to `WRITING-TASKS.md`'s section table.
+
 ## 2.0.0 - 2026-11-23
 
 A breaking change to the output (flyingrobots/taskalisk#70). Running agents read the installed
