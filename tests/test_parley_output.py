@@ -204,6 +204,14 @@ class Usage(Harness):
                 self.assertFalse((self.tmp / ".parley" / "receipts").exists() and any((self.tmp / ".parley" / "receipts").iterdir()))
 
 
+class CommandWords(Harness):
+    def test_a_flag_value_equal_to_a_command_name_reaches_the_compiler(self):
+        """flyingrobots/parley#101: --reason edit in an edit is the reason, not a second command."""
+        p = self.run_dag(plan_state(), "--from-github", "--root", f"{HOME}#9", "--add-edge", f"{ECHO}#6->{HOME}#2", "--reason", "edit")
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.assertEqual(pl.one(self.streams(p)[0], "taskalisk.edge_edit")["reason"], "edit")
+
+
 class Discovery(Harness):
     def test_schema_lists_every_command_and_schema(self):
         """OUT-07."""
