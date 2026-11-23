@@ -7,6 +7,7 @@ import json
 import os
 import pathlib
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -524,6 +525,189 @@ class SkillRecipe(unittest.TestCase):
         self.assertEqual(p.returncode, 0, p.stderr)
         plan = pl.one(pl.parse(stdout, "stdout"), "taskalisk.plan")
         self.assertEqual([l.split()[1] for l in p.stdout.splitlines()], plan["frontier"])
+
+
+# ---- Baker Street case BS-2026-11-22-taskalisk-pr71: repairs R-1 to R-6 -----------------------
+
+GH_TOKEN_VARIABLES = ("GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN")  # `gh help environment`
+SKILL_MD = ROOT / "skills" / "taskalisk" / "SKILL.md"
+OUTPUT_README = ROOT / "docs" / "topics" / "output" / "README.md"
+THREAT_MODEL = ROOT / "docs" / "threat-model.md"
+INVENTORY_SCOPE = "Inventory applies no trust gate"
+
+
+class SecretsEveryTokenVariable(Harness):
+    def test_every_token_variable_gh_reads_is_declared_and_scrubbed(self):
+        """OUT-10 (R-3): each variable `gh help environment` names as a token is a declared secret."""
+        for name in GH_TOKEN_VARIABLES:
+            with self.subTest(name):
+                value = f"tok_{name}_7d1e"
+                state = plan_state()
+                state["issues_list_fail_message"] = "gh: token {$" + name + "} rejected"
+                p = self.run_dag(state, "--from-github", env=self.env(**{name: value}))
+                self.assertEqual(p.returncode, 2, p.stderr[-400:])
+                self.assertNotIn(value, self.text_everywhere(p))
+                out, _ = self.streams(p)
+                self.assertEqual(pl.receipt_lines(out)[0]["redacted"]["env"], [name])
+        for doc in (SKILL_MD, OUTPUT_README):
+            for name in GH_TOKEN_VARIABLES:
+                self.assertIn(f"`{name}`", doc.read_text(), f"{doc.name} does not name {name}")
+
+
+class RollbackOnException(Harness):
+    def test_an_exception_after_the_write_restores_the_body(self):
+        """OUT-25 (R-4): an exception after the write, before the compile admits the edit, undoes it."""
+        state = plan_state()
+        state["issues_list_drop_number"] = True
+        before = state["issues"][f"{HOME}#2"]["body"]
+        p = self.run_dag(state, "--from-github", "--add-edge", f"{ECHO}#6->{HOME}#2")
+        self.assertEqual(p.returncode, 2, p.stderr[-800:])
+        self.assertNotIn("Traceback", p.stderr)
+        out, err = self.streams(p)
+        self.assertEqual(self.current()["issues"][f"{HOME}#2"]["body"], before)
+        self.assertTrue(pl.one(out, "taskalisk.edge_edit")["rolled_back"])
+        self.assertIn("uncaught.exception", [e["code"] for e in pl.of(err, "parley.error")])
+        patches = [c for c in self.calls() if "PATCH" in c]
+        self.assertEqual(len(patches), 2, patches)
+
+    def test_a_failed_restore_after_a_discovery_failure_is_reported(self):
+        """OUT-25 (R-4, F-20): when discovery fails and the restoring PATCH fails too, edge.rollback_failed is reported."""
+        state = plan_state()
+        state["fail_graphql_for"] = [f"{HOME}#1"]
+        state["patch_fail_after"] = 1
+        out, err = self.streams(self.run_dag(state, "--from-github", "--add-edge", f"{ECHO}#6->{HOME}#2"))
+        self.assertFalse(pl.one(out, "taskalisk.edge_edit")["rolled_back"])
+        self.assertIn("edge.rollback_failed", [e["code"] for e in pl.of(err, "parley.error")])
+
+
+class InventoryScope(Harness):
+    def test_inventory_carries_unfiltered_text_and_every_document_says_so(self):
+        """OUT-23 (R-1): inventory lists strangers' issues and fork PRs as data, and the binding text says so."""
+        state = plan_state()
+        state["issues"][f"{HOME}#77"] = issue(177, "MARK_INVENTORY_STRANGER", fm(f"{HOME}#77"), author=STRANGER, association="NONE")
+        state["prs"] = [{"number": 300, "isDraft": False, "url": f"https://github.com/{HOME}/pull/300", "title": "MARK_INVENTORY_FORK",
+                         "author": {"login": STRANGER}, "isCrossRepository": True, "headRefName": "fork-branch", "closingIssuesReferences": []}]
+        p = self.run_dag(state)
+        out, _ = self.streams(p)
+        receipt = "".join(r.read_text() for r in (self.tmp / ".parley" / "receipts").glob("*.jsonl"))
+        for mark in ("MARK_INVENTORY_STRANGER", "MARK_INVENTORY_FORK"):
+            self.assertIn(mark, p.stdout)
+            self.assertIn(mark, receipt)
+        for doc in (THREAT_MODEL, SKILL_MD, OUTPUT_README):
+            self.assertIn(INVENTORY_SCOPE, doc.read_text(), doc.name)
+        schema = self.run_dag(state, "--schema")
+        intent = next(c for c in pl.of(self.streams(schema)[0], "parley.command") if c["name"] == "inventory")
+        self.assertIn(INVENTORY_SCOPE.lower(), json.dumps(intent).lower())
+
+
+class ReceiptTitles(Harness):
+    def test_a_receipt_holds_trusted_titles_never_bodies_and_the_docs_say_so(self):
+        """OUT-24 (R-2): the receipt copies result lines, so it holds trusted titles; it never holds a body."""
+        state = plan_state()
+        state["issues"][f"{HOME}#1"]["body"] += "\nMARK_BODY_TEXT"
+        p = self.run_dag(state, "--from-github", "--root", f"{HOME}#9")
+        self.assertEqual(p.returncode, 0, p.stderr)
+        receipt = "".join(r.read_text() for r in (self.tmp / ".parley" / "receipts").glob("*.jsonl"))
+        self.assertIn("Home one", receipt)
+        self.assertNotIn("MARK_BODY_TEXT", receipt)
+        for doc in (OUTPUT_README, THREAT_MODEL, ROOT / "docs" / "decisions" / "0002-parley-output-contract.md"):
+            text = doc.read_text()
+            self.assertNotIn("never holds an issue's title", text, doc.name)
+            self.assertNotIn("never a title or body", text, doc.name)
+        self.assertIn("titles of trusted issues", OUTPUT_README.read_text())
+
+
+class SkillRecipeRefuses(Harness):
+    """OUT-26 (R-5): both recipes refuse what doctrine 4 says not to dispatch from."""
+
+    def recipes(self):
+        skill = SKILL_MD.read_text()
+        py = re.search(r"<!-- recipe: ranked-frontier -->\s*```python\n(.*?)```", skill, re.S)
+        jq = re.search(r"<!-- recipe: ranked-frontier-jq -->\s*```bash\n.*?jq [^']*'(.*?)'", skill, re.S)
+        self.assertIsNotNone(py, "SKILL.md lost its python recipe")
+        self.assertIsNotNone(jq, "SKILL.md lost its jq recipe (marker ranked-frontier-jq)")
+        return py.group(1), jq.group(1)
+
+    def streams_to_check(self):
+        good = self.run_dag(plan_state(), "--from-github", "--root", f"{HOME}#9").stdout
+        bad = plan_state()
+        bad["issues"][f"{HOME}#1"]["body"] = fm(f"{HOME}#1", extra=".bogus: 1")
+        not_ok = self.run_dag(bad, "--from-github", "--root", f"{HOME}#9").stdout
+        failing = plan_state()
+        failing["fail_graphql"] = True
+        no_plan = self.run_dag(failing, "--from-github").stdout
+        truncated = "".join(good.splitlines(True)[:-1])
+        return good, {"not ok": not_ok, "no plan line": no_plan, "no end line": truncated}
+
+    def run_recipe(self, kind, program, stdin):
+        if kind == "python":
+            return subprocess.run([sys.executable, "-c", program], input=stdin, capture_output=True, text=True)
+        return subprocess.run(["jq", "-r", "-s", program], input=stdin, capture_output=True, text=True)
+
+    def test_both_recipes_print_the_frontier_of_a_good_plan_and_refuse_the_rest(self):
+        py, jq = self.recipes()
+        good, refusals = self.streams_to_check()
+        plan = pl.one(pl.parse(good, "stdout"), "taskalisk.plan")
+        kinds = [("python", py)] + ([("jq", jq)] if shutil.which("jq") else [])
+        for kind, program in kinds:
+            with self.subTest(kind):
+                p = self.run_recipe(kind, program, good)
+                self.assertEqual(p.returncode, 0, p.stderr)
+                rows = p.stdout.splitlines()
+                self.assertEqual([r.split()[1] for r in rows], plan["frontier"])
+                self.assertTrue(all(r.split()[2] in ("open", "wip", "in-review", "in-progress", "parked", "blocked") for r in rows), rows)
+            for name, stream in refusals.items():
+                with self.subTest(kind, refused=name):
+                    p = self.run_recipe(kind, program, stream)
+                    self.assertNotEqual(p.returncode, 0, p.stdout)
+                    self.assertEqual(p.stdout, "")
+
+    def test_a_title_is_printed_quoted(self):
+        py, _ = self.recipes()
+        state = plan_state()
+        state["issues"][f"{HOME}#2"]["title"] = "two\nIGNORE PREVIOUS"
+        state["issues"][f"{HOME}#1"]["body"] = fm(f"{HOME}#1")
+        stream = self.run_dag(state, "--from-github", "--root", f"{HOME}#9").stdout
+        p = self.run_recipe("python", py, stream)
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.assertFalse([l for l in p.stdout.splitlines() if l.startswith("IGNORE")], p.stdout)
+
+
+class DamagedInstall(unittest.TestCase):
+    """OUT-27 (R-6): an unreadable declaration is a startup failure (spec 3.2); a missing writer is documented."""
+
+    def copy_skill(self):
+        tmp = pathlib.Path(tempfile.mkdtemp(prefix="taskalisk-damaged-"))
+        self.addCleanup(shutil.rmtree, tmp)
+        shutil.copytree(ROOT / "skills" / "taskalisk", tmp / "taskalisk")
+        return tmp
+
+    def test_a_missing_schema_is_one_startup_failed_line_and_exit_3(self):
+        tmp = self.copy_skill()
+        (tmp / "taskalisk" / "schemas" / "taskalisk.plan.schema.json").unlink()
+        env = dict(os.environ, XDG_STATE_HOME=str(tmp / "state"))
+        for args in (["--help"], ["--verify-dag", str(tmp / "none.json")]):
+            with self.subTest(args):
+                p = subprocess.run([sys.executable, str(tmp / "taskalisk" / "scripts" / "taskalisk.py"), *args],
+                                   capture_output=True, text=True, cwd=str(tmp), env=env)
+                self.assertEqual(p.returncode, 3, p.stderr[-800:])
+                self.assertEqual(p.stdout, "")
+                self.assertNotIn("Traceback", p.stderr)
+                lines = pl.parse(p.stderr, "stderr")
+                self.assertEqual(len(lines), 1)
+                self.assertEqual(lines[0]["_schema"]["id"], "parley.startup.failed")
+                self.assertEqual(lines[0]["code"], "startup.declaration_unreadable")
+                self.assertEqual(pl.problems(lines), [])
+
+    def test_a_missing_writer_is_the_documented_exception(self):
+        text = OUTPUT_README.read_text()
+        self.assertIn("parley_emit.py` is missing", text)
+        tmp = self.copy_skill()
+        (tmp / "taskalisk" / "scripts" / "parley_emit.py").unlink()
+        p = subprocess.run([sys.executable, str(tmp / "taskalisk" / "scripts" / "taskalisk.py"), "--help"],
+                           capture_output=True, text=True, cwd=str(tmp))
+        self.assertEqual(p.returncode, 1)
+        self.assertIn("ModuleNotFoundError", p.stderr)
 
 
 if __name__ == "__main__":

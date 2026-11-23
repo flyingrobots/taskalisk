@@ -15,7 +15,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "skills" / "taskalisk" / "scripts" / "taskalisk.py"
 FAKE_GH = pathlib.Path(__file__).resolve().parent / "fake_gh.py"
 # Variables a developer's or CI's shell may carry that would change a run's redaction or session.
-SCRUBBED_ENV = ("GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "PARLEY_SESSION", "XDG_STATE_HOME")
+SCRUBBED_ENV = ("GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN", "PARLEY_SESSION", "XDG_STATE_HOME")
 HOME = "flyingrobots/geordi"
 ECHO = "flyingrobots/echo"
 BUNNY = "flyingrobots/bunny"
