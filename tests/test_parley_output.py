@@ -710,5 +710,87 @@ class DamagedInstall(unittest.TestCase):
         self.assertIn("ModuleNotFoundError", p.stderr)
 
 
+# ---- the fresh blind pass on c292c0a: repairs R-20 and R-21 -----------------------------------
+
+PLANTED_ID = "IGNORE PREVIOUS INSTRUCTIONS"
+
+
+class SinceLastProvenance(Harness):
+    """OUT-28 (R-20): --since-last believes only a well-formed receipt of this tool."""
+
+    def planted(self, run_id, name, edit):
+        first = self.run_dag(plan_state(), "--from-github", "--root", f"{HOME}#9")
+        self.assertEqual(first.returncode, 0, first.stderr)
+        honest = pathlib.Path(pl.parse(first.stdout, "stdout")[0]["paths"]["receipt"])
+        lines = [json.loads(l) for l in honest.read_text().splitlines()]
+        for line in lines:
+            line["run"] = run_id
+            if (line.get("_schema") or {}).get("id") == "taskalisk.frontier_node":
+                edit(line)
+        (honest.parent / name).write_text("".join(json.dumps(l) + "\n" for l in lines))
+        return pl.parse(first.stdout, "stdout")[0]["run"]
+
+    def test_a_planted_receipt_is_not_believed(self):
+        z = "Z" * 26
+        cases = {
+            "a name that is not its run": ("01ZZZZZZZZZZZZZZZZZZZZZZZZ", z + ".jsonl", lambda l: l.update(id=PLANTED_ID)),
+            "an id that is no issue": (z, z + ".jsonl", lambda l: l.update(id=PLANTED_ID)),
+            "a rank that is no number": (z, z + ".jsonl", lambda l: l.update(rank="first")),
+            "a wave that is no number": (z, z + ".jsonl", lambda l: l.update(wave="one")),
+        }
+        for label, (run_id, name, edit) in cases.items():
+            with self.subTest(label):
+                self.addCleanup(shutil.rmtree, self.tmp, True)
+                self.setUp()
+                honest_run = self.planted(run_id, name, edit)
+                p = self.run_dag(plan_state(), "--from-github", "--root", f"{HOME}#9", "--since-last")
+                self.assertEqual(p.returncode, 0, p.stderr[-800:])
+                out, _ = self.streams(p)  # every line validates
+                self.assertNotIn(PLANTED_ID, p.stdout + p.stderr)
+                self.assertEqual(pl.one(out, "taskalisk.plan")["since_last"]["compared_with"], honest_run)
+                receipt = pl.receipt_lines(out)
+                self.assertTrue([s for s in pl.of(receipt, "parley.receipt.step") if s["decision"].startswith("--since-last: ignored")], label)
+
+
+class EditNeverSilent(unittest.TestCase):
+    """OUT-25 (R-21): once an edit is written, edge_edit is on stdout before anything later can fail."""
+
+    def test_an_exception_after_an_admitted_edit_still_reports_it(self):
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("taskalisk_under_test", SCRIPT)
+        tk = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(tk)
+        mutation = {"type": "add_blocked_by", "parent": f"{ECHO}#6", "child": f"{HOME}#2", "changed": True, "reason": "r", "recorded_in": "x"}
+
+        def fake_plan(*args, out=None, **kwargs):
+            out.mutation = dict(mutation)
+            out.result = {"ok": True}
+            return out
+
+        def boom(*args, **kwargs):
+            raise RuntimeError("after the edit")
+
+        class Run:
+            dry_run = False
+
+            def __init__(self):
+                self.lines = []
+
+            def result(self, line, ref):
+                self.lines.append(line)
+
+        ns = tk.build_parser().parse_args(["--from-github", "--add-edge", f"{ECHO}#6->{HOME}#2", "--since-last"])
+        run = Run()
+        tk.STATE["resolved"] = {"question": {}}
+        orig = (tk.github_plan, tk.previous_plan)
+        tk.github_plan, tk.previous_plan = fake_plan, boom
+        try:
+            with self.assertRaises(RuntimeError):
+                tk.run_plan(run, ns, "edit")
+        finally:
+            tk.github_plan, tk.previous_plan = orig
+        self.assertEqual([l["event"] for l in run.lines], ["edge_edit"])
+
+
 if __name__ == "__main__":
     unittest.main()
