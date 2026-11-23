@@ -70,6 +70,35 @@ area: free-form notes have no prefix
 - An unknown key that starts with `.` fails the run, so a typo cannot drop an
   edge. Keys without the prefix are notes, and the skill ignores them.
 
+## Issue templates
+
+Every task issue is filed from one of the canonical templates in
+`templates/issue/`, one per `.type`: `feature`, `bug`,
+`decision`, `research`, `investigation`, `spike` and `task`. Each one carries
+the frontmatter block, the six body sections that
+[`WRITING-TASKS.md`](WRITING-TASKS.md) requires (Outcome, Scope, Out of scope,
+Prerequisites, Safe intermediate state, Acceptance) in that order, then the
+type's own sections, its Test Plan where it has one, and its Definition of Done.
+Do not write a task body freehand, and do not keep a repository-local fork of
+a template: change the canonical copy here.
+
+Install them into a repository that does not have them yet, naming the
+repository so `.id` starts filled in except for the number. This follows
+*Propose, then apply*: show the user the files first.
+
+```sh
+SKILL_DIR=~/.agents/skills/taskalisk
+REPO="${REPO:?set REPO to owner/repo}"
+mkdir -p .github/ISSUE_TEMPLATE
+for f in "$SKILL_DIR"/templates/issue/*; do
+  sed "s|OWNER/REPO#NEW|$REPO#NEW|" "$f" > ".github/ISSUE_TEMPLATE/$(basename "$f")"
+done
+```
+
+When filing through `gh` rather than the web form, start from the template's
+body below its `---` header, set `.id` to the number GitHub assigned once it
+exists, and pass the body with `--body-file`.
+
 ---
 
 ## Core Doctrine
