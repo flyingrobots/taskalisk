@@ -10,7 +10,7 @@ requirements and their tests are the [test plan](test-plan.md).
 ## The writer
 
 Lines are written by `skills/taskalisk/scripts/parley_emit.py`, the Python Parley writer, copied
-unmodified from flyingrobots/parley at `e158c51ed8fce39422abc9cc7e75fe4fc1e57171`.
+unmodified from flyingrobots/parley's release `parley-emit-py-v0.1.1` (version 0.1.1).
 `parley_emit.pin.json` beside it records its SHA-256 and that commit, and a test fails when the
 copy's digest differs from the pin. `python3 parley_emit.py --vendor-info` prints the digest and a
 `shasum -c` command. The writer is Apache-2.0; its `LICENSE` and `NOTICE` sit beside it.
@@ -181,7 +181,9 @@ SHA-256 of its title and body. Those bodies are the run's declared input `github
 `receipt.inputs`, the writer's derivation) identifies the question and the issue text it was
 answered from. PR states, branches and permission answers are live context outside that
 boundary: two runs with one `inv` can still differ when only those moved. `verify` declares its
-DAG file as the input; `inventory` declares the snapshot it read.
+DAG file as the input; `inventory` declares the snapshot it read. A DAG file `verify` could not
+read is recorded with `error: dag_spec.unreadable` and no digest, and `inv` is omitted; one that
+was read but is not JSON is recorded by the bytes read.
 
 `artifact_hash` on the plan line is the SHA-256 of the canonical result document (keys sorted,
 compact separators, a trailing newline), computed exactly as 1.x computed `meta.artifact_hash`, so
