@@ -9,39 +9,43 @@ edges, its container `.children`, and the resources it holds. Labels,
 milestones, body sections, and GitHub relationships never create edges.
 Every issue reference is `owner/repo#N`; a bare `#N` is invalid,
 because transferring an issue would silently re-point it. Nothing is
-cached or written on disk.
+cached; the only file written is the run's Parley receipt.
 
-Modes:
-  --from-github [--root <ref>] [--emit-mermaid] [--emit-roadmap]
+Output (docs/topics/output/README.md): every line on stdout and stderr is a
+JSON object written through the vendored Parley writer (parley_emit.py, pinned
+by parley_emit.pin.json), with a declared, separately versioned schema under
+skills/taskalisk/schemas/. `--help`, `--schema`, `--human` and `--dry-run` are
+the writer's. Exit 0 success, 2 a reported error, 3 a usage error before the
+run started, 4 an output or receipt failure.
+
+Commands (the 1.x mode flags still select them):
+  plan       --from-github [--root <ref>] [--emit-mermaid | --emit-roadmap] [--since-last]
       Read-only. Discovers the closure from the open home issues (or the
       roots) through `.blocked_by` and `.children`, across repositories,
       compiles the transitively-reduced DAG, ranks the Open Frontier, and
       proposes a batch that respects `.holds` and `.meters`.
       Trust flags: --trust <login>, --trust-owner <owner>, --trust-repo
       <owner/repo>, --trust-codeowners (docs/threat-model.md).
-  --from-github --add-edge "owner/repo#1080->owner/repo#1052" [--reason "..."]
-      Adds the parent to the child's frontmatter `.blocked_by`, then
-      recompiles. If the edge creates a cycle the old body is restored and
-      the run fails.
-  --from-github --remove-edge "owner/repo#1080->owner/repo#1052"
-      Removes the parent from the child's `.blocked_by`.
-  --from-github --compare-relationships
-      Also reports drift between frontmatter edges and GitHub blocked_by
-      relationships, which are an optional mirror.
-  --verify-dag dag.json [--min-confidence 0.7] [--emit-mermaid]
+      --compare-relationships also reports drift between frontmatter edges
+      and GitHub blocked_by relationships, which are an optional mirror.
+  edit       --add-edge "owner/repo#1080->owner/repo#1052" [--reason "..."] | --remove-edge "..."
+      Adds (or removes) the parent in the child's frontmatter `.blocked_by`,
+      then recompiles. If the run fails after an added edge, the old body is
+      restored.
+  verify     --verify-dag dag.json [--min-confidence 0.7] [--emit-mermaid]
       Read-only. Compiles a hand-written DAG specification (input, not state).
-  --repo <path> [--milestone v21.0.0]
+  inventory  --repo <path> [--milestone v21.0.0]
       Read-only. Full-spectrum inventory: worktrees, unmerged branches, open
-      PRs, open issues. Exit 2 on any tool failure or possible truncation.
+      PRs, open issues. An error on any tool failure or possible truncation.
 
 Guarantees:
 1. DAG purity: only frontmatter `.blocked_by` entries enter the graph.
 2. Fail closed: any `gh`/`git` failure, unparseable JSON, or list result that
-   fills its query limit is an error (exit 2), never an empty backlog.
+   fills its query limit is a typed error (exit 2), never an empty backlog.
 3. Edges come with evidence: each edge cites the frontmatter that declares it.
    Completion comes only from the GitHub issue state.
 4. Strict frontmatter: an unknown `.` key, a wrong `.id`, a container used as
-   a blocker, or a malformed value fails the run (exit 1).
+   a blocker, or a malformed value fails the run (`frontmatter.invalid`, exit 2).
 5. Lexical lock conflicts: `.holds` keys are lexical; a trailing `/` claims a
    subtree, so `docs/` conflicts with `docs/plans/`. A semaphore with unknown
    capacity counts as exclusive.
@@ -49,8 +53,8 @@ Guarantees:
    repository is in the trusted scope and its author and every body editor
    are trusted. A linked PR counts only from a same-repository branch by a
    trusted author. Untrusted issues and PRs are listed, never dispatched, and
-   contribute nothing to the graph or to rendered output. Any trust lookup
-   that cannot run (edit history, permission, CODEOWNERS) exits 2.
+   contribute nothing to the graph, to any line, or to the receipt. Any trust
+   lookup that cannot run (edit history, permission, CODEOWNERS) is an error.
 """
 
 from __future__ import annotations
@@ -64,7 +68,16 @@ from pathlib import Path
 import re
 import subprocess
 import sys
-from typing import Any
+from typing import Any, Callable
+
+__version__ = "2.0.0"
+
+SCRIPT_DIR = Path(__file__).resolve().parent
+SCHEMA_DIR = SCRIPT_DIR.parent / "schemas"
+if str(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIR))
+
+import parley_emit as pe  # noqa: E402  (vendored, pinned by parley_emit.pin.json)
 
 # Completed = GitHub closed. GitHub treats a closed blocker as satisfied,
 # whatever the reason; "not_planned" parents are reported separately.
@@ -102,6 +115,29 @@ def sanitize_home(text: str) -> str:
     return text
 
 
+# `scheme://user:secret@host`: a credential embedded in a URL that git or gh echoes in an error.
+URL_CREDENTIALS_RE = re.compile(r"(?i)\b([a-z][a-z0-9+.-]*://)[^\s/@]+@")
+
+
+def sanitize_text(text: str) -> str:
+    """Command output that may reach a line: no home directory, no credential inside a URL."""
+    return sanitize_home(URL_CREDENTIALS_RE.sub(r"\1[redacted]@", text))
+
+
+# The run being written, so discovery can record each decision in the receipt as it is made.
+_RUN: Any = None
+
+
+def note(decision: str, because: str, detail: Any = None) -> None:
+    """One receipt step (Parley spec 5): what was decided and why. Never GitHub text an untrusted
+    author wrote: ids, states, counts, logins and digests only."""
+    if _RUN is not None and not _RUN.ended:
+        if detail is None:
+            _RUN.step(decision, because)
+        else:
+            _RUN.step(decision, because, detail)
+
+
 def run_cmd_checked(cmd: list[str], cwd: str | None = None) -> tuple[bool, str, str]:
     """Run a command; never raise. Returns (ok, stdout, sanitized stderr)."""
     try:
@@ -114,11 +150,11 @@ def run_cmd_checked(cmd: list[str], cwd: str | None = None) -> tuple[bool, str, 
             check=False,
         )
     except (FileNotFoundError, NotADirectoryError, PermissionError) as exc:
-        return False, "", sanitize_home(f"{type(exc).__name__}: {exc}")
+        return False, "", sanitize_text(f"{type(exc).__name__}: {exc}")
     return (
         proc.returncode == 0,
         proc.stdout.strip(),
-        sanitize_home(proc.stderr.strip()),
+        sanitize_text(proc.stderr.strip()),
     )
 
 
@@ -240,6 +276,7 @@ def gh_list_open_prs(repo: str, errors: list[dict[str, str]]) -> list[dict[str, 
     prs = parse_json_list(raw, "gh pr list", errors)
     if len(prs) >= GH_PR_LIST_LIMIT:
         errors.append({"source": "gh pr list", "error": f"Result filled --limit {GH_PR_LIST_LIMIT}; possible truncation"})
+    note(f"listed {len(prs)} open pull request(s)", "a pull request marks a task in flight only from a same-repository branch by a trusted author (C4)")
     return prs
 
 
@@ -289,6 +326,7 @@ def gh_repo_slug(repo: str, errors: list[dict[str, str]]) -> str | None:
         errors.append({"source": "gh repo view", "error": err or "command failed"})
         return None
     # The same canonical spelling as parsed references (parse_issue_ref), or the home issues never match their own .id.
+    note(f"the home repository is {raw.lower()}", "gh resolves it from --repo; references compare in this lowercase spelling")
     return raw.lower()
 
 
@@ -335,6 +373,7 @@ def gh_list_open_issues_rest(repo: str, slug: str, errors: list[dict[str, str]])
     items = [it for it in parse_paginated_arrays(raw, source, errors) if isinstance(it, dict) and not it.get("pull_request")]
     if len(items) >= GH_ISSUE_LIST_LIMIT:
         errors.append({"source": source, "error": f"Result reached {GH_ISSUE_LIST_LIMIT} issues; refusing a possibly truncated seed set"})
+    note(f"listed {len(items)} open issue(s) of {slug}", "the open issues of the home repository are the seeds of discovery")
     return items
 
 
@@ -576,11 +615,12 @@ def gh_patch_body(repo: str, ref: IssueRef, body: str, errors: list[dict[str, st
         proc = subprocess.run(["gh", "api", "-X", "PATCH", f"repos/{ref[0]}/issues/{ref[1]}", "--input", "-"],
                               cwd=repo, input=json.dumps({"body": body}), stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=False)
     except (FileNotFoundError, PermissionError) as exc:
-        errors.append({"source": f"gh api PATCH repos/{ref[0]}/issues/{ref[1]}", "error": sanitize_home(str(exc))})
+        errors.append({"source": f"gh api PATCH repos/{ref[0]}/issues/{ref[1]}", "error": sanitize_text(str(exc))})
         return False
     if proc.returncode != 0:
-        errors.append({"source": f"gh api PATCH repos/{ref[0]}/issues/{ref[1]}", "error": sanitize_home(proc.stderr.strip()) or "command failed"})
+        errors.append({"source": f"gh api PATCH repos/{ref[0]}/issues/{ref[1]}", "error": sanitize_text(proc.stderr.strip()) or "command failed"})
         return False
+    note(f"wrote the body of {node_id(*ref)}", "an edge edit replaces the whole issue body; only its .blocked_by line differs (the issue edit history is the ledger)")
     return True
 
 
@@ -593,6 +633,7 @@ def list_branches(repo: str, errors: list[dict[str, str]]) -> list[str]:
             errors.append({"source": " ".join(cmd[:3]), "error": err or "command failed"})
             continue
         names.extend(n.strip() for n in raw.splitlines() if n.strip() and not n.strip().endswith("/HEAD"))
+    note(f"listed {len(set(names))} branch(es)", "a branch whose name carries an issue number is recoverable work for that issue")
     return sorted(set(names))
 
 
@@ -696,6 +737,7 @@ def gh_issue_edit_history(repo: str, ref: IssueRef, errors: list[dict[str, str]]
             editors.append({"login": editor.get("login"), "type": editor.get("__typename")})
         page = edits.get("pageInfo") or {}
         if not page.get("hasNextPage"):
+            note(f"read the body and {len(editors)} body edit(s) of {node_id(*ref)}", "every editor of the body that is parsed must be trusted (C1)")
             return {"body": body, "editors": editors}
         if not page.get("endCursor"):
             errors.append({"source": source, "error": "edit history reports another page but no cursor; refusing a partial editor list"})
@@ -780,6 +822,8 @@ class TrustPolicy:
         if key not in self._collaborator_cache:
             source = f"gh api repos/{slug}/collaborators/{login}/permission"
             ok, raw, err = run_cmd_checked(["gh", "api", f"repos/{slug}/collaborators/{login}/permission", "--jq", ".permission"], cwd=self.repo)
+            if ok:
+                note(f"{login} has permission {raw or 'none'} on {slug}", "write, maintain or admin trusts a person; anything less does not (C1)")
             if ok and raw in TRUSTED_PERMISSIONS:
                 self._collaborator_cache[key] = (True, f"permission {raw}")
             elif ok:
@@ -801,6 +845,7 @@ class TrustPolicy:
             source = f"gh api repos/{slug}/contents/{path}"
             ok, raw, err = run_cmd_checked(["gh", "api", f"repos/{slug}/contents/{path}", "-H", "Accept: application/vnd.github.raw+json"], cwd=self.repo)
             if ok:
+                note(f"read {path} of {slug}", "--trust-codeowners trusts the logins it names in that repository only (C18)")
                 logins, teams = parse_codeowners(raw)
                 self._repo_logins[slug_key] |= {l.lower() for l in logins}
                 if teams:
@@ -887,6 +932,7 @@ def collect_frontmatter_dag(repo: str, roots: list[str], errors: list[dict[str, 
         nid = node_id(ref[0], ref[1], slug)
         if not policy.in_scope(ref[0]):
             # Never fetch outside the scope: the attacker is OWNER of their own repository (C2).
+            note(f"did not fetch {nid}", "it is outside the trusted repositories (C2)")
             hint = f"add --trust-owner {ref[0].split('/', 1)[0]} or --trust-repo {ref[0]}"
             for who in referenced_by[ref] or [nid]:
                 violations.setdefault(who, []).append(f"reference {nid} is outside the trusted repositories; {hint}")
@@ -909,15 +955,19 @@ def collect_frontmatter_dag(repo: str, roots: list[str], errors: list[dict[str, 
                     violations.setdefault(who, []).append(f"reference {nid} moved to {moved} (transferred); update the frontmatter")
                 continue
             fetched[ref] = issue_meta(obj)
+            note(f"read {nid}", f"referenced by {', '.join(referenced_by[ref]) or 'no node (a seed)'}", {"state": fetched[ref]["state"]})
         meta = fetched[ref]
         # Author first, from the REST object: a stranger's issue costs no further query (C1, C15).
         trusted, reasons = policy.author_trusted(ref[0], meta)
+        if not trusted:
+            note(f"{nid} is untrusted", "; ".join(reasons))
         if trusted:
             history = gh_issue_edit_history(repo, ref, errors)
             if history is None:
                 break
             meta["body"] = history["body"]  # the body whose editors were checked
             trusted, reasons = policy.editors_trusted(ref[0], meta.get("author"), history["editors"], meta.get("author_type"))
+            note(f"{nid} is {'trusted' if trusted else 'untrusted'}", "; ".join(reasons) or "its author and every body editor passed the trust gate (C1)")
         if errors:
             break
         if not trusted:
@@ -1371,37 +1421,9 @@ def with_artifact_hash(result: dict[str, Any]) -> dict[str, Any]:
     return result
 
 
-def emit(result: dict[str, Any], emit_mermaid: bool, emit_roadmap: bool = False) -> int:
-    if emit_roadmap and result.get("ok"):
-        print(render_roadmap_block(result))
-    elif emit_mermaid and result.get("ok"):
-        print(render_mermaid_flowchart(result))
-    else:
-        print(json.dumps(result, indent=2))
-    return 0 if result.get("ok") else 1
-
-
-# --------------------------------------------------------------------------- #
-# Modes
-# --------------------------------------------------------------------------- #
-
-
-def verify_and_layer_dag(dag_path: str, min_confidence: float, emit_mermaid: bool) -> int:
-    try:
-        data = json.loads(Path(dag_path).read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
-        print(json.dumps({"ok": False, "error": f"Cannot read DAG spec: {sanitize_home(str(exc))}"}))
-        return 1
-    if not isinstance(data, dict) or not isinstance(data.get("nodes", {}), dict):
-        print(json.dumps({"ok": False, "error": "DAG spec must be an object with a 'nodes' object"}))
-        return 1
-    merged = {strip_merged_hint(str(m)) for m in data.get("merged", [])}
-    result = compile_and_analyze_dag(merged, data.get("nodes", {}), min_confidence=min_confidence)
-    return emit(with_artifact_hash(result), emit_mermaid)
-
-
-def mutate_edge(repo: str, home: str, parent: IssueRef, child: IssueRef, add: bool, errors: list[dict[str, str]], policy: TrustPolicy) -> dict[str, Any] | None:
-    """Edit the child's frontmatter .blocked_by. Returns {"child": ref, "old_body": str} or None."""
+def mutate_edge(repo: str, home: str, parent: IssueRef, child: IssueRef, add: bool, errors: list[dict[str, str]], policy: TrustPolicy, write: bool = True) -> dict[str, Any] | None:
+    """Edit the child's frontmatter .blocked_by. Returns {"child": ref, "old_body": str} or None.
+    With write False (a --dry-run) every check runs and nothing is written."""
     # The child is always checked. The parent's scope matters only when an edge is added:
     # removing a reference to an out-of-scope issue is how an operator repairs such a reference.
     for ref in ((parent, child) if add else (child,)):
@@ -1447,49 +1469,206 @@ def mutate_edge(repo: str, home: str, parent: IssueRef, child: IssueRef, add: bo
     if new_body is None:
         errors.append({"source": f"frontmatter of {node_id(child[0], child[1], home)}", "error": "cannot rewrite .blocked_by"})
         return None
-    if new_body != body and not gh_patch_body(repo, child, new_body, errors):
+    if write and new_body != body and not gh_patch_body(repo, child, new_body, errors):
         return None
     return {"child": child, "old_body": body, "changed": new_body != body}
 
 
-def compile_from_github(repo: str, roots: list[str], min_confidence: float, emit_mermaid: bool, add_edge: str | None, remove_edge: str | None, reason: str, emit_roadmap: bool = False, capacities: dict[str, int] | None = None, compare: bool = False, trust: dict[str, Any] | None = None) -> int:
-    errors: list[dict[str, str]] = []
-    mutation: dict[str, Any] | None = None
-    undo: dict[str, Any] | None = None
-    trust = trust or {}
+def parse_capacities(items: list[str]) -> dict[str, int] | None:
+    caps: dict[str, int] = {}
+    for item in items:
+        name, _, num = item.partition("=")
+        if not name or not num.isdigit() or int(num) < 1:
+            return None
+        caps[name] = int(num)
+    return caps
 
+
+# --------------------------------------------------------------------------- #
+# Output: every line through Parley (docs/topics/output/README.md)
+# --------------------------------------------------------------------------- #
+
+SCHEMA_VERSION = "1.0.0"
+MESSAGES = ("plan", "frontier_node", "node", "wave", "batch", "edge", "finding", "edge_edit", "rendering", "frontier_change",
+            "inventory.summary", "inventory.worktree", "inventory.branch", "inventory.pull_request", "inventory.issue")
+COMMANDS = ("plan", "edit", "verify", "inventory")
+# gh reads these; their values are scrubbed from every line and named in the receipt head (spec 5.3).
+SECRETS = ["GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN"]
+OBSERVATIONS_INPUT = "github:issues"
+INVENTORY_INPUT = "github+git:inventory"
+RETENTION = 50
+
+
+def schema_ref(name: str) -> tuple[str, str]:
+    return (f"taskalisk.{name}", SCHEMA_VERSION)
+
+
+def load_schema(name: str) -> dict[str, Any]:
+    return json.loads((SCHEMA_DIR / f"taskalisk.{name}.schema.json").read_text(encoding="utf-8"))
+
+
+def emits(*names: str) -> list[dict[str, Any]]:
+    return [{"id": f"taskalisk.{n}", "version": SCHEMA_VERSION, "schema": load_schema(n)} for n in names]
+
+
+def sha256_text(text: Any) -> str:
+    return hashlib.sha256(str(text or "").encode("utf-8")).hexdigest()
+
+
+# ---- the score and its terms --------------------------------------------------------------
+
+
+def score_terms(node: dict[str, Any]) -> dict[str, Any]:
+    """priority_score as its terms. compile_and_analyze_dag computes the total; this states it."""
+    status = str(node.get("status", "")).strip().lower()
+    values = [
+        ("in_flight", 1 if status in IN_FLIGHT_STATUSES else 0, PRIORITY_IN_FLIGHT_WEIGHT),
+        ("parked", 1 if status == PARKED_STATUS else 0, PRIORITY_PARKED_WEIGHT),
+        ("descendants", node["transitive_unblocks_count"], PRIORITY_DESCENDANTS_WEIGHT),
+        ("critical_path_depth", node["critical_path_remaining_depth"], PRIORITY_DEPTH_WEIGHT),
+        ("out_degree", len(node["directly_unlocks"]), 1),
+    ]
+    terms = {name: {"value": v, "weight": w, "points": v * w} for name, v, w in values}
+    total = sum(t["points"] for t in terms.values())
+    if total != node["priority_score"]:
+        raise AssertionError(f"the terms of {node['id']} sum to {total}, not its priority_score {node['priority_score']}")
+    return {"total": total, "terms": terms}
+
+
+# ---- failures as typed errors -------------------------------------------------------------
+
+REMEDIES = {
+    "gh.command_failed": "check `gh auth status` and the network, then rerun; nothing was compiled from a partial read",
+    "gh.list_limit_reached": "narrow the seeds with --root; a list that fills its limit may be truncated (threat model C15)",
+    "gh.response_invalid": "rerun; if it persists, report the gh version with the receipt",
+    "gh.mutation_failed": "check the token can edit issues in that repository, then rerun",
+    "git.command_failed": "run the command shown in detail.source inside --repo to see why",
+    "root.invalid_reference": "name the root as owner/repo#N",
+    "root.out_of_scope": "add --trust-owner or --trust-repo for that repository, or choose a root inside the scope",
+    "edge.out_of_scope": "add --trust-owner or --trust-repo, or choose an issue inside the scope",
+    "edge.child_not_issue": "name the pull request's issue as the child",
+    "edge.child_untrusted": "never write into a stranger's issue; a trusted person files their own issue",
+    "edge.child_frontmatter_missing": "give the child valid issue-dag/2 task frontmatter first",
+    "edge.child_frontmatter_invalid": "fix the child's frontmatter first; the run's frontmatter.violation findings say how",
+    "edge.rewrite_impossible": "the child's frontmatter needs exactly one .blocked_by line",
+}
+
+
+def classify(err: dict[str, str]) -> tuple[str, bool]:
+    """A stable code, and whether a retry can help, for one failure the compiler records."""
+    src, msg = err["source"], err["error"]
+    if "possible truncation" in msg or "possibly truncated" in msg:
+        return "gh.list_limit_reached", False
+    if src == "--root":
+        return ("root.out_of_scope" if "outside the trusted" in msg else "root.invalid_reference"), False
+    if src.startswith("edge "):
+        return ("edge.child_not_issue" if "pull request" in msg else "edge.out_of_scope"), False
+    if src.startswith("frontmatter of "):
+        if msg.startswith("child is untrusted"):
+            return "edge.child_untrusted", False
+        if msg.startswith("missing or unparseable"):
+            return "edge.child_frontmatter_missing", False
+        if msg.startswith("invalid task frontmatter"):
+            return "edge.child_frontmatter_invalid", False
+        return "edge.rewrite_impossible", False
+    if src.startswith("gh api PATCH"):
+        return "gh.mutation_failed", True
+    if any(k in msg for k in ("Unparseable JSON", "Expected a JSON", "GraphQL response has no", "no cursor", "isDraft", "repository_url")):
+        return "gh.response_invalid", False
+    if src.startswith("git"):
+        return "git.command_failed", True
+    return "gh.command_failed", True
+
+
+def one_sentence(text: str, limit: int = 600) -> str:
+    flat = " ".join(str(text).split())
+    return flat if len(flat) <= limit else flat[: limit - 3] + "..."
+
+
+class Failure:
+    """One parley.error to report: a stable code, one sentence, and the detail a caller acts on."""
+
+    def __init__(self, code: str, problem: str, detail: dict[str, Any] | None = None, remedy: str | None = None, retryable: bool | None = None):
+        self.code, self.problem, self.detail, self.remedy, self.retryable = code, problem, detail, remedy, retryable
+
+    @classmethod
+    def from_lookup(cls, err: dict[str, str], phase: str) -> "Failure":
+        code, retryable = classify(err)
+        return cls(code, one_sentence(f"{err['source']}: {err['error']}"), {"source": err["source"], "error": err["error"], "phase": phase},
+                   REMEDIES.get(code), retryable)
+
+    def report(self, run: Any) -> None:
+        run.error(self.code, self.problem, remedy=self.remedy, retryable=self.retryable, detail=self.detail)
+
+
+# ---- the plan from GitHub -----------------------------------------------------------------
+
+
+class Outcome:
+    """What a plan or an edit computed, before a line of it is written."""
+
+    def __init__(self) -> None:
+        self.result: dict[str, Any] | None = None
+        self.source: dict[str, Any] | None = None
+        self.mutation: dict[str, Any] | None = None
+        self.failures: list[Failure] = []
+        self.rel_failed = False
+
+
+def rollback(outcome: Outcome, repo: str, undo: dict[str, Any] | None) -> None:
+    """Restore the child's body after an added edge, whatever made the run fail (doctrine 8)."""
+    m = outcome.mutation
+    if not (m and m["type"] == "add_blocked_by" and undo and undo["changed"]):
+        return
+    rb_errors: list[dict[str, str]] = []
+    m["rolled_back"] = gh_patch_body(repo, undo["child"], undo["old_body"], rb_errors)
+    if rb_errors:
+        m["rollback_errors"] = rb_errors
+    note(f"restored the body of {m['child']}" if m["rolled_back"] else f"could not restore the body of {m['child']}",
+         "an added edge is undone when the run that would have checked it fails")
+
+
+def github_plan(repo: str, roots: list[str], min_confidence: float, add_edge: str | None, remove_edge: str | None, reason: str,
+                capacities: dict[str, int] | None, compare: bool, trust: dict[str, Any], dry_run: bool) -> Outcome:
+    """The 1.x compile, unchanged in what it computes: the same result document, the same hash."""
+    out = Outcome()
+    errors: list[dict[str, str]] = []
+    undo: dict[str, Any] | None = None
     if add_edge or remove_edge:
-        if parse_edge_arg(add_edge or remove_edge or "") is None:
-            print(json.dumps({"ok": False, "error": f"Invalid edge syntax (expected 'owner/repo#parent->owner/repo#child'; bare numbers are not allowed): {add_edge or remove_edge}"}))
-            return 1
-        slug = gh_repo_slug(repo, errors)
-        if slug is None:
-            print(json.dumps({"ok": False, "error": "GitHub mutation failed", "github_errors": errors}, indent=2))
-            return 2
-        parsed = parse_edge_arg(add_edge or remove_edge or "", slug)
-        assert parsed is not None
+        text = add_edge or remove_edge or ""
+        parsed = parse_edge_arg(text)
+        if parsed is None:
+            out.failures.append(Failure("edge.syntax_invalid", f"Invalid edge syntax (expected 'owner/repo#parent->owner/repo#child'; bare numbers are not allowed): {text}",
+                                        {"edge": text}, "write the edge as owner/repo#parent->owner/repo#child", False))
+            return out
         parent, child = parsed
         if parent == child:
-            print(json.dumps({"ok": False, "error": f"Self-edge rejected: {node_id(child[0], child[1], slug)}"}))
-            return 1
+            out.failures.append(Failure("edge.self_edge", f"Self-edge rejected: {node_id(*child)}", {"edge": text}, "an issue cannot block itself", False))
+            return out
+        slug = gh_repo_slug(repo, errors)
+        if slug is None:
+            out.failures += [Failure.from_lookup(e, "edge_edit") for e in errors]
+            return out
         policy = TrustPolicy(repo, slug, trust.get("owners", []), trust.get("repos", []), trust.get("logins", []), bool(trust.get("codeowners")), errors)
-        undo = mutate_edge(repo, slug, parent, child, add=bool(add_edge), errors=errors, policy=policy)
+        undo = mutate_edge(repo, slug, parent, child, add=bool(add_edge), errors=errors, policy=policy, write=not dry_run)
         if undo is None:
-            print(json.dumps({"ok": False, "error": "Frontmatter edit failed", "github_errors": errors}, indent=2))
-            return 2 if any(e["source"].startswith("gh ") for e in errors) else 1
+            out.failures += [Failure.from_lookup(e, "edge_edit") for e in errors]
+            return out
         child_id = node_id(child[0], child[1], slug)
-        mutation = {"type": "add_blocked_by" if add_edge else "remove_blocked_by", "parent": node_id(parent[0], parent[1], slug), "child": child_id, "changed": undo["changed"], "reason": reason, "recorded_in": f"frontmatter of {child_id} (the issue edit history is the ledger)"}
+        out.mutation = {"type": "add_blocked_by" if add_edge else "remove_blocked_by", "parent": node_id(parent[0], parent[1], slug), "child": child_id,
+                        "changed": undo["changed"], "reason": reason, "recorded_in": f"frontmatter of {child_id} (the issue edit history is the ledger)"}
+        if dry_run:
+            # A dry run checks the edit and writes nothing; the graph it would compile is the one without the edit.
+            out.mutation["dry_run"] = True
+            note("dry run: wrote nothing and compiled nothing", "a dry run performs no subject-matter write (spec 4.3), and the unedited graph would not answer the question")
+            return out
 
     source = collect_frontmatter_dag(repo, roots, errors, trust)
     if errors:
-        if mutation and mutation["type"] == "add_blocked_by" and undo and undo["changed"]:
-            # The recompile that would have caught a cycle did not run; do not leave the unchecked edge on GitHub.
-            rb_errors: list[dict[str, str]] = []
-            mutation["rolled_back"] = gh_patch_body(repo, undo["child"], undo["old_body"], rb_errors)
-            if rb_errors:
-                mutation["rollback_errors"] = rb_errors
-        print(json.dumps({"ok": False, "error": "GitHub inventory failed; refusing to compile a partial graph", "github_errors": errors, "mutation": mutation}, indent=2))
-        return 2
+        out.failures += [Failure.from_lookup(e, "discovery") for e in errors]
+        rollback(out, repo, undo)
+        return out
+    out.source = source
 
     result = compile_and_analyze_dag(source["merged"], source["nodes"], min_confidence=min_confidence, capacities=capacities)
     result["source"] = {
@@ -1517,92 +1696,629 @@ def compile_from_github(repo: str, roots: list[str], min_confidence: float, emit
         result["ok"] = False
         result["error"] = "GitHub relationship lookup failed"
         result["github_errors"] = rel_errors
-    if mutation:
-        result["mutation"] = mutation
+    if out.mutation:
+        result["mutation"] = out.mutation
+    if not result.get("ok"):
+        rollback(out, repo, undo)
+    out.result = with_artifact_hash(result)
+    out.rel_failed = bool(rel_errors)
 
-    if not result.get("ok") and mutation and mutation["type"] == "add_blocked_by" and undo and undo["changed"]:
-        # Restore the child's body so a cycle never persists in the truth source, whatever made the run fail.
-        rb_errors: list[dict[str, str]] = []
-        result["mutation"]["rolled_back"] = gh_patch_body(repo, undo["child"], undo["old_body"], rb_errors)
-        if rb_errors:
-            result["mutation"]["rollback_errors"] = rb_errors
+    if "cyclic_nodes" in result:
+        out.failures.append(Failure("graph.cycle", result["error"], {"cyclic_nodes": result["cyclic_nodes"]},
+                                    "split the shared foundation into a predecessor issue, or remove the edge that closes the cycle", False))
+    elif "metrics" not in result:
+        out.failures.append(Failure("graph.unresolved_prerequisites", result["error"],
+                                    {"unknown": len(result.get("unknown_dependencies", [])), "stale_merged_hints": len(result.get("stale_merged_hints", []))},
+                                    "fix the references the prerequisite findings name", False))
+    if source["violations"]:
+        out.failures.append(Failure("frontmatter.invalid", f"{len(source['violations'])} issue(s) have invalid frontmatter",
+                                    {"violating_issues": sorted(source["violations"], key=id_sort_key)},
+                                    "fix each frontmatter.violation finding; do not dispatch from this plan", False))
+    out.failures += [Failure.from_lookup(e, "relationships") for e in rel_errors]
+    m = out.mutation
+    if m and m.get("rolled_back") is False:
+        out.failures.append(Failure("edge.rollback_failed", f"the added edge {m['parent']}->{m['child']} could not be removed again",
+                                    {"rollback_errors": m.get("rollback_errors", [])}, "remove it by hand with edit --remove-edge", True))
+    return out
 
-    code = emit(with_artifact_hash(result), emit_mermaid, emit_roadmap)
-    return 2 if rel_errors else code
+
+def observations(fetched: dict[IssueRef, dict[str, Any]]) -> list[dict[str, Any]]:
+    """What discovery read, by id and digest only: never a title or body (threat model C3)."""
+    return [{"id": node_id(*ref), "state": meta["state"], "state_reason": meta.get("state_reason"),
+             "title_sha256": sha256_text(meta.get("title")), "body_sha256": sha256_text(meta.get("body"))}
+            for ref, meta in sorted(fetched.items(), key=lambda kv: (kv[0][0], kv[0][1]))]
 
 
-def parse_capacities(items: list[str]) -> dict[str, int] | None:
-    caps: dict[str, int] = {}
-    for item in items:
-        name, _, num = item.partition("=")
-        if not name or not num.isdigit() or int(num) < 1:
+def supply_observations(run: Any, fetched: dict[IssueRef, dict[str, Any]]) -> None:
+    items = observations(fetched)
+    note(f"observed {len(items)} issue(s)", "issue bodies are declared inputs by digest and id; the input's digest is over this list (docs/topics/output)", {"issues": items})
+    run.input(OBSERVATIONS_INPUT, pe.canonical(items))
+
+
+# ---- writing the lines ----------------------------------------------------------------------
+
+FINDING_ORDER = ("container.excluded", "issue.unmodeled", "issue.untrusted", "pull_request.untrusted", "issue.opaque", "parent.not_planned",
+                 "frontmatter.violation", "frontmatter.warning", "edge.redundant", "edge.soft_or_low_confidence", "prerequisite.unknown",
+                 "prerequisite.stale_merged_hint", "graph.cyclic_node", "relationship.only_in_frontmatter", "relationship.only_in_github",
+                 "since_last.no_previous")
+
+
+def finding_lines(result: dict[str, Any], source_doc: dict[str, Any] | None, drift_ok: bool) -> list[dict[str, Any]]:
+    """Every finding, in FINDING_ORDER; each message is built from ids, states, logins and the rule."""
+    f: list[dict[str, Any]] = []
+
+    def add(code: str, message: str, subject: str | None = None, detail: dict[str, Any] | None = None) -> None:
+        line: dict[str, Any] = {"event": "finding", "code": code}
+        if subject:
+            line["subject"] = subject
+        line["message"] = message
+        if detail is not None:
+            line["detail"] = detail
+        f.append(line)
+
+    src = source_doc or {}
+    for c in src.get("containers_excluded", []):
+        add("container.excluded", f"{c['id']} is a container: its children are nodes and it is not", c["id"], c)
+    for u in src.get("unmodeled_open_issues", []):
+        add("issue.unmodeled", f"{u['id']} is an open home issue without frontmatter; it is not a node", u["id"], u)
+    for u in src.get("untrusted_issues", []):
+        add("issue.untrusted", f"{u['id']} failed the trust gate: {'; '.join(u['reasons'])}", u["id"], u)
+    for pr in src.get("untrusted_linked_prs", []):
+        add("pull_request.untrusted", f"pull request {pr.get('number')} closing {', '.join(pr['closes'])} has no effect: {pr['reason']}", None, pr)
+    for o in src.get("opaque_nodes", []):
+        add("issue.opaque", f"{o['id']} has no frontmatter; it blocks {', '.join(o['referenced_by']) or 'nothing'} until it closes", o["id"], o)
+    for n in src.get("not_planned_parents", []):
+        add("parent.not_planned", f"{n['parent']} closed as not planned and still satisfies the edge to {n['child']}; review it", n["parent"], n)
+    fm = result.get("frontmatter") or {}
+    for nid in sorted(fm.get("violations", {}), key=id_sort_key):
+        for v in fm["violations"][nid]:
+            add("frontmatter.violation", v, nid)
+    for nid in sorted(fm.get("warnings", {}), key=id_sort_key):
+        for w in fm["warnings"][nid]:
+            add("frontmatter.warning", w, nid)
+    for e in result.get("transitive_redundant_edges_removed", []):
+        add("edge.redundant", f"{e['from']} -> {e['to']} is implied via {e['implied_via']}", f"{e['from']}->{e['to']}", e)
+    for e in result.get("soft_or_low_confidence_edges", []):
+        add("edge.soft_or_low_confidence", f"{e['from']} -> {e['to']} is soft or below the confidence threshold ({e['confidence']})", f"{e['from']}->{e['to']}", e)
+    for u in result.get("unknown_dependencies", []):
+        add("prerequisite.unknown", f"{u['node']} names {u['unknown_prerequisite']}, which is neither open nor completed", u["node"], u)
+    for h in result.get("stale_merged_hints", []):
+        add("prerequisite.stale_merged_hint", f"{h['node']} marks {h['prerequisite']} merged, but it is {h['prerequisite_status']}", h["node"], h)
+    for nid in result.get("cyclic_nodes", []):
+        add("graph.cyclic_node", f"{nid} is on or behind a cycle of hard edges", nid)
+    drift = result.get("relationship_drift") if drift_ok else None
+    for key, code, where in (("only_in_frontmatter", "relationship.only_in_frontmatter", "is in frontmatter but not in GitHub's blocked_by relationships"),
+                             ("only_in_github", "relationship.only_in_github", "is a GitHub blocked_by relationship that frontmatter lacks")):
+        for text in (drift or {}).get(key, []):
+            a, _, b = text.partition(" -> ")
+            add(code, f"{text} {where}", f"{a}->{b}", {"from": a, "to": b})
+    return f
+
+
+def wave_number(label: str) -> int:
+    return int(label.rsplit(" ", 1)[1])
+
+
+def emit_plan(run: Any, result: dict[str, Any], mode: str, failures: list[Failure], since: dict[str, Any] | None,
+              rendering: str | None, rel_failed: bool = False, mutation: dict[str, Any] | None = None) -> None:
+    """Plan summary first (the smallest line that answers 'what next'), the frontier in rank order,
+    the batch, then everything else; errors last (docs/topics/output)."""
+    if mutation is not None:
+        run.result({"event": "edge_edit", **mutation}, schema_ref("edge_edit"))
+    compiled = "metrics" in result
+    outcome = "compiled" if compiled else ("cycle" if "cyclic_nodes" in result else "unresolved")
+    codes = [f.code for f in failures]
+    plan: dict[str, Any] = {"event": "plan", "mode": mode, "outcome": outcome, "ok": bool(result.get("ok")), "error_codes": codes,
+                            "artifact_hash": result["meta"]["artifact_hash"]}
+    src = result.get("source")
+    if src is not None:
+        plan["source"] = {k: src[k] for k in ("kind", "schema", "repository", "roots", "trust")}
+    if compiled:
+        plan["metrics"] = result["metrics"]
+        plan["open_frontier_count"] = result["open_frontier_count"]
+        plan["frontier"] = [n["id"] for n in result["open_frontier_ranked"]]
+        plan["batch"] = [b["id"] for b in result["conflict_free_frontier_batch"]]
+    if src is not None:
+        plan["violating_issues"] = result["frontmatter"]["violating_issues"]
+        drift = result.get("relationship_drift")
+        plan["relationships"] = {"compared": drift is not None, **({"in_sync": None if rel_failed else drift["in_sync"]} if drift is not None else {})}
+    if since is not None:
+        plan["since_last"] = {"compared_with": since["run"], "changes": len(since["changes"])}
+    run.result(plan, schema_ref("plan"))
+    if compiled:
+        for rank, n in enumerate(result["open_frontier_ranked"], 1):
+            run.result({"event": "frontier_node", "rank": rank, "wave": 0, **n, "score": score_terms(n)}, schema_ref("frontier_node"))
+        run.result({"event": "batch", "members": result["conflict_free_frontier_batch"], "skipped": result["batch_skipped"],
+                    "semaphores_with_unknown_capacity_treated_as_1": result["semaphores_with_unknown_capacity_treated_as_1"]}, schema_ref("batch"))
+    for change in (since or {}).get("changes", []):
+        run.result({"event": "frontier_change", **change}, schema_ref("frontier_change"))
+    if compiled:
+        for label, items in result["waves"].items():
+            k = wave_number(label)
+            if k:
+                for n in items:
+                    run.result({"event": "node", "wave": k, **n}, schema_ref("node"))
+        for label, items in result["waves"].items():
+            run.result({"event": "wave", "wave": wave_number(label), "label": label, "ids": [n["id"] for n in items]}, schema_ref("wave"))
+        for e in result["edges"]:
+            run.result({"event": "edge", **e}, schema_ref("edge"))
+    for line in finding_lines(result, src, drift_ok=not rel_failed):
+        run.result(line, schema_ref("finding"))
+    if since is not None and since["run"] is None:
+        run.result({"event": "finding", "code": "since_last.no_previous",
+                    "message": "no earlier completed receipt of taskalisk in this working directory asked the same question; nothing was compared"}, schema_ref("finding"))
+    if rendering is not None and result.get("ok"):
+        fmt = rendering
+        text = render_roadmap_block(result) if fmt == "roadmap" else render_mermaid_flowchart(result)
+        run.result({"event": "rendering", "format": fmt, "text": text}, schema_ref("rendering"))
+    for f in failures:
+        f.report(run)
+
+
+# ---- --since-last: the previous plan, from its receipt alone --------------------------------
+
+
+def read_receipt(path: Path) -> list[dict[str, Any]] | None:
+    """A receipt's lines with each sidecar replaced by the record it holds; None when unreadable or incomplete."""
+    try:
+        raw = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return None
+    if not raw.endswith("\n"):
+        return None
+    lines: list[dict[str, Any]] = []
+    for text in raw.splitlines():
+        try:
+            obj = json.loads(text)
+        except json.JSONDecodeError:
             return None
-        caps[name] = int(num)
-    return caps
+        if not isinstance(obj, dict):
+            return None
+        if obj.get("event") == "sidecar":
+            rel = str(obj.get("path", ""))
+            target = (path.parent / rel).resolve()
+            if not str(target).startswith(str(path.parent.resolve()) + os.sep):
+                return None
+            try:
+                obj = json.loads(target.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                return None
+        lines.append(obj)
+    return lines
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser(description="Taskalisk: zero-local-state issue DAG compiler, frontier ranker, and inventory.")
+def positions_from_lines(lines: list[dict[str, Any]]) -> dict[str, dict[str, int]]:
+    pos: dict[str, dict[str, int]] = {}
+    for line in lines:
+        sid = (line.get("_schema") or {}).get("id")
+        if sid == "taskalisk.frontier_node":
+            pos[line["id"]] = {"wave": 0, "rank": line["rank"]}
+        elif sid == "taskalisk.node":
+            pos[line["id"]] = {"wave": line["wave"]}
+    return pos
+
+
+def positions_from_result(result: dict[str, Any]) -> dict[str, dict[str, int]]:
+    pos: dict[str, dict[str, int]] = {}
+    for label, items in result.get("waves", {}).items():
+        k = wave_number(label)
+        for rank, n in enumerate(items, 1):
+            pos[n["id"]] = {"wave": 0, "rank": rank} if k == 0 else {"wave": k}
+    return pos
+
+
+def previous_plan(run: Any, question: dict[str, Any]) -> tuple[str, dict[str, dict[str, int]]] | None:
+    """The most recent other completed receipt of this tool, in this run's receipt directory, whose
+    resolved question is this one and whose plan compiled."""
+    try:
+        names = sorted((n for n in os.listdir(run.receipt_dir) if n.endswith(".jsonl") and n != f"{run.id}.jsonl"), reverse=True)
+    except OSError:
+        return None
+    for name in names:
+        lines = read_receipt(Path(run.receipt_dir) / name)
+        if not lines or lines[0].get("event") != "receipt.head" or lines[0].get("tool") != "taskalisk" or lines[-1].get("event") != "end":
+            continue
+        resolved = lines[0].get("resolved") or {}
+        if resolved.get("command") not in ("plan", "edit") or resolved.get("question") != question:
+            continue
+        plan = next((l for l in lines if (l.get("_schema") or {}).get("id") == "taskalisk.plan"), None)
+        if not plan or plan.get("outcome") != "compiled":
+            continue
+        return str(lines[0].get("run")), positions_from_lines(lines)
+    return None
+
+
+def frontier_changes(previous: dict[str, dict[str, int]], current: dict[str, dict[str, int]], closed: set[str], since_run: str) -> list[dict[str, Any]]:
+    changes: list[dict[str, Any]] = []
+    for nid in sorted(set(previous) | set(current), key=id_sort_key):
+        p, c = previous.get(nid), current.get(nid)
+        if c is not None and c["wave"] == 0 and (p is None or p["wave"] > 0):
+            kind = "added" if p is None else "promoted"
+        elif c is not None and c["wave"] > 0 and p is not None and p["wave"] == 0:
+            kind = "newly_blocked"
+        elif c is None and p is not None:
+            kind = "closed" if nid in closed else "left"
+        else:
+            continue
+        changes.append({"change": kind, "id": nid, "previous": p, "current": c, "since_run": since_run})
+    return changes
+
+
+# ---- the commands ---------------------------------------------------------------------------
+
+STATE: dict[str, Any] = {}
+
+
+def trust_of(ns: argparse.Namespace) -> dict[str, Any]:
+    return {"owners": ns.trust_owner, "repos": ns.trust_repo, "logins": ns.trust, "codeowners": ns.trust_codeowners}
+
+
+def run_plan(run: Any, ns: argparse.Namespace, command: str) -> None:
+    repo = os.path.abspath(ns.repo)
+    outcome = github_plan(repo, ns.root, ns.min_confidence, ns.add_edge, ns.remove_edge, ns.reason, parse_capacities(ns.sem_capacity),
+                          ns.compare_relationships, trust_of(ns), run.dry_run)
+    if outcome.source is not None:
+        supply_observations(run, outcome.source["fetched"])
+    if outcome.result is None:
+        if outcome.mutation is not None:
+            run.result({"event": "edge_edit", **outcome.mutation}, schema_ref("edge_edit"))
+        for f in outcome.failures:
+            f.report(run)
+        return
+    since = None
+    if ns.since_last:
+        prev = previous_plan(run, STATE["resolved"]["question"])
+        if prev is None:
+            since = {"run": None, "changes": []}
+            note("--since-last: no previous plan to compare", "no other completed receipt in this directory asked the same question")
+        else:
+            closed = set(outcome.source["merged"]) if outcome.source else set()
+            since = {"run": prev[0], "changes": frontier_changes(prev[1], positions_from_result(outcome.result), closed, prev[0])}
+            note(f"--since-last: compared with run {prev[0]}", "the most recent completed receipt of the same question in this directory", {"changes": len(since["changes"])})
+    emit_plan(run, outcome.result, "github", outcome.failures, since, ns.emit, outcome.rel_failed, outcome.mutation)
+
+
+def check_spec(data: Any) -> str | None:
+    """Why a --verify-dag spec cannot be compiled, or None. Each line it yields must validate."""
+    if not isinstance(data, dict) or not isinstance(data.get("nodes", {}), dict):
+        return "DAG spec must be an object with a 'nodes' object"
+    if not isinstance(data.get("merged", []), list):
+        return "DAG spec 'merged' must be a list"
+    for nid, meta in data.get("nodes", {}).items():
+        if not nid:
+            return "DAG spec node ids must be non-empty"
+        if not isinstance(meta, dict):
+            return f"DAG spec node {nid!r} must be an object"
+        for key in ("title", "type", "workstream"):
+            if key in meta and not isinstance(meta[key], str):
+                return f"DAG spec node {nid!r}: {key} must be a string"
+        if meta.get("url") is not None and not isinstance(meta["url"], str):
+            return f"DAG spec node {nid!r}: url must be a string or null"
+        holds = meta.get("holds", meta.get("resources", [])) or []
+        if not isinstance(holds, list) or not all(isinstance(h, str) for h in holds):
+            return f"DAG spec node {nid!r}: holds must be a list of strings"
+        meters = meta.get("meters", []) or []
+        if not isinstance(meters, list) or not all(isinstance(m, dict) and isinstance(m.get("name"), str) and m["name"]
+                                                   and isinstance(m.get("slots"), int) and not isinstance(m.get("slots"), bool) and m["slots"] >= 1 for m in meters):
+            return f"DAG spec node {nid!r}: meters must be a list of {{name, slots}} with slots >= 1"
+        size = meta.get("size_hours")
+        if size is not None and (not isinstance(size, int) or isinstance(size, bool)):
+            return f"DAG spec node {nid!r}: size_hours must be an integer or null"
+        deps = meta.get("depends_on", meta.get("prerequisites", []))
+        if not isinstance(deps, list) or not all(isinstance(d, (str, dict)) for d in deps):
+            return f"DAG spec node {nid!r}: depends_on must be a list of ids or edge objects"
+        for key in ("linked_open_prs", "recoverable_branches"):
+            if not isinstance(meta.get(key, []), list):
+                return f"DAG spec node {nid!r}: {key} must be a list"
+    return None
+
+
+def run_verify(run: Any, ns: argparse.Namespace, command: str) -> None:
+    label = STATE["dag_label"]
+    try:
+        raw = Path(ns.verify_dag).read_bytes()
+        data = json.loads(raw.decode("utf-8"))
+    except (OSError, ValueError) as exc:
+        run.error("dag_spec.unreadable", f"Cannot read DAG spec: {sanitize_text(str(exc))}", remedy="pass a readable JSON file to --verify-dag",
+                  retryable=False, detail={"path": label})
+        return
+    run.input(label, raw)
+    why = check_spec(data)
+    if why:
+        run.error("dag_spec.invalid", why, remedy="see docs/topics/output for the spec's shape", retryable=False, detail={"path": label})
+        return
+    merged = {strip_merged_hint(str(m)) for m in data.get("merged", [])}
+    result = with_artifact_hash(compile_and_analyze_dag(merged, data.get("nodes", {}), min_confidence=ns.min_confidence))
+    failures: list[Failure] = []
+    if "cyclic_nodes" in result:
+        failures.append(Failure("graph.cycle", result["error"], {"cyclic_nodes": result["cyclic_nodes"]}, "remove an edge of the cycle", False))
+    elif not result.get("ok"):
+        failures.append(Failure("graph.unresolved_prerequisites", result["error"], {"unknown": len(result.get("unknown_dependencies", [])),
+                                "stale_merged_hints": len(result.get("stale_merged_hints", []))}, "fix the references the prerequisite findings name", False))
+    emit_plan(run, result, "dag_spec", failures, None, "mermaid" if ns.emit == "mermaid" else None)
+
+
+def run_inventory(run: Any, ns: argparse.Namespace, command: str) -> None:
+    repo = os.path.abspath(ns.repo)
+    errors: list[dict[str, str]] = []
+    worktrees = collect_worktrees(repo, errors)
+    note(f"listed {len(worktrees)} worktree(s)", "git worktree list --porcelain")
+    branches = collect_unmerged_branches(repo, errors)
+    note(f"listed {len(branches['local'])} local and {len(branches['remote'])} remote unmerged branch(es)", "not merged into origin/main")
+    github = collect_github_inventory(repo, ns.milestone, errors)
+    snapshot = {"worktrees": worktrees, "unmerged_branches": branches, "github": github}
+    run.input(INVENTORY_INPUT, pe.canonical(snapshot))
+    counts = {"worktrees": len(worktrees), "local_branches": len(branches["local"]), "remote_branches": len(branches["remote"]),
+              "open_prs": len(github["open_prs"]), "open_issues": len(github["open_issues"])}
+    run.result({"event": "inventory.summary", "ok": not errors, "milestone": ns.milestone, "counts": counts}, schema_ref("inventory.summary"))
+    for w in worktrees:
+        run.result({"event": "inventory.worktree", **w}, schema_ref("inventory.worktree"))
+    for scope in ("local", "remote"):
+        for b in branches[scope]:
+            run.result({"event": "inventory.branch", "scope": scope, **b}, schema_ref("inventory.branch"))
+    for pr in github["open_prs"]:
+        run.result({"event": "inventory.pull_request", **pr}, schema_ref("inventory.pull_request"))
+    for i in github["open_issues"]:
+        run.result({"event": "inventory.issue", **i}, schema_ref("inventory.issue"))
+    for e in errors:
+        Failure.from_lookup(e, "inventory").report(run)
+
+
+# ---- the command line -----------------------------------------------------------------------
+
+
+class UsageError(ValueError):
+    pass
+
+
+class Parser(argparse.ArgumentParser):
+    """argparse that raises instead of printing: a usage error is a Parley startup failure (exit 3)."""
+
+    def error(self, message: str) -> Any:  # type: ignore[override]
+        raise UsageError(message)
+
+    def exit(self, status: int = 0, message: str | None = None) -> Any:  # type: ignore[override]
+        raise UsageError(message or f"argument parsing ended with status {status}")
+
+
+def build_parser() -> Parser:
+    parser = Parser(prog="taskalisk.py", add_help=False, description="Taskalisk: zero-local-state issue DAG compiler, frontier ranker, and inventory.")
     parser.add_argument("--repo", default=".", help="Path inside the git repository (gh resolves the GitHub repo from it)")
     parser.add_argument("--milestone", default=None, help="Inventory mode only: optional GitHub milestone title filter")
-    parser.add_argument("--root", action="append", default=[], help="With --from-github: start discovery at this issue, as owner/repo#N (repeatable); default is every open home issue")
-    parser.add_argument("--sem-capacity", action="append", default=[], help="Semaphore capacity as name=N (repeatable); unknown semaphores count as 1")
-    parser.add_argument("--compare-relationships", action="store_true", help="With --from-github: report drift between frontmatter edges and GitHub blocked_by relationships")
-    parser.add_argument("--from-github", action="store_true", help="Compile the DAG from issue frontmatter (issue-dag/2), across repositories")
-    parser.add_argument("--verify-dag", default=None, help="Path to a hand-written DAG JSON specification to verify and layer")
-    parser.add_argument("--min-confidence", type=float, default=DEFAULT_MIN_CONFIDENCE, help=f"Minimum confidence for hard edges in --verify-dag specs (default {DEFAULT_MIN_CONFIDENCE})")
-    parser.add_argument("--emit-mermaid", action="store_true", help="Output a transitively-reduced Mermaid flowchart TD")
-    parser.add_argument("--add-edge", default=None, help="Add 'owner/repo#parent->owner/repo#child' to the child's frontmatter .blocked_by, then recompile (rolls back on cycle).")
-    parser.add_argument("--remove-edge", default=None, help="Remove 'owner/repo#parent->owner/repo#child' from the child's frontmatter .blocked_by, then recompile.")
-    parser.add_argument("--reason", default="taskalisk edge update", help="Rationale echoed in the output for the mutation (GitHub timeline is the ledger)")
-    parser.add_argument("--emit-roadmap", action="store_true", help="With --from-github: print the generated ROADMAP.md block (between BEGIN/END markers)")
-    parser.add_argument("--trust", action="append", default=[], metavar="LOGIN", help="With --from-github: a login trusted as author or editor everywhere (repeatable)")
-    parser.add_argument("--trust-owner", action="append", default=[], metavar="OWNER", help="With --from-github: add every repository of this owner to the trusted scope (repeatable; the home owner is always in scope)")
-    parser.add_argument("--trust-repo", action="append", default=[], metavar="OWNER/REPO", help="With --from-github: add one repository to the trusted scope (repeatable)")
-    parser.add_argument("--trust-codeowners", action="store_true", help="With --from-github: trust the logins named in each scope repository's CODEOWNERS on its default branch")
-    args = parser.parse_args()
+    parser.add_argument("--root", action="append", default=[], help="With --from-github: start discovery at this issue, as owner/repo#N (repeatable)")
+    parser.add_argument("--sem-capacity", action="append", default=[], help="Semaphore capacity as name=N (repeatable)")
+    parser.add_argument("--compare-relationships", action="store_true")
+    parser.add_argument("--from-github", action="store_true")
+    parser.add_argument("--verify-dag", default=None)
+    parser.add_argument("--min-confidence", type=float, default=DEFAULT_MIN_CONFIDENCE)
+    parser.add_argument("--emit-mermaid", action="store_true")
+    parser.add_argument("--add-edge", default=None)
+    parser.add_argument("--remove-edge", default=None)
+    parser.add_argument("--reason", default="taskalisk edge update")
+    parser.add_argument("--emit-roadmap", action="store_true")
+    parser.add_argument("--since-last", action="store_true")
+    parser.add_argument("--trust", action="append", default=[], metavar="LOGIN")
+    parser.add_argument("--trust-owner", action="append", default=[], metavar="OWNER")
+    parser.add_argument("--trust-repo", action="append", default=[], metavar="OWNER/REPO")
+    parser.add_argument("--trust-codeowners", action="store_true")
+    return parser
 
-    if (args.add_edge or args.remove_edge) and not args.from_github:
-        parser.error("--add-edge/--remove-edge require --from-github")
-    if args.add_edge and args.remove_edge:
-        parser.error("--add-edge and --remove-edge are mutually exclusive")
-    if args.emit_roadmap and not args.from_github:
-        parser.error("--emit-roadmap requires --from-github")
-    if args.verify_dag and args.from_github:
-        parser.error("--verify-dag and --from-github are mutually exclusive")
 
-    capacities = parse_capacities(args.sem_capacity)
-    if capacities is None:
-        parser.error("--sem-capacity takes name=N with N >= 1")
-    if (args.root or args.compare_relationships) and not args.from_github:
-        parser.error("--root and --compare-relationships require --from-github")
-    trust_flags = args.trust or args.trust_owner or args.trust_repo or args.trust_codeowners
-    if trust_flags and not args.from_github:
-        parser.error("--trust, --trust-owner, --trust-repo and --trust-codeowners require --from-github")
-    if any(not OWNER_RE.fullmatch(o) for o in args.trust_owner) or any(not SLUG_RE.fullmatch(r) for r in args.trust_repo):
-        parser.error("--trust-owner takes an owner name; --trust-repo takes owner/repo")
-    trust = {"owners": args.trust_owner, "repos": args.trust_repo, "logins": args.trust, "codeowners": args.trust_codeowners}
+def infer_command(args: list[str]) -> list[str]:
+    """The 1.x mode flags still select a command, so `--from-github` keeps working: the command is
+    put first. An explicit command is left alone, and so is a bare --help or --schema."""
+    if args[:1] and args[0] in COMMANDS:
+        return list(args)
 
-    repo = os.path.abspath(args.repo)
-    if args.from_github:
-        return compile_from_github(repo, args.root, args.min_confidence, args.emit_mermaid, args.add_edge, args.remove_edge, args.reason, emit_roadmap=args.emit_roadmap, capacities=capacities, compare=args.compare_relationships, trust=trust)
-    if args.verify_dag:
-        return verify_and_layer_dag(args.verify_dag, args.min_confidence, args.emit_mermaid)
+    def has(flag: str) -> bool:
+        return any(a == flag or a.startswith(flag + "=") for a in args)
 
-    errors: list[dict[str, str]] = []
-    snapshot = {
-        "ok": True,
-        "worktrees": collect_worktrees(repo, errors),
-        "unmerged_branches": collect_unmerged_branches(repo, errors),
-        "github": collect_github_inventory(repo, args.milestone, errors),
-        "inventory_errors": errors,
-    }
-    if errors:
-        snapshot["ok"] = False
-        print(json.dumps(snapshot, indent=2))
-        return 2
-    print(json.dumps(snapshot, indent=2))
-    return 0
+    if has("--add-edge") or has("--remove-edge"):
+        command = "edit"
+    elif has("--from-github"):
+        command = "plan"
+    elif has("--verify-dag"):
+        command = "verify"
+    elif any(a in ("--schema", "--help", "-h") for a in args):
+        return list(args)
+    else:
+        command = "inventory"
+    return [command, *args]
+
+
+def resolve(args: list[str], command: str) -> dict[str, Any]:
+    """Parse and check the arguments before the bootstrap line, and return the resolved question.
+    `question` is what --since-last matches on; it holds no clock, path outside --repo, or secret."""
+    ns = build_parser().parse_args(args)
+    github = command in ("plan", "edit")
+    if command == "edit" and not (ns.add_edge or ns.remove_edge):
+        raise UsageError("edit needs --add-edge or --remove-edge")
+    if command != "edit" and (ns.add_edge or ns.remove_edge):
+        raise UsageError("--add-edge/--remove-edge belong to the edit command (they require --from-github)")
+    if ns.add_edge and ns.remove_edge:
+        raise UsageError("--add-edge and --remove-edge are mutually exclusive")
+    if ns.emit_roadmap and not github:
+        raise UsageError("--emit-roadmap requires --from-github")
+    if ns.emit_roadmap and ns.emit_mermaid:
+        raise UsageError("--emit-roadmap and --emit-mermaid are mutually exclusive")
+    if ns.verify_dag and github:
+        raise UsageError("--verify-dag and --from-github are mutually exclusive")
+    if command == "verify" and not ns.verify_dag:
+        raise UsageError("verify needs --verify-dag <file>")
+    if parse_capacities(ns.sem_capacity) is None:
+        raise UsageError("--sem-capacity takes name=N with N >= 1")
+    if (ns.root or ns.compare_relationships or ns.since_last) and not github:
+        raise UsageError("--root, --compare-relationships and --since-last require --from-github")
+    if (ns.trust or ns.trust_owner or ns.trust_repo or ns.trust_codeowners) and not github:
+        raise UsageError("--trust, --trust-owner, --trust-repo and --trust-codeowners require --from-github")
+    if any(not OWNER_RE.fullmatch(o) for o in ns.trust_owner) or any(not SLUG_RE.fullmatch(r) for r in ns.trust_repo):
+        raise UsageError("--trust-owner takes an owner name; --trust-repo takes owner/repo")
+    if ns.emit_mermaid and command == "inventory":
+        raise UsageError("--emit-mermaid requires --from-github or --verify-dag")
+    ns.emit = "roadmap" if ns.emit_roadmap else ("mermaid" if ns.emit_mermaid else None)
+    repo = os.path.relpath(os.path.realpath(ns.repo), os.path.realpath(os.getcwd()))
+    if github:
+        question: dict[str, Any] = {"repo": repo, "roots": sorted(ns.root),
+                                    "trust": {"owners": sorted({o.lower() for o in ns.trust_owner}), "repos": sorted({r.lower() for r in ns.trust_repo}),
+                                              "logins": sorted({normalize_login(l) for l in ns.trust}), "codeowners": bool(ns.trust_codeowners)}}
+        options: dict[str, Any] = {"emit": ns.emit, "compare_relationships": ns.compare_relationships, "since_last": ns.since_last,
+                                   "sem_capacity": sorted(ns.sem_capacity)}
+        if command == "edit":
+            options["edge"] = {"op": "add" if ns.add_edge else "remove", "edge": ns.add_edge or ns.remove_edge, "reason": ns.reason}
+    elif command == "verify":
+        STATE["dag_label"] = sanitize_home(ns.verify_dag)
+        question = {"dag_spec": STATE["dag_label"]}
+        options = {"emit": ns.emit, "min_confidence": ns.min_confidence}
+    else:
+        question = {"repo": repo, "milestone": ns.milestone}
+        options = {}
+    STATE["ns"], STATE["command"] = ns, command
+    STATE["resolved"] = {"command": command, "question": question, "options": options}
+    return STATE["resolved"]
+
+
+def declared_inputs(args: list[str], command: str) -> list[dict[str, Any]]:
+    """Each command's one declared input (spec 2.2). Its bytes are supplied once read, so `inv`
+    arrives in receipt.inputs: the issues discovery observed, the DAG file, or the inventory."""
+    if command in ("plan", "edit"):
+        return [{"path": OBSERVATIONS_INPUT, "role": "observations"}]
+    if command == "verify":
+        return [{"path": STATE["dag_label"], "role": "dag-spec"}]
+    return [{"path": INVENTORY_INPUT, "role": "observations"}]
+
+
+def handler(run: Any, _args: list[str]) -> None:
+    global _RUN
+    _RUN = run
+    command = STATE["command"]
+    if STATE.get("inferred"):
+        note(f"command {command} inferred from the 1.x mode flags", "no command was named; --add-edge or --remove-edge means edit, --from-github plan, --verify-dag verify, none of them inventory")
+    try:
+        {"plan": run_plan, "edit": run_plan, "verify": run_verify, "inventory": run_inventory}[command](run, STATE["ns"], command)
+    finally:
+        _RUN = None
+
+
+# ---- --human --------------------------------------------------------------------------------
+
+# C0 and C1 controls, line and paragraph separators and bidirectional overrides: none reaches prose.
+HUMAN_UNSAFE_RE = re.compile("[\x00-\x1f\x7f-\x9f  ‪-‮⁦-⁩]")
+
+
+def hs(value: Any) -> str:
+    return HUMAN_UNSAFE_RE.sub(lambda m: "\\u%04x" % ord(m.group()), str(value))
+
+
+def render_human(line: dict[str, Any]) -> str | None:
+    """One line as prose for --human. "" hides a line (the stdout sink drops the empty line);
+    None means the writer's default (the bootstrap and a successful end render as nothing)."""
+    ev = line.get("event")
+    if ev == "plan":
+        src = line.get("source") or {}
+        out = [f"{hs(src.get('repository') or 'DAG spec')}: {hs(line['outcome'])}"]
+        if line["outcome"] == "compiled":
+            m = line["metrics"]
+            out[0] += (f", {m['open_node_count']} open node(s), {line['open_frontier_count']} on the frontier, a batch of {len(line['batch'])},"
+                       f" critical path {m['critical_path_length']}")
+        if not line["ok"]:
+            out.append(f"NOT OK ({hs(', '.join(line['error_codes']))}): do not dispatch from this plan")
+        if line.get("since_last"):
+            s = line["since_last"]
+            out.append(f"since run {hs(s['compared_with'])}: {s['changes']} change(s)" if s["compared_with"] else "since last: no previous plan of this question")
+        if line.get("frontier"):
+            out += ["", f"{'rank':>4} {'score':>6}  {'issue':<32} {'status':<12} title"]
+        return "\n".join(out)
+    if ev == "frontier_node":
+        return f"{line['rank']:>4} {line['priority_score']:>6}  {hs(line['id']):<32} {hs(line['status']):<12} {hs(line['title'])}"
+    if ev == "batch":
+        out = ["", "batch: " + (", ".join(hs(b["id"]) for b in line["members"]) or "(empty)")]
+        out += [f"  skipped {hs(s['id'])}: {hs(s['reason'])}" for s in line["skipped"]]
+        if line["semaphores_with_unknown_capacity_treated_as_1"]:
+            out.append("  unknown capacity, treated as 1: " + ", ".join(hs(n) for n in line["semaphores_with_unknown_capacity_treated_as_1"]))
+        return "\n".join(out)
+    if ev == "frontier_change":
+        return f"{hs(line['change'])}: {hs(line['id'])}"
+    if ev in ("node", "wave", "edge"):
+        return ""
+    if ev == "finding":
+        subject = line.get("subject")
+        about = f" {hs(subject)}" if subject and subject not in line["message"] else ""
+        return f"{hs(line['code'])}{about}: {hs(line['message'])}"
+    if ev == "rendering":
+        return str(line["text"])
+    if ev == "edge_edit":
+        state = "dry run, nothing written" if line.get("dry_run") else ("changed" if line["changed"] else "already so, nothing written")
+        if "rolled_back" in line:
+            state += ", restored" if line["rolled_back"] else ", NOT restored"
+        return f"edit {hs(line['type'])} {hs(line['parent'])} -> {hs(line['child'])}: {state}"
+    if ev == "inventory.summary":
+        c = line["counts"]
+        return (f"inventory: {c['worktrees']} worktree(s), {c['local_branches']}+{c['remote_branches']} unmerged branch(es), "
+                f"{c['open_prs']} open PR(s), {c['open_issues']} open issue(s)" + ("" if line["ok"] else "; INCOMPLETE, see the errors"))
+    if ev == "inventory.worktree":
+        dirty = {True: "dirty", False: "clean", None: "unknown"}.get(line.get("dirty"), "unknown")
+        return f"worktree {hs(line['path'])} [{hs(line.get('branch', '?'))}] {dirty}"
+    if ev == "inventory.branch":
+        return f"{hs(line['scope'])} branch {hs(line['branch'])} +{hs(line['ahead_of_main'])}: {hs(line['tip_subject'])}"
+    if ev == "inventory.pull_request":
+        return f"PR {line.get('number')} {'(draft) ' if line.get('isDraft') else ''}{hs(line.get('title', ''))}"
+    if ev == "inventory.issue":
+        return f"issue {line['number']} {hs(line['title'])}"
+    if ev in ("error", "warning"):
+        remedy = f" ({hs(line['remedy'])})" if line.get("remedy") else ""
+        return f"{ev} {hs(line['code'])}: {hs(line['problem'])}{remedy}"
+    if ev == "command":
+        return f"{hs(line['name'])}: {hs(line['intent'])}"
+    if ev == "schema":
+        return f"schema {hs(line['id'])} {hs(line['version'])}"
+    return None
+
+
+class HumanStdout:
+    """Under --human, drop the empty line a hidden record renders to; everything else passes."""
+
+    def __init__(self, inner: Any):
+        self.inner = inner
+
+    def write(self, text: str) -> None:
+        if text != "\n":
+            self.inner.write(text)
+
+
+PLAN_LINES = ("plan", "frontier_node", "batch", "frontier_change", "node", "wave", "edge", "finding", "rendering")
+GITHUB_READS = ["github:issues and their body edit history", "github:pull-requests", "github:collaborator-permissions", "github:CODEOWNERS (--trust-codeowners)", "<repo> git branches"]
+
+
+def define() -> Any:
+    return pe.define_tool(
+        name="taskalisk", version=__version__,
+        commands={
+            "plan": {"intent": "Compile issue-dag/2 frontmatter from GitHub into a reduced DAG, rank the open frontier and propose a conflict-free batch (read-only; --from-github)",
+                     "effects": {"reads": GITHUB_READS, "writes": [], "network": True, "idempotent": True},
+                     "secrets": SECRETS, "emits": emits(*PLAN_LINES)},
+            "edit": {"intent": "Add or remove one edge in a child issue's frontmatter .blocked_by, then recompile; an added edge is restored when the run fails (--add-edge, --remove-edge)",
+                     "effects": {"reads": GITHUB_READS, "writes": ["github:issue-body (the child's .blocked_by line)"], "network": True, "idempotent": True},
+                     "secrets": SECRETS, "emits": emits("edge_edit", *PLAN_LINES)},
+            "verify": {"intent": "Compile a hand-written DAG specification and rank it (read-only; --verify-dag)",
+                       "effects": {"reads": ["<the --verify-dag file>"], "writes": [], "network": False, "idempotent": True},
+                       "secrets": SECRETS, "emits": emits(*(n for n in PLAN_LINES if n != "frontier_change"))},
+            "inventory": {"intent": "List worktrees, unmerged branches, open pull requests and open issues of a repository (read-only, fail-closed)",
+                          "effects": {"reads": ["<repo> git worktrees and branches", "github:pull-requests", "github:issues"], "writes": [], "network": True, "idempotent": True},
+                          "secrets": SECRETS, "emits": emits("inventory.summary", "inventory.worktree", "inventory.branch", "inventory.pull_request", "inventory.issue")},
+        },
+        retention={"count": RETENTION},
+        human=render_human,
+    )
+
+
+def main(argv: list[str] | None = None) -> int:
+    raw = list(sys.argv[1:] if argv is None else argv)
+    args = infer_command(raw)
+    STATE.clear()
+    STATE["inferred"] = args != raw
+    human = any(a in ("--human", "--humanize") for a in raw)
+    return pe.main(define(), ["taskalisk", *args], handler, resolved=resolve, inputs=declared_inputs,
+                   stdout=HumanStdout(pe.FdSink(1)) if human else None)
 
 
 if __name__ == "__main__":

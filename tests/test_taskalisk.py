@@ -89,11 +89,11 @@ class Harness(unittest.TestCase):
         env.update(extra)
         return env
 
-    def run_dag(self, state, *args, env=None):
+    def run_dag(self, state, *args, env=None, cwd=None):
         """Run the compiler from the temporary directory, so its receipts land there and not in the checkout."""
         self.state.write_text(json.dumps(state))
         return subprocess.run([sys.executable, str(SCRIPT), "--repo", str(self.repo), *args], capture_output=True, text=True,
-                              env=env or self.env(), cwd=str(self.tmp))
+                              env=env or self.env(), cwd=str(cwd or self.tmp))
 
     def current(self):
         return json.loads(self.state.read_text())

@@ -1,0 +1,9 @@
+{
+  "scenario": "plan_home",
+  "args": [
+    "--from-github",
+    "--schema"
+  ],
+  "exit": 0,
+  "captured": "a real run of skills/taskalisk/scripts/taskalisk.py against tests/fake_gh.py"
+}

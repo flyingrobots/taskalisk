@@ -1,0 +1,12 @@
+{
+  "scenario": "edit_cycle",
+  "args": [
+    "--from-github",
+    "--root",
+    "flyingrobots/geordi#9",
+    "--add-edge",
+    "flyingrobots/geordi#2->flyingrobots/echo#5"
+  ],
+  "exit": 2,
+  "captured": "a real run of skills/taskalisk/scripts/taskalisk.py against tests/fake_gh.py"
+}

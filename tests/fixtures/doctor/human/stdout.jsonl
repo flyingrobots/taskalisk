@@ -1,0 +1,17 @@
+flyingrobots/geordi: compiled, 8 open node(s), 3 on the frontier, a batch of 1, critical path 4
+
+rank  score  issue                            status       title
+   1   1010  flyingrobots/geordi#3            wip          Home three
+   2    442  flyingrobots/echo#5              open         Echo five
+   3    121  flyingrobots/bunny#110           blocked      Bunny 110, no frontmatter
+
+batch: flyingrobots/geordi#3
+  skipped flyingrobots/echo#5: holds conflict
+container.excluded: flyingrobots/geordi#9 is a container: its children are nodes and it is not
+issue.unmodeled: flyingrobots/geordi#40 is an open home issue without frontmatter; it is not a node
+issue.untrusted: flyingrobots/geordi#77 failed the trust gate: author mallory: association NONE
+pull_request.untrusted: pull request 9 closing flyingrobots/geordi#2 has no effect: head is not a branch of this repository
+issue.opaque: flyingrobots/bunny#110 has no frontmatter; it blocks flyingrobots/geordi#110 until it closes
+parent.not_planned: flyingrobots/echo#99 closed as not planned and still satisfies the edge to flyingrobots/geordi#1; review it
+frontmatter.warning flyingrobots/geordi#1: .size_hours 12 is above 8; the card is probably not atomic
+edge.redundant flyingrobots/geordi#1->flyingrobots/geordi#4: flyingrobots/geordi#1 -> flyingrobots/geordi#4 is implied via flyingrobots/geordi#2

@@ -1,0 +1,112 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://flyingrobots.dev/taskalisk/schemas/taskalisk.frontier_change/1.0.0",
+  "title": "Taskalisk frontier change",
+  "description": "With --since-last: one way this plan's frontier differs from the previous completed receipt of the same question, read from the receipts alone.",
+  "type": "object",
+  "required": [
+    "event",
+    "t",
+    "seq",
+    "run",
+    "change",
+    "id",
+    "previous",
+    "current",
+    "since_run",
+    "_schema"
+  ],
+  "properties": {
+    "event": {
+      "const": "frontier_change"
+    },
+    "t": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "POSIX time in milliseconds (Parley spec 1.3)."
+    },
+    "seq": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "The run's single counter (Parley spec 1.3)."
+    },
+    "run": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The execution this line belongs to (Parley spec 2.1)."
+    },
+    "change": {
+      "enum": [
+        "promoted",
+        "added",
+        "newly_blocked",
+        "closed",
+        "left"
+      ],
+      "description": "promoted: blocked before, on the frontier now; added: not in the previous plan, on the frontier now; newly_blocked: on the frontier before, blocked now; closed: open before, closed now; left: open before, absent now and not known closed."
+    },
+    "id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "previous": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "required": [
+        "wave"
+      ],
+      "properties": {
+        "wave": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "rank": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "current": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "required": [
+        "wave"
+      ],
+      "properties": {
+        "wave": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "rank": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "since_run": {
+      "type": "string",
+      "minLength": 1
+    },
+    "_schema": {
+      "type": "object",
+      "required": [
+        "id",
+        "version"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "const": "taskalisk.frontier_change"
+        },
+        "version": {
+          "const": "1.0.0",
+          "description": "Full validation is against the schema for this exact id and version (Parley spec 4.5)."
+        }
+      }
+    }
+  }
+}

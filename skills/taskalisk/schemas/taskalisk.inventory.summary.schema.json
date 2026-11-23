@@ -1,0 +1,94 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://flyingrobots.dev/taskalisk/schemas/taskalisk.inventory.summary/1.0.0",
+  "title": "Taskalisk inventory summary",
+  "description": "The first result of inventory: the counts of what follows, and whether every git and gh lookup succeeded.",
+  "type": "object",
+  "required": [
+    "event",
+    "t",
+    "seq",
+    "run",
+    "ok",
+    "counts",
+    "_schema"
+  ],
+  "properties": {
+    "event": {
+      "const": "inventory.summary"
+    },
+    "t": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "POSIX time in milliseconds (Parley spec 1.3)."
+    },
+    "seq": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "The run's single counter (Parley spec 1.3)."
+    },
+    "run": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The execution this line belongs to (Parley spec 2.1)."
+    },
+    "ok": {
+      "type": "boolean"
+    },
+    "milestone": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "counts": {
+      "type": "object",
+      "required": [
+        "worktrees",
+        "local_branches",
+        "remote_branches",
+        "open_prs",
+        "open_issues"
+      ],
+      "properties": {
+        "worktrees": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "local_branches": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "remote_branches": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "open_prs": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "open_issues": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "_schema": {
+      "type": "object",
+      "required": [
+        "id",
+        "version"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "const": "taskalisk.inventory.summary"
+        },
+        "version": {
+          "const": "1.0.0",
+          "description": "Full validation is against the schema for this exact id and version (Parley spec 4.5)."
+        }
+      }
+    }
+  }
+}

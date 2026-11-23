@@ -1,0 +1,8 @@
+{
+  "scenario": "plan_gh_failure",
+  "args": [
+    "--from-github"
+  ],
+  "exit": 2,
+  "captured": "a real run of skills/taskalisk/scripts/taskalisk.py against tests/fake_gh.py"
+}

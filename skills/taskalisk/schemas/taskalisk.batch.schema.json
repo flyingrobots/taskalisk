@@ -1,0 +1,143 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://flyingrobots.dev/taskalisk/schemas/taskalisk.batch/1.0.0",
+  "title": "Taskalisk batch",
+  "description": "The conflict-free batch: frontier nodes that can run at once without overlapping .holds or exceeding a semaphore, in rank order, and the frontier nodes left out with the reason. Advice; admission is the git locks call.",
+  "type": "object",
+  "required": [
+    "event",
+    "t",
+    "seq",
+    "run",
+    "members",
+    "skipped",
+    "semaphores_with_unknown_capacity_treated_as_1",
+    "_schema"
+  ],
+  "properties": {
+    "event": {
+      "const": "batch"
+    },
+    "t": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "POSIX time in milliseconds (Parley spec 1.3)."
+    },
+    "seq": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "The run's single counter (Parley spec 1.3)."
+    },
+    "run": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The execution this line belongs to (Parley spec 2.1)."
+    },
+    "members": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "url",
+          "workstream",
+          "priority_score",
+          "holds",
+          "meters"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "title": {
+            "type": "string"
+          },
+          "url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "workstream": {
+            "type": "string"
+          },
+          "priority_score": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "holds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "meters": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "name",
+                "slots"
+              ],
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "slots": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "skipped": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "reason"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "semaphores_with_unknown_capacity_treated_as_1": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "_schema": {
+      "type": "object",
+      "required": [
+        "id",
+        "version"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "const": "taskalisk.batch"
+        },
+        "version": {
+          "const": "1.0.0",
+          "description": "Full validation is against the schema for this exact id and version (Parley spec 4.5)."
+        }
+      }
+    }
+  }
+}

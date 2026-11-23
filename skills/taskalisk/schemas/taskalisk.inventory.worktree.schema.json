@@ -1,0 +1,85 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://flyingrobots.dev/taskalisk/schemas/taskalisk.inventory.worktree/1.0.0",
+  "title": "Taskalisk worktree",
+  "description": "One git worktree. path has the home directory replaced by ~.",
+  "type": "object",
+  "required": [
+    "event",
+    "t",
+    "seq",
+    "run",
+    "path",
+    "_schema"
+  ],
+  "properties": {
+    "event": {
+      "const": "inventory.worktree"
+    },
+    "t": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "POSIX time in milliseconds (Parley spec 1.3)."
+    },
+    "seq": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "The run's single counter (Parley spec 1.3)."
+    },
+    "run": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The execution this line belongs to (Parley spec 2.1)."
+    },
+    "path": {
+      "type": "string",
+      "minLength": 1
+    },
+    "path_exists": {
+      "type": "boolean"
+    },
+    "dirty": {
+      "type": [
+        "boolean",
+        "null"
+      ]
+    },
+    "head": {
+      "type": "string"
+    },
+    "branch": {
+      "type": "string"
+    },
+    "ahead_of_main": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "behind_main": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "prunable": {
+      "type": "boolean"
+    },
+    "locked": {
+      "type": "boolean"
+    },
+    "_schema": {
+      "type": "object",
+      "required": [
+        "id",
+        "version"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "const": "taskalisk.inventory.worktree"
+        },
+        "version": {
+          "const": "1.0.0",
+          "description": "Full validation is against the schema for this exact id and version (Parley spec 4.5)."
+        }
+      }
+    }
+  }
+}

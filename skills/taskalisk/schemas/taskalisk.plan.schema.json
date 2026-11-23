@@ -1,0 +1,323 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://flyingrobots.dev/taskalisk/schemas/taskalisk.plan/1.0.0",
+  "title": "Taskalisk plan summary",
+  "description": "The first result of a plan: the smallest line that answers 'what next'. It names the frontier and the batch in rank order, the outcome, the metrics, the trust in force and the artifact hash. Detail follows on later lines.",
+  "type": "object",
+  "required": [
+    "event",
+    "t",
+    "seq",
+    "run",
+    "mode",
+    "outcome",
+    "ok",
+    "error_codes",
+    "artifact_hash",
+    "_schema"
+  ],
+  "properties": {
+    "event": {
+      "const": "plan"
+    },
+    "t": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "POSIX time in milliseconds (Parley spec 1.3)."
+    },
+    "seq": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "The run's single counter (Parley spec 1.3)."
+    },
+    "run": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The execution this line belongs to (Parley spec 2.1)."
+    },
+    "mode": {
+      "enum": [
+        "github",
+        "dag_spec"
+      ],
+      "description": "github: compiled from issue frontmatter; dag_spec: from a --verify-dag file."
+    },
+    "outcome": {
+      "enum": [
+        "compiled",
+        "cycle",
+        "unresolved"
+      ],
+      "description": "compiled: the graph was ranked; cycle or unresolved: it could not be, and no frontier, batch or metrics follow."
+    },
+    "ok": {
+      "type": "boolean",
+      "description": "True only when the plan compiled and the run reports no error. False means do not dispatch from it; the error lines say why."
+    },
+    "error_codes": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "description": "The codes of the parley.error lines this run reports, in the order they follow."
+    },
+    "artifact_hash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "SHA-256 of the canonical result document (sorted keys, compact separators, trailing LF), the same value the 1.x compiler printed as meta.artifact_hash."
+    },
+    "source": {
+      "type": "object",
+      "required": [
+        "kind",
+        "schema",
+        "repository",
+        "roots",
+        "trust"
+      ],
+      "description": "github mode only.",
+      "properties": {
+        "kind": {
+          "const": "issue-frontmatter"
+        },
+        "schema": {
+          "const": "issue-dag/2"
+        },
+        "repository": {
+          "type": "string",
+          "minLength": 1
+        },
+        "roots": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "trust": {
+          "type": "object",
+          "required": [
+            "owners",
+            "repos",
+            "logins",
+            "codeowners",
+            "codeowners_teams_not_expanded"
+          ],
+          "properties": {
+            "owners": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "repos": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "logins": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "codeowners": {
+              "type": [
+                "object",
+                "null"
+              ]
+            },
+            "codeowners_teams_not_expanded": {
+              "type": "object"
+            }
+          }
+        }
+      }
+    },
+    "metrics": {
+      "type": "object",
+      "required": [
+        "merged_count",
+        "open_node_count",
+        "raw_open_edge_count",
+        "reduced_open_edge_count",
+        "transitive_redundant_edges_removed_count",
+        "edge_density",
+        "edge_density_band_ok",
+        "max_parallel_width",
+        "critical_path_length",
+        "critical_path",
+        "isolated_open_node_count",
+        "isolated_open_nodes"
+      ],
+      "properties": {
+        "merged_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "open_node_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "raw_open_edge_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "reduced_open_edge_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "transitive_redundant_edges_removed_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "edge_density": {
+          "type": "number",
+          "minimum": 0
+        },
+        "edge_density_band_ok": {
+          "type": "boolean"
+        },
+        "max_parallel_width": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "critical_path_length": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "critical_path": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "isolated_open_node_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "isolated_open_nodes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "open_frontier_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "frontier": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "description": "Wave 0 in rank order; one taskalisk.frontier_node line follows for each."
+    },
+    "batch": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "description": "The conflict-free batch in rank order; taskalisk.batch carries its detail."
+    },
+    "violating_issues": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "relationships": {
+      "type": "object",
+      "required": [
+        "compared"
+      ],
+      "properties": {
+        "compared": {
+          "type": "boolean"
+        },
+        "in_sync": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        }
+      }
+    },
+    "since_last": {
+      "type": "object",
+      "required": [
+        "compared_with",
+        "changes"
+      ],
+      "description": "With --since-last: the run compared against, or null when none qualified, and the count of taskalisk.frontier_change lines.",
+      "properties": {
+        "compared_with": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "changes": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "_schema": {
+      "type": "object",
+      "required": [
+        "id",
+        "version"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "const": "taskalisk.plan"
+        },
+        "version": {
+          "const": "1.0.0",
+          "description": "Full validation is against the schema for this exact id and version (Parley spec 4.5)."
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "outcome": {
+            "const": "compiled"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "metrics",
+          "open_frontier_count",
+          "frontier",
+          "batch"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "mode": {
+            "const": "github"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "source",
+          "violating_issues"
+        ]
+      }
+    }
+  ]
+}

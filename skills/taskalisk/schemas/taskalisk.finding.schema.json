@@ -1,0 +1,161 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://flyingrobots.dev/taskalisk/schemas/taskalisk.finding/1.0.0",
+  "title": "Taskalisk finding",
+  "description": "One thing the compile found that a reader should see: a violation, a warning, an untrusted or unmodeled issue, an opaque blocker, a not-planned parent, a redundant edge and the like. code is stable; message is a sentence built from trusted data only.",
+  "type": "object",
+  "required": [
+    "event",
+    "t",
+    "seq",
+    "run",
+    "code",
+    "message",
+    "_schema"
+  ],
+  "properties": {
+    "event": {
+      "const": "finding"
+    },
+    "t": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "POSIX time in milliseconds (Parley spec 1.3)."
+    },
+    "seq": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "The run's single counter (Parley spec 1.3)."
+    },
+    "run": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The execution this line belongs to (Parley spec 2.1)."
+    },
+    "code": {
+      "enum": [
+        "frontmatter.violation",
+        "frontmatter.warning",
+        "issue.untrusted",
+        "pull_request.untrusted",
+        "issue.unmodeled",
+        "issue.opaque",
+        "container.excluded",
+        "parent.not_planned",
+        "edge.redundant",
+        "edge.soft_or_low_confidence",
+        "prerequisite.unknown",
+        "prerequisite.stale_merged_hint",
+        "graph.cyclic_node",
+        "relationship.only_in_frontmatter",
+        "relationship.only_in_github",
+        "since_last.no_previous"
+      ],
+      "description": "Stable codes: frontmatter.violation: An issue's frontmatter breaks the issue-dag/2 rules; subject is the issue, message the rule. frontmatter.warning: A frontmatter value is allowed but suspicious (for example .size_hours above 8). issue.untrusted: An issue failed the trust gate (C1): listed, never a node unless a trusted issue references it, and then only as an opaque blocker. detail: id, url, state, author, reasons, referenced_by. No title. pull_request.untrusted: A pull request that closes a task is not from a same-repository branch by a trusted author (C4); it has no effect. detail: number, url, author, cross_repository, closes, reason. issue.unmodeled: An open home issue has no frontmatter; it is not a node. detail: id, title, url. issue.opaque: A referenced issue has no frontmatter; it blocks its dependents and is never dispatched. detail: id, title, state, referenced_by. container.excluded: A container groups issues and is not itself a node. detail: id, number, title. parent.not_planned: A blocker closed as not planned still satisfies the edge; review it. detail: parent, child, title. edge.redundant: A declared edge is implied by a longer path and left out of the reduced graph. detail: from, to, implied_via. edge.soft_or_low_confidence: A --verify-dag edge that is soft or below --min-confidence; not in the graph. detail: from, to, type, isHard, confidence, evidence. prerequisite.unknown: A node names a prerequisite that is neither open nor completed. detail: node, unknown_prerequisite. prerequisite.stale_merged_hint: A --verify-dag prerequisite marked (merged) is still open. detail: node, prerequisite, prerequisite_status. graph.cyclic_node: A node on or behind a cycle of hard edges. relationship.only_in_frontmatter: With --compare-relationships: an edge in frontmatter that GitHub's blocked_by relationships lack. detail: from, to. relationship.only_in_github: With --compare-relationships: a GitHub blocked_by relationship that frontmatter lacks. detail: from, to. since_last.no_previous: With --since-last: no earlier completed receipt of this tool in this working directory asked the same question, so nothing was compared."
+    },
+    "subject": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The issue, node or edge the finding is about, when it has one."
+    },
+    "message": {
+      "type": "string",
+      "minLength": 1
+    },
+    "detail": {
+      "type": "object"
+    },
+    "_schema": {
+      "type": "object",
+      "required": [
+        "id",
+        "version"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "const": "taskalisk.finding"
+        },
+        "version": {
+          "const": "1.0.0",
+          "description": "Full validation is against the schema for this exact id and version (Parley spec 4.5)."
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "code": {
+            "enum": [
+              "frontmatter.violation",
+              "frontmatter.warning",
+              "graph.cyclic_node"
+            ]
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "subject"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "code": {
+            "enum": [
+              "issue.untrusted",
+              "pull_request.untrusted",
+              "issue.unmodeled",
+              "issue.opaque",
+              "container.excluded",
+              "parent.not_planned",
+              "edge.redundant",
+              "edge.soft_or_low_confidence",
+              "prerequisite.unknown",
+              "prerequisite.stale_merged_hint",
+              "relationship.only_in_frontmatter",
+              "relationship.only_in_github"
+            ]
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "detail"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "code": {
+            "const": "issue.untrusted"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "detail": {
+            "required": [
+              "id",
+              "url",
+              "state",
+              "author",
+              "reasons",
+              "referenced_by"
+            ],
+            "not": {
+              "required": [
+                "title"
+              ]
+            }
+          }
+        }
+      }
+    }
+  ]
+}

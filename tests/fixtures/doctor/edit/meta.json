@@ -1,0 +1,14 @@
+{
+  "scenario": "edit_add",
+  "args": [
+    "--from-github",
+    "--root",
+    "flyingrobots/geordi#9",
+    "--add-edge",
+    "flyingrobots/echo#6->flyingrobots/geordi#2",
+    "--reason",
+    "contract first"
+  ],
+  "exit": 0,
+  "captured": "a real run of skills/taskalisk/scripts/taskalisk.py against tests/fake_gh.py"
+}

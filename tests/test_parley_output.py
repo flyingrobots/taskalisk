@@ -292,8 +292,10 @@ class SinceLast(Harness):
         self.assertEqual(first.returncode, 0, first.stderr)
         state["issues"][f"{ECHO}#5"]["state"] = "closed"
         state["issues"][f"{ECHO}#5"]["state_reason"] = "completed"
+        elsewhere = self.tmp / "elsewhere"
+        elsewhere.mkdir()
         self.log.write_text("")
-        plain = self.run_dag(state, "--from-github", "--root", f"{HOME}#9")
+        self.run_dag(state, "--from-github", "--root", f"{HOME}#9", cwd=elsewhere)  # the same run without --since-last, receipts kept apart
         plain_calls = self.calls()
         self.log.write_text("")
         p = self.run_dag(state, "--from-github", "--root", f"{HOME}#9", "--since-last")
@@ -303,7 +305,7 @@ class SinceLast(Harness):
         self.assertIn(("promoted", f"{HOME}#1"), changes)
         self.assertIn(("promoted", f"{ECHO}#6"), changes)
         self.assertIn(("closed", f"{ECHO}#5"), changes)
-        previous_run = pl.parse(plain.stdout, "stdout")[0]["run"]
+        previous_run = pl.parse(first.stdout, "stdout")[0]["run"]
         self.assertEqual({c["since_run"] for c in pl.of(out, "taskalisk.frontier_change")}, {previous_run})
         self.assertEqual(pl.one(out, "taskalisk.plan")["since_last"], {"compared_with": previous_run, "changes": len(changes)})
 
