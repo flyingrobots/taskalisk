@@ -214,7 +214,10 @@ as in 1.x. The bootstrap line's receipt path is absolute because the protocol re
 
 - The compile holds the closure in memory, because ranking needs the whole graph; the output is
   written one line per record and never assembled into one document. A thousand-node backlog
-  compiles and streams in under 60 seconds in the suite, with no line over 65,536 bytes.
+  compiles and streams in under 60 seconds in the suite, with no line over 65,536 bytes. In GitHub mode the
+  time is the `gh` calls (one edit-history query per trusted issue): measured once on 2026-11-22, a
+  999-issue backlog against `tests/fake_gh.py` took 77.7 seconds and wrote 3,992 stdout lines, the
+  longest 26,842 bytes; that run is not part of the suite.
 - A `--emit-roadmap` text, or a receipt step listing a large closure, can exceed 65,536 bytes;
   the writer then stores it beside the receipt as a sidecar.
 - A hard crash of the interpreter or a signal can leave the streams without `end` (Parley §6).
