@@ -1,5 +1,7 @@
 # Taskalisk
 
+<img width="50%" height="50%" alt="taskalisk-card" src="https://github.com/user-attachments/assets/cce059c6-0ae4-417e-b44b-a171e598f498" />
+
 Taskalisk, an agent skill: compile GitHub issues into a transitively reduced
 precedence DAG from their frontmatter (`docs/frontmatter-model.md`), across
 repositories, rank the open frontier, and edit edges in frontmatter. The skill itself is in
