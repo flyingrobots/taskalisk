@@ -1,0 +1,22 @@
+{
+  "args": [
+    "--verify-dag",
+    "dag.json"
+  ],
+  "captured_from": "flyingrobots/taskalisk@6e840586ab1b46f0e9f0039d56d248f991c89caf skills/taskalisk/scripts/taskalisk.py",
+  "exit": 1,
+  "scenario": "verify_cycle",
+  "stdout": {
+    "cyclic_nodes": [
+      "flyingrobots/geordi#1",
+      "flyingrobots/geordi#2"
+    ],
+    "error": "Cycle detected in hard structural edges",
+    "meta": {
+      "artifact_hash": "fad780d8f2b1b2968464bbb6dbed833b657dd10a9ff1c7d6a7bce76b127b488e"
+    },
+    "ok": false,
+    "stale_merged_hints": [],
+    "unknown_dependencies": []
+  }
+}

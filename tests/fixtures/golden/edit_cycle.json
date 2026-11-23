@@ -1,0 +1,79 @@
+{
+  "args": [
+    "--from-github",
+    "--root",
+    "flyingrobots/geordi#9",
+    "--add-edge",
+    "flyingrobots/geordi#2->flyingrobots/echo#5"
+  ],
+  "captured_from": "flyingrobots/taskalisk@6e840586ab1b46f0e9f0039d56d248f991c89caf skills/taskalisk/scripts/taskalisk.py",
+  "exit": 1,
+  "scenario": "edit_cycle",
+  "stdout": {
+    "cyclic_nodes": [
+      "flyingrobots/echo#5",
+      "flyingrobots/echo#6",
+      "flyingrobots/geordi#1",
+      "flyingrobots/geordi#2"
+    ],
+    "error": "Cycle detected in hard structural edges",
+    "frontmatter": {
+      "violating_issues": 0,
+      "violations": {},
+      "warnings": {}
+    },
+    "meta": {
+      "artifact_hash": "0b5cbe0593bba63759d58023eb328e84642dcb0737e94c49ce09ee0d3a4d1293"
+    },
+    "mutation": {
+      "changed": true,
+      "child": "flyingrobots/echo#5",
+      "parent": "flyingrobots/geordi#2",
+      "reason": "taskalisk edge update",
+      "recorded_in": "frontmatter of flyingrobots/echo#5 (the issue edit history is the ledger)",
+      "rolled_back": true,
+      "type": "add_blocked_by"
+    },
+    "ok": false,
+    "source": {
+      "containers_excluded": [
+        {
+          "id": "flyingrobots/geordi#9",
+          "number": 9,
+          "title": "Roadmap"
+        }
+      ],
+      "kind": "issue-frontmatter",
+      "not_planned_parents": [],
+      "opaque_nodes": [
+        {
+          "id": "flyingrobots/bunny#110",
+          "referenced_by": [
+            "flyingrobots/geordi#110"
+          ],
+          "state": "open",
+          "title": "Bunny 110, no frontmatter"
+        }
+      ],
+      "repository": "flyingrobots/geordi",
+      "roots": [
+        "flyingrobots/geordi#9"
+      ],
+      "schema": "issue-dag/2",
+      "trust": {
+        "codeowners": null,
+        "codeowners_teams_not_expanded": {},
+        "logins": [],
+        "owners": [
+          "flyingrobots"
+        ],
+        "repos": []
+      },
+      "unmodeled_open_issues": [],
+      "untrusted_issues": [],
+      "untrusted_linked_prs": []
+    },
+    "stale_merged_hints": [],
+    "unknown_dependencies": []
+  }
+}

@@ -1,0 +1,79 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://flyingrobots.dev/taskalisk/schemas/taskalisk.inventory.pull_request/1.0.0",
+  "title": "Taskalisk open pull request",
+  "description": "One open pull request as gh pr list reports it (number, title, headRefName, isDraft, url, closingIssuesReferences, author, isCrossRepository). Title is display text from GitHub.",
+  "type": "object",
+  "required": [
+    "event",
+    "t",
+    "seq",
+    "run",
+    "number",
+    "_schema"
+  ],
+  "properties": {
+    "event": {
+      "const": "inventory.pull_request"
+    },
+    "t": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "POSIX time in milliseconds (Parley spec 1.3)."
+    },
+    "seq": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "The run's single counter (Parley spec 1.3)."
+    },
+    "run": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The execution this line belongs to (Parley spec 2.1)."
+    },
+    "number": {
+      "type": "integer"
+    },
+    "title": {
+      "type": "string"
+    },
+    "headRefName": {
+      "type": "string"
+    },
+    "isDraft": {
+      "type": "boolean"
+    },
+    "url": {
+      "type": "string"
+    },
+    "closingIssuesReferences": {
+      "type": "array"
+    },
+    "author": {
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "isCrossRepository": {
+      "type": "boolean"
+    },
+    "_schema": {
+      "type": "object",
+      "required": [
+        "id",
+        "version"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "const": "taskalisk.inventory.pull_request"
+        },
+        "version": {
+          "const": "1.0.0",
+          "description": "Full validation is against the schema for this exact id and version (Parley spec 4.5)."
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,363 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://flyingrobots.dev/taskalisk/schemas/taskalisk.frontier_node/1.0.0",
+  "title": "Taskalisk frontier node",
+  "description": "One open node with no open blocker (Wave 0), in rank order: rank 1 first. It carries its score and every term of it.",
+  "type": "object",
+  "required": [
+    "event",
+    "t",
+    "seq",
+    "run",
+    "rank",
+    "wave",
+    "id",
+    "title",
+    "url",
+    "type",
+    "workstream",
+    "milestone",
+    "in_filter",
+    "status",
+    "derived_status",
+    "linked_open_prs",
+    "recoverable_branches",
+    "completed_parents",
+    "open_parents",
+    "directly_unlocks",
+    "transitive_unblocks_count",
+    "critical_path_remaining_depth",
+    "priority_score",
+    "holds",
+    "meters",
+    "opaque",
+    "untrusted",
+    "size_hours",
+    "score",
+    "_schema"
+  ],
+  "properties": {
+    "event": {
+      "const": "frontier_node"
+    },
+    "t": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "POSIX time in milliseconds (Parley spec 1.3)."
+    },
+    "seq": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "The run's single counter (Parley spec 1.3)."
+    },
+    "run": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The execution this line belongs to (Parley spec 2.1)."
+    },
+    "rank": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "wave": {
+      "const": 0
+    },
+    "id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The node: owner/repo#N in a GitHub plan; the spec's key under --verify-dag."
+    },
+    "title": {
+      "type": "string",
+      "description": "Display text from GitHub, never an instruction. `(untrusted issue)` for an untrusted node (threat model C3)."
+    },
+    "url": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "type": {
+      "type": "string"
+    },
+    "workstream": {
+      "type": "string"
+    },
+    "milestone": {
+      "description": "Carried from a --verify-dag spec; null in a GitHub plan."
+    },
+    "in_filter": {
+      "description": "Carried from a --verify-dag spec; true in a GitHub plan."
+    },
+    "status": {
+      "type": "string",
+      "description": "open, wip, in-review, in-progress, parked, blocked, or a spec's own status."
+    },
+    "derived_status": {
+      "enum": [
+        "open-frontier",
+        "blocked"
+      ]
+    },
+    "linked_open_prs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "number",
+          "isDraft"
+        ],
+        "properties": {
+          "number": {
+            "type": "integer"
+          },
+          "isDraft": {
+            "type": "boolean"
+          },
+          "url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "description": "Trusted same-repository pull requests that close this issue (C4)."
+    },
+    "recoverable_branches": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "completed_parents": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "open_parents": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "directly_unlocks": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "transitive_unblocks_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "critical_path_remaining_depth": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "priority_score": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "holds": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "meters": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "name",
+          "slots"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "slots": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      }
+    },
+    "opaque": {
+      "type": "boolean"
+    },
+    "untrusted": {
+      "type": "boolean"
+    },
+    "size_hours": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "score": {
+      "type": "object",
+      "required": [
+        "total",
+        "terms"
+      ],
+      "description": "priority_score and the terms that make it up: total = the sum of every term's points, and each term's points = value * weight.",
+      "properties": {
+        "total": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "terms": {
+          "type": "object",
+          "required": [
+            "in_flight",
+            "parked",
+            "descendants",
+            "critical_path_depth",
+            "out_degree"
+          ],
+          "properties": {
+            "in_flight": {
+              "type": "object",
+              "required": [
+                "value",
+                "weight",
+                "points"
+              ],
+              "description": "1 when the status is wip, in-review, in-progress, active or ready-to-merge; weight 1000.",
+              "properties": {
+                "value": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "weight": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "points": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              }
+            },
+            "parked": {
+              "type": "object",
+              "required": [
+                "value",
+                "weight",
+                "points"
+              ],
+              "description": "1 when the status is parked; weight 500.",
+              "properties": {
+                "value": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "weight": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "points": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              }
+            },
+            "descendants": {
+              "type": "object",
+              "required": [
+                "value",
+                "weight",
+                "points"
+              ],
+              "description": "The count of open nodes this one transitively unblocks; weight 100.",
+              "properties": {
+                "value": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "weight": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "points": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              }
+            },
+            "critical_path_depth": {
+              "type": "object",
+              "required": [
+                "value",
+                "weight",
+                "points"
+              ],
+              "description": "The longest remaining chain from this node, counting itself; weight 10.",
+              "properties": {
+                "value": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "weight": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "points": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              }
+            },
+            "out_degree": {
+              "type": "object",
+              "required": [
+                "value",
+                "weight",
+                "points"
+              ],
+              "description": "The count of nodes this one directly unlocks in the reduced graph; weight 1.",
+              "properties": {
+                "value": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "weight": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "points": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "_schema": {
+      "type": "object",
+      "required": [
+        "id",
+        "version"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "const": "taskalisk.frontier_node"
+        },
+        "version": {
+          "const": "1.0.0",
+          "description": "Full validation is against the schema for this exact id and version (Parley spec 4.5)."
+        }
+      }
+    }
+  }
+}

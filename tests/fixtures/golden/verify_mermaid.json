@@ -1,0 +1,11 @@
+{
+  "args": [
+    "--verify-dag",
+    "dag.json",
+    "--emit-mermaid"
+  ],
+  "captured_from": "flyingrobots/taskalisk@6e840586ab1b46f0e9f0039d56d248f991c89caf skills/taskalisk/scripts/taskalisk.py",
+  "exit": 0,
+  "scenario": "verify_mermaid",
+  "stdout_text": "flowchart TD\n  subgraph Wave0[\"Wave 0: Open Frontier (Zero Incomplete Parents)\"]\n    N_flyingrobots_geordi_1[\"flyingrobots/geordi#1: a\"]\n  end\n  subgraph Wave1[\"Wave 1\"]\n    N_flyingrobots_geordi_2[\"flyingrobots/geordi#2: b\"]\n  end\n  subgraph Wave2[\"Wave 2\"]\n    N_flyingrobots_geordi_3[\"flyingrobots/geordi#3: c\"]\n  end\n  N_flyingrobots_geordi_1 --> N_flyingrobots_geordi_2\n  N_flyingrobots_geordi_2 --> N_flyingrobots_geordi_3\n"
+}

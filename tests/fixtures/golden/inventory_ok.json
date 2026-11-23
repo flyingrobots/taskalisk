@@ -1,0 +1,65 @@
+{
+  "args": [],
+  "captured_from": "flyingrobots/taskalisk@6e840586ab1b46f0e9f0039d56d248f991c89caf skills/taskalisk/scripts/taskalisk.py",
+  "exit": 0,
+  "scenario": "inventory_ok",
+  "stdout": {
+    "github": {
+      "open_issues": [
+        {
+          "labels": [],
+          "milestone": null,
+          "number": 9,
+          "title": "Roadmap",
+          "url": "https://github.com/flyingrobots/geordi/issues/9"
+        },
+        {
+          "labels": [],
+          "milestone": null,
+          "number": 1,
+          "title": "Home one",
+          "url": "https://github.com/flyingrobots/geordi/issues/1"
+        },
+        {
+          "labels": [],
+          "milestone": null,
+          "number": 2,
+          "title": "Home two",
+          "url": "https://github.com/flyingrobots/geordi/issues/2"
+        },
+        {
+          "labels": [],
+          "milestone": null,
+          "number": 110,
+          "title": "Home 110",
+          "url": "https://github.com/flyingrobots/geordi/issues/110"
+        }
+      ],
+      "open_prs": []
+    },
+    "inventory_errors": [],
+    "ok": true,
+    "unmerged_branches": {
+      "local": [
+        {
+          "ahead_of_main": 1,
+          "branch": "feature-2",
+          "head": "1fa655be4",
+          "tip_subject": "work on two"
+        }
+      ],
+      "remote": []
+    },
+    "worktrees": [
+      {
+        "ahead_of_main": 0,
+        "behind_main": 0,
+        "branch": "main",
+        "dirty": false,
+        "head": "8d99e013f",
+        "path": "<TMP>/repo",
+        "path_exists": true
+      }
+    ]
+  }
+}

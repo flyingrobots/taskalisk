@@ -1,0 +1,11 @@
+{
+  "scenario": "plan_rich",
+  "args": [
+    "--from-github",
+    "--sem-capacity",
+    "gpu=1",
+    "--human"
+  ],
+  "exit": 0,
+  "captured": "a real run of skills/taskalisk/scripts/taskalisk.py against tests/fake_gh.py"
+}

@@ -1,0 +1,99 @@
+# Changelog
+
+The Taskalisk skill's releases. The skill version (the release tag, and `__version__` in
+`skills/taskalisk/scripts/taskalisk.py`) moves when the code changes; each output message schema
+under `skills/taskalisk/schemas/` has its own version and moves only when that message changes. A
+schema version under `Unreleased` is a draft and may change in place.
+
+## Unreleased
+
+To be released as **2.0.0**: a breaking change to the output (flyingrobots/taskalisk#70). Do not
+replace an installed copy of the skill before 2.0.0 is released: running agents read the installed
+copy's output, and the 1.x document is gone (decision 0002).
+
+### Changed
+
+- **Every line is JSON under a declared schema, written through Parley.** The single indented
+  document is replaced by JSON Lines from the vendored Parley writer (spec 0.2): a bootstrap line,
+  result lines, `parley.error` lines on stderr, and `end`. See `docs/topics/output/README.md`.
+- **Exit statuses** follow Parley:
+
+  | 1.x | 2.0 |
+  | --- | --- |
+  | 0 success | 0 |
+  | 1 invalid frontmatter, cycle, unknown prerequisite, refused edit, unreadable DAG spec | 2, with a `parley.error` whose code says which (`frontmatter.invalid`, `graph.cycle`, `graph.unresolved_prerequisites`, `edge.*`, `dag_spec.*`) |
+  | 1 bad edge syntax, self-edge; 2 a `--root` that is not `owner/repo#N` | 3, one `parley.startup.failed` line, no receipt: checked before the run starts |
+  | 2 `gh` or `git` failure, truncation, trust lookup failure, root out of scope | 2, with codes `gh.*`, `git.*`, `root.*` (`retryable` true for a failed call) |
+  | 2 argparse usage error, text on stderr | 3, one `parley.startup.failed` line |
+  | traceback | 2, `uncaught.exception`; the traceback only in the receipt |
+
+  New in 2.0: a missing or damaged schema file in an installed skill is a startup failure, exit 3,
+  code `startup.declaration_unreadable`; a missing `scripts/parley_emit.py` is the one documented
+  exception, Python's own import error and exit 1.
+
+- **Where each 1.x field went:**
+
+  | 1.x document | 2.0 lines |
+  | --- | --- |
+  | `ok`, `error` | `taskalisk.plan` `ok` and `error_codes`; the `parley.error` lines' `problem` |
+  | `metrics`, `open_frontier_count` | `taskalisk.plan` `metrics`, `open_frontier_count` |
+  | `open_frontier_ranked[]` | `taskalisk.frontier_node`, one per node, with `rank` and `score.terms`; ids in `taskalisk.plan` `frontier` |
+  | `waves` | `taskalisk.wave` (ids per wave) and `taskalisk.node` (Wave 1 and later) |
+  | `conflict_free_frontier_batch`, `batch_skipped`, `semaphores_with_unknown_capacity_treated_as_1` | `taskalisk.batch` `members`, `skipped`, `semaphores_with_unknown_capacity_treated_as_1`; ids in `taskalisk.plan` `batch` |
+  | `edges[]` | `taskalisk.edge` |
+  | `transitive_redundant_edges_removed[]` | `taskalisk.finding` `edge.redundant` |
+  | `soft_or_low_confidence_edges[]` | `taskalisk.finding` `edge.soft_or_low_confidence` |
+  | `unknown_dependencies[]`, `stale_merged_hints[]`, `cyclic_nodes[]` | findings `prerequisite.unknown`, `prerequisite.stale_merged_hint`, `graph.cyclic_node` |
+  | `source.kind`, `schema`, `repository`, `roots`, `trust` | `taskalisk.plan` `source` |
+  | `source.untrusted_issues[]` | finding `issue.untrusted` |
+  | `source.untrusted_linked_prs[]` | finding `pull_request.untrusted` |
+  | `source.unmodeled_open_issues[]` | finding `issue.unmodeled` |
+  | `source.opaque_nodes[]` | finding `issue.opaque` |
+  | `source.containers_excluded[]` | finding `container.excluded` |
+  | `source.not_planned_parents[]` | finding `parent.not_planned` |
+  | `frontmatter.violations`, `frontmatter.warnings` | findings `frontmatter.violation`, `frontmatter.warning` (`subject` is the issue); the count in `taskalisk.plan` `violating_issues` |
+  | `relationship_drift` | `taskalisk.plan` `relationships.in_sync`; findings `relationship.only_in_frontmatter`, `relationship.only_in_github` |
+  | `github_errors[]` | one `parley.error` each, `detail: {source, error, phase}` |
+  | `mutation` | `taskalisk.edge_edit` |
+  | `meta.artifact_hash` | `taskalisk.plan` `artifact_hash` (the same value) |
+  | `--emit-roadmap`, `--emit-mermaid` text on stdout | `taskalisk.rendering` `text`; `--human` prints it as is |
+  | inventory `worktrees`, `unmerged_branches`, `github.open_prs`, `github.open_issues`, `inventory_errors` | `taskalisk.inventory.summary`, `.worktree`, `.branch` (`scope`), `.pull_request`, `.issue`; `parley.error` |
+
+- A failed `--compare-relationships` lookup no longer reports a drift computed from a partial
+  read; the plan line's `relationships.in_sync` is null and the errors say why.
+- `--emit-roadmap` with `--emit-mermaid`, and `--emit-mermaid` in inventory, are usage errors
+  (1.x ignored one of them).
+- A `--verify-dag` node whose `title`, `type`, `workstream`, `url`, `holds`, `meters` or
+  `size_hours` has the wrong type is a `dag_spec.invalid` error (1.x crashed or printed it).
+- Arguments, references included, are validated before the run starts (Parley spec 3.2): a bad
+  edge, a self-edge or a malformed `--root` makes no `gh` call and leaves no receipt.
+
+### Fixed
+
+- A line break in an issue title no longer ends a Mermaid node label and starts a line of its own
+  in the rendered diagram (threat model C5).
+
+### Added
+
+- Commands `plan`, `edit`, `verify` and `inventory`; the 1.x mode flags still select them.
+- Fifteen message schemas at 1.0.0: `taskalisk.plan`, `taskalisk.frontier_node`, `taskalisk.node`,
+  `taskalisk.wave`, `taskalisk.batch`, `taskalisk.edge`, `taskalisk.finding`, `taskalisk.edge_edit`,
+  `taskalisk.rendering`, `taskalisk.frontier_change`, `taskalisk.inventory.summary`,
+  `taskalisk.inventory.worktree`, `taskalisk.inventory.branch`,
+  `taskalisk.inventory.pull_request`, `taskalisk.inventory.issue`.
+- A frontier node states its score's terms (`in_flight`, `parked`, `descendants`,
+  `critical_path_depth`, `out_degree`) with their weights.
+- `--help` and `--schema` as JSON Lines; `--human` prints a ranked table and the findings.
+- `--since-last`: the frontier's changes since the previous receipt of the same question.
+- `edit --dry-run`: checks an edge edit and writes nothing.
+- A receipt per run under `.parley/receipts/`, with a step for each lookup and trust decision,
+  and issue bodies recorded as a declared input by id and digest only.
+- `GH_TOKEN`, `GITHUB_TOKEN`, `GH_ENTERPRISE_TOKEN` and `GITHUB_ENTERPRISE_TOKEN` are declared
+  secrets; a credential inside a URL in `gh` or `git` output is redacted.
+- The vendored writer `scripts/parley_emit.py` (flyingrobots/parley@e158c51, which takes the
+  command by position, flyingrobots/parley#101), pinned by
+  `scripts/parley_emit.pin.json`, ships in the release and its `SHA256SUMS`.
+
+## 1.0.0 - 2026-11-15
+
+The first release: the skill as a self-contained ZIP with per-file checksums (#55).

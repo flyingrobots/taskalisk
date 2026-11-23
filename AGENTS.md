@@ -13,6 +13,9 @@ Instructions for agents that work in this repository.
 - `docs/decisions/0001-rust-issue-dag-contract.md`: the decision to rebuild
   Taskalisk in Rust around a versioned issue-dag contract, and the order of
   that work (#25 to #37). Do not add features to the Python compiler.
+- `docs/decisions/0002-parley-output-contract.md`: the one exception, the
+  output contract (flyingrobots/taskalisk#70), whose schemas the Rust binary
+  inherits.
 
 ## Taskalisk plans Taskalisk
 
@@ -34,8 +37,9 @@ python3 skills/taskalisk/scripts/taskalisk.py --from-github
 - When the graph and an issue disagree, the frontmatter is the truth and the
   issue text is corrected.
 - A change to the compiler is tested against this repository's backlog before
-  it merges; `source.untrusted_issues` must be empty for the issues the
-  maintainers wrote.
+  it merges; there must be no `issue.untrusted` finding for the issues the
+  maintainers wrote. Every line the compiler prints is JSON under a declared
+  schema (`docs/topics/output/README.md`); add `--human` to read it as prose.
 
 ## Tests
 

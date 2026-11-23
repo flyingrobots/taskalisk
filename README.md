@@ -15,6 +15,16 @@ Repositories are public, so anyone can file an issue or a fork PR. The threat
 model and the binding security policy are in `docs/threat-model.md`; the
 compiler applies its trust gate on every run.
 
+## Output
+
+Every line the compiler prints, on stdout and stderr, is JSON under a declared,
+separately versioned schema, written through the vendored
+[Parley](https://github.com/flyingrobots/parley) writer: the plan summary
+first, then the ranked frontier, then the batch and the detail. Add `--human`
+for a table, `--schema` for every message's schema. Each run leaves a receipt
+in `.parley/receipts/` (ignored by git). The contract is
+`docs/topics/output/README.md`; what changed from 1.x is in `CHANGELOG.md`.
+
 ## Install a release
 
 Each release has `taskalisk-v<version>.zip` and `SHA256SUMS`. The ZIP holds one
@@ -59,4 +69,6 @@ python3 -m unittest discover -s tests
 ```
 
 The tests run offline. `tests/fake_gh.py` stands in for `gh` and logs every
-call, so a test can check which repository each request went to.
+call, so a test can check which repository each request went to. Every run in
+the suite has each of its lines validated against its schema, and
+`tests/fixtures/golden/` holds the 1.x output the lines must reconstruct.

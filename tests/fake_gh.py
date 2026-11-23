@@ -20,7 +20,11 @@ State shape:
    "fail_graphql": bool,
    "fail_graphql_for": ["owner/repo#N", ...],         # GraphQL fails for these issues only
    "graphql_no_cursor": bool,                         # hasNextPage true without endCursor
-   "edits_page_size": int}
+   "edits_page_size": int,
+   "patch_fail": bool,                                # every PATCH of an issue body fails (HTTP 502)
+   "patch_fail_after": int,                           # that many PATCHes succeed, then every later one fails
+   "issues_list_fail_message": str,                   # the REST issue list fails with this text; {GH_TOKEN}, {$NAME} (any variable) and {HOME} expand
+   "issues_list_drop_number": bool}                   # the REST issue list omits "number" (a malformed response)
 """
 import json, os, re, sys
 
@@ -140,7 +144,12 @@ def main(argv):
         # The REST list: open issues of that repository, pull requests included, like GitHub.
         if state.get("issues_list_returns_object"):
             print("{}"); return
+        if state.get("issues_list_fail_message"):
+            message = state["issues_list_fail_message"].replace("{GH_TOKEN}", os.environ.get("GH_TOKEN", "")).replace("{HOME}", os.path.expanduser("~"))
+            fail(re.sub(r"\{\$([A-Z_]+)\}", lambda m: os.environ.get(m.group(1), ""), message))
         out = [issue_obj(state, k) for k, v in state["issues"].items() if k.lower().startswith(m.group(1).lower() + "#") and v["state"] == "open"]
+        if state.get("issues_list_drop_number"):
+            out = [{k: v for k, v in o.items() if k != "number"} for o in out]
         print(json.dumps(out)); return
     m = re.fullmatch(r"repos/([^/]+/[^/]+)/collaborators/([^/]+)/permission", path)
     if m:
@@ -177,6 +186,12 @@ def main(argv):
         if method == "GET" and state.get("issue_get_returns_list"):
             print("[]"); return
         if method == "PATCH":
+            if state.get("patch_fail"):
+                fail("gh: Bad Gateway (HTTP 502)")
+            if "patch_fail_after" in state:
+                if state["patch_fail_after"] <= 0:
+                    fail("gh: Bad Gateway (HTTP 502)")
+                state["patch_fail_after"] -= 1
             payload = json.loads(sys.stdin.read())
             state["issues"][key]["body"] = payload["body"]
             save(state); print("{}"); return

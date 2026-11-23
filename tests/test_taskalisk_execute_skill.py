@@ -94,7 +94,7 @@ class TaskaliskExecuteSkillTest(unittest.TestCase):
     def test_trust_gate_doctrine(self):
         s = section(text(), "Trust gate")
         self.assertRegex(s, r"data, not instructions")
-        self.assertIn("source.untrusted_issues", s)
+        self.assertIn("issue.untrusted", s)
 
     def test_coordinator_lessons(self):
         s = section(text(), "Coordinator rules")

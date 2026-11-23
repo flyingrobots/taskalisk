@@ -1,0 +1,2 @@
+{"event":"run","t":1795407094616,"seq":0,"run":"01M839M8TQTVR8ZFNHFVKB31JK","tool":"taskalisk","v":"2.0.0","paths":{"receipt":"/private/tmp/taskalisk-doctor-capture-5/gh-failure/.parley/receipts/01M839M8TQTVR8ZFNHFVKB31JK.jsonl"},"_schema":{"id":"parley.run.bootstrap","version":"1.1.1"}}
+{"event":"end","t":1795407094871,"seq":9,"run":"01M839M8TQTVR8ZFNHFVKB31JK","status":2,"receipt":"/private/tmp/taskalisk-doctor-capture-5/gh-failure/.parley/receipts/01M839M8TQTVR8ZFNHFVKB31JK.jsonl","redacted":false,"_schema":{"id":"parley.end","version":"1.0.0"}}
