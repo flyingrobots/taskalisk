@@ -764,7 +764,7 @@ class EditNeverSilent(unittest.TestCase):
 
         def fake_plan(*args, out=None, **kwargs):
             out.mutation = dict(mutation)
-            out.result = {"ok": True}
+            out.result = {"ok": True, "metrics": {}}  # a compiled result, so --since-last runs
             return out
 
         def boom(*args, **kwargs):
