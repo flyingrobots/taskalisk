@@ -10,6 +10,7 @@ import copy
 import json
 import os
 import pathlib
+import shlex
 import subprocess
 import sys
 
@@ -104,7 +105,7 @@ def prepare(tmp):
     tmp = pathlib.Path(tmp)
     (tmp / "bin").mkdir()
     gh = tmp / "bin" / "gh"
-    gh.write_text(f"#!/bin/sh\nexec {sys.executable} {FAKE_GH} \"$@\"\n")
+    gh.write_text(f"#!/bin/sh\nexec {shlex.quote(sys.executable)} {shlex.quote(str(FAKE_GH))} \"$@\"\n")
     gh.chmod(0o755)
     (tmp / "repo").mkdir()
     subprocess.run(["git", "init", "-q", "-b", "main"], cwd=tmp / "repo", check=True)

@@ -28,6 +28,7 @@ class Golden(unittest.TestCase):
 
     def run_new(self, name):
         tmp = tempfile.mkdtemp(prefix="taskalisk-golden-")
+        self.addCleanup(shutil.rmtree, tmp, True)
         g.prepare(tmp)
         p = g.run_scenario(SCRIPT, name, tmp, env_extra={"XDG_STATE_HOME": str(pathlib.Path(tmp) / "state")})
         out, err = pl.parse(p.stdout, "stdout"), pl.parse(p.stderr, "stderr")
@@ -661,6 +662,16 @@ class SkillRecipeRefuses(Harness):
                     p = self.run_recipe(kind, program, stream)
                     self.assertNotEqual(p.returncode, 0, p.stdout)
                     self.assertEqual(p.stdout, "")
+
+    def test_the_jq_recipe_stops_when_taskalisk_exits_nonzero(self):
+        skill = SKILL_MD.read_text()
+        block = re.search(r"<!-- recipe: ranked-frontier-jq -->\s*```bash\n(out=.*?)\nprintf", skill, re.S).group(1)
+        stub = block.replace("python3 <this-skill>/scripts/taskalisk.py --from-github", "sh -c 'echo partial; exit 4'")
+        self.assertNotEqual(stub, block)
+        p = subprocess.run(["bash", "-c", stub + "\necho reached-jq"], capture_output=True, text=True)
+        self.assertEqual(p.returncode, 4, p.stderr)
+        self.assertNotIn("reached-jq", p.stdout)
+        self.assertIn("taskalisk exited 4", p.stderr)
 
     def test_a_title_is_printed_quoted(self):
         py, _ = self.recipes()

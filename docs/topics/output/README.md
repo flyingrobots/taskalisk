@@ -206,9 +206,11 @@ A receipt is a local file that anyone who can write the directory can plant, so 
 compared with only when its file name is its run id, its `taskalisk.plan`, `frontier_node` and
 `node` lines validate against the exact schemas they name, and every node id is an issue
 (`owner/repo#N`). Any other is skipped with a receipt step, `--since-last: ignored receipt ...`,
-and the next is tried. This keeps a planted file from putting arbitrary text or an invalid line
-on stdout; it does not authenticate a well-formed receipt, so a `frontier_change` is advice
-about this directory's history, never an instruction.
+and the next is tried. This keeps a planted file from putting an invalid line, or a node id that
+is not an issue, on stdout. It does not authenticate a well-formed receipt. A planted receipt can
+still choose its run id (its file name, which only has to match the `run` inside it), and that
+string appears on stdout as the plan line's `since_last.compared_with` and each change's
+`since_run`; a `frontier_change` is advice about this directory's history, never an instruction.
 
 ## `--human`, `--dry-run`, discovery
 

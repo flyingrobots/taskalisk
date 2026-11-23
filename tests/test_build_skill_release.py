@@ -30,6 +30,11 @@ def relative_links(markdown):
     return [t.split("#", 1)[0] for t in targets if not re.match(r"[a-z][a-z0-9+.-]*:", t) and not t.startswith("#")]
 
 
+def committed_file(path):
+    """A tracked file as the builder packages it (HEAD), not as the working tree holds it."""
+    return subprocess.run(["git", "-C", str(ROOT), "show", f"HEAD:{path}"], capture_output=True, check=True).stdout
+
+
 def make_repo(base, files, links=(), ignore=""):
     """A committed throwaway repository with a minimal skill. Returns its path."""
     repo = base / "repo"
@@ -125,7 +130,7 @@ class BuildSkillReleaseTest(unittest.TestCase):
     def test_the_vendored_writer_and_the_schemas_ship_in_the_release(self):
         """OUT-17: the archive carries the pinned writer, listed in SHA256SUMS, and every schema as a regular file."""
         members = self.members(builder.build(ROOT, self.out / "a", "1.0.0"))
-        pin = __import__("json").loads((ROOT / "skills" / "taskalisk" / "scripts" / "parley_emit.pin.json").read_text())
+        pin = __import__("json").loads(committed_file("skills/taskalisk/scripts/parley_emit.pin.json"))
         data, mode, _ = members["taskalisk/scripts/parley_emit.py"]
         self.assertEqual(hashlib.sha256(data).hexdigest(), pin["sha256"])
         sums = members["taskalisk/SHA256SUMS"][0].decode("utf-8")
@@ -133,7 +138,9 @@ class BuildSkillReleaseTest(unittest.TestCase):
         for name in ("parley_emit.LICENSE", "parley_emit.NOTICE", "parley_emit.pin.json"):
             self.assertIn(f"taskalisk/scripts/{name}", members)
         schemas = sorted(n for n in members if n.startswith("taskalisk/schemas/"))
-        self.assertEqual(len(schemas), len(list((ROOT / "skills" / "taskalisk" / "schemas").glob("*.schema.json"))))
+        committed = subprocess.run(["git", "-C", str(ROOT), "ls-tree", "-r", "--name-only", "HEAD", "skills/taskalisk/schemas/"],
+                                   capture_output=True, check=True, text=True).stdout.split()
+        self.assertEqual(len(schemas), len([n for n in committed if n.endswith(".schema.json")]))
         self.assertTrue(schemas)
         for name in schemas:
             self.assertEqual(members[name][1] & 0o170000, 0o100000, name)

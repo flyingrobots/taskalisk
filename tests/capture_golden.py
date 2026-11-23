@@ -12,6 +12,7 @@ with the per-run temporary directory replaced by a placeholder. The fixtures are
 never hand-written.
 """
 import json
+import os
 import sys
 import tempfile
 
@@ -19,11 +20,15 @@ import golden_scenarios as g
 
 
 def main(script, commit):
+    if not os.path.isfile(script):
+        sys.exit(f"capture_golden: no such compiler script: {script}")
     g.GOLDEN.mkdir(parents=True, exist_ok=True)
     for name, (_, args, _) in g.SCENARIOS.items():
         with tempfile.TemporaryDirectory(prefix="taskalisk-golden-") as tmp:
             g.prepare(tmp)
             p = g.run_scenario(script, name, tmp)
+            if not p.stdout.strip():  # a compiler that printed nothing is a failure, never a rendering
+                sys.exit(f"capture_golden: {name}: the compiler printed nothing (exit {p.returncode}): {p.stderr[-300:]}")
             try:
                 out = {"stdout": g.normalise(json.loads(p.stdout), tmp)}
             except json.JSONDecodeError:

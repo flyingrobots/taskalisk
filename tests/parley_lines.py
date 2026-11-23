@@ -35,7 +35,8 @@ TOOL_SCHEMAS = tool_schemas()
 def parse(text, stream):
     """Every line of a stream as a JSON object; anything else is a contract failure."""
     lines = []
-    for n, raw in enumerate(text.splitlines(), 1):
+    # split on "\n" only: str.splitlines() also breaks on U+0085, U+2028 and U+2029, which may sit inside a JSON string
+    for n, raw in enumerate(text.removesuffix("\n").split("\n") if text else [], 1):
         try:
             obj = json.loads(raw)
         except json.JSONDecodeError as exc:

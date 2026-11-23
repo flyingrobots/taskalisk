@@ -242,7 +242,7 @@ line, printed only from a complete run whose plan is `ok` (doctrine 4):
 
 <!-- recipe: ranked-frontier-jq -->
 ```bash
-out=$(python3 <this-skill>/scripts/taskalisk.py --from-github) || echo "taskalisk exited $?; read the parley.error lines on stderr" >&2
+out=$(python3 <this-skill>/scripts/taskalisk.py --from-github) || { status=$?; echo "taskalisk exited $status; read the parley.error lines on stderr" >&2; exit $status; }
 printf '%s\n' "$out" | jq -r -s '(map(select(._schema.id == "taskalisk.plan"))) as $plans
   | if ($plans | length) != 1 then error("no plan line: the run failed before the compile")
     elif ($plans[0].ok | not) then error("plan not ok: " + ($plans[0].error_codes | join(", ")))
