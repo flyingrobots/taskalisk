@@ -2250,7 +2250,7 @@ def render_human(line: dict[str, Any]) -> str | None:
         about = f" {hs(subject)}" if subject and subject not in line["message"] else ""
         return f"{hs(line['code'])}{about}: {hs(line['message'])}"
     if ev == "rendering":
-        return str(line["text"])
+        return "\n".join(hs(part) for part in str(line["text"]).split("\n"))
     if ev == "edge_edit":
         state = "dry run, nothing written" if line.get("dry_run") else ("changed" if line["changed"] else "already so, nothing written")
         if "rolled_back" in line:

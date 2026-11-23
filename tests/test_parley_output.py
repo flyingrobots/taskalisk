@@ -389,7 +389,8 @@ class Injection(Harness):
         for extra in ([], ["--emit-roadmap"]):
             h = self.run_dag(state, "--from-github", "--root", f"{HOME}#9", "--human", *extra)
             self.assertIsNone(CONTROL.search(h.stdout.replace("\n", "")), extra)
-            self.assertNotIn('{"event":"end"', h.stdout)
+            # The title may appear inline, escaped; it must never start a line of its own.
+            self.assertFalse([l for l in h.stdout.splitlines() if l.lstrip().startswith("{")], extra)
 
 
 class Traceback(Harness):
