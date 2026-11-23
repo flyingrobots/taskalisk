@@ -122,6 +122,22 @@ class BuildSkillReleaseTest(unittest.TestCase):
         self.assertEqual(members["taskalisk/scripts/taskalisk.py"][1] & 0o777, 0o755)
         self.assertEqual(members["taskalisk/SKILL.md"][1] & 0o777, 0o644)
 
+    def test_the_vendored_writer_and_the_schemas_ship_in_the_release(self):
+        """OUT-17: the archive carries the pinned writer, listed in SHA256SUMS, and every schema as a regular file."""
+        members = self.members(builder.build(ROOT, self.out / "a", "1.0.0"))
+        pin = __import__("json").loads((ROOT / "skills" / "taskalisk" / "scripts" / "parley_emit.pin.json").read_text())
+        data, mode, _ = members["taskalisk/scripts/parley_emit.py"]
+        self.assertEqual(hashlib.sha256(data).hexdigest(), pin["sha256"])
+        sums = members["taskalisk/SHA256SUMS"][0].decode("utf-8")
+        self.assertIn(f"{pin['sha256']}  scripts/parley_emit.py\n", sums)
+        for name in ("parley_emit.LICENSE", "parley_emit.NOTICE", "parley_emit.pin.json"):
+            self.assertIn(f"taskalisk/scripts/{name}", members)
+        schemas = sorted(n for n in members if n.startswith("taskalisk/schemas/"))
+        self.assertEqual(len(schemas), len(list((ROOT / "skills" / "taskalisk" / "schemas").glob("*.schema.json"))))
+        self.assertTrue(schemas)
+        for name in schemas:
+            self.assertEqual(members[name][1] & 0o170000, 0o100000, name)
+
     def test_existing_output_is_never_overwritten(self):
         (self.out / "a").mkdir()
         with self.assertRaises(FileExistsError):

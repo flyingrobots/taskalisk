@@ -77,6 +77,8 @@ SCENARIOS = {
     "edit_cycle": (plan_state, ["--from-github", "--root", f"{HOME}#9", "--add-edge", f"{HOME}#2->{ECHO}#5"], None),
     "verify_ok": (None, ["--verify-dag", "dag.json"], DAG_OK),
     "verify_cycle": (None, ["--verify-dag", "dag.json"], DAG_CYCLE),
+    "roadmap_root": (rich_state, ["--from-github", "--emit-roadmap"], None),
+    "verify_mermaid": (None, ["--verify-dag", "dag.json", "--emit-mermaid"], DAG_OK),
     "inventory": (plan_state, [], None),
     "inventory_ok": (plan_state, [], None),
 }

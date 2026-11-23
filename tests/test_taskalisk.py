@@ -1,12 +1,21 @@
-"""Offline tests for taskalisk.py (frontmatter model issue-dag/1).
+"""Offline tests for taskalisk.py (frontmatter model issue-dag/2).
+
+The compiler speaks Parley (docs/topics/output): every assertion here about what is computed reads
+the 1.x document rebuilt from the lines by tests/parley_lines.py, and every run's lines are
+validated against their schemas on the way (OUT-01, OUT-20). Exit statuses follow the 2.0 mapping
+in CHANGELOG.md: a 1.x exit 1 is now 2.
 
 Run: python3 -m unittest discover -s tests
 """
 import json, os, pathlib, shutil, subprocess, sys, tempfile, unittest
 
+import parley_lines as pl
+
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "skills" / "taskalisk" / "scripts" / "taskalisk.py"
 FAKE_GH = pathlib.Path(__file__).resolve().parent / "fake_gh.py"
+# Variables a developer's or CI's shell may carry that would change a run's redaction or session.
+SCRUBBED_ENV = ("GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "PARLEY_SESSION", "XDG_STATE_HOME")
 HOME = "flyingrobots/geordi"
 ECHO = "flyingrobots/echo"
 BUNNY = "flyingrobots/bunny"
@@ -73,10 +82,18 @@ class Harness(unittest.TestCase):
     def tearDown(self):
         shutil.rmtree(self.tmp)
 
-    def run_dag(self, state, *args):
+    def env(self, **extra):
+        env = {k: v for k, v in os.environ.items() if k not in SCRUBBED_ENV}
+        env.update(PATH=f"{self.bin}{os.pathsep}{os.environ['PATH']}", FAKE_GH_STATE=str(self.state), FAKE_GH_LOG=str(self.log),
+                   XDG_STATE_HOME=str(self.tmp / "state"))
+        env.update(extra)
+        return env
+
+    def run_dag(self, state, *args, env=None):
+        """Run the compiler from the temporary directory, so its receipts land there and not in the checkout."""
         self.state.write_text(json.dumps(state))
-        env = dict(os.environ, PATH=f"{self.bin}{os.pathsep}{os.environ['PATH']}", FAKE_GH_STATE=str(self.state), FAKE_GH_LOG=str(self.log))
-        return subprocess.run([sys.executable, str(SCRIPT), "--repo", str(self.repo), *args], capture_output=True, text=True, env=env)
+        return subprocess.run([sys.executable, str(SCRIPT), "--repo", str(self.repo), *args], capture_output=True, text=True,
+                              env=env or self.env(), cwd=str(self.tmp))
 
     def current(self):
         return json.loads(self.state.read_text())
@@ -84,11 +101,33 @@ class Harness(unittest.TestCase):
     def calls(self):
         return [json.loads(line) for line in self.log.read_text().splitlines() if line.strip()]
 
-    def out(self, p):
+    def streams(self, p):
+        """stdout and stderr as parsed lines, each validated against its schema, and the receipt too."""
         try:
-            return json.loads(p.stdout)
-        except json.JSONDecodeError:
-            self.fail(f"not JSON (exit {p.returncode}): {p.stdout[:400]} {p.stderr[:400]}")
+            out, err = pl.parse(p.stdout, "stdout"), pl.parse(p.stderr, "stderr")
+        except AssertionError as exc:
+            self.fail(f"{exc} (exit {p.returncode}): {p.stdout[:400]} {p.stderr[:400]}")
+        receipt = pl.receipt_lines(out) if out else []
+        self.assertEqual(pl.problems(out + err + receipt), [], "a line does not validate against its schema")
+        return out, err
+
+    def out(self, p):
+        """The 1.x document, rebuilt from the run's lines."""
+        return pl.reconstruct(*self.streams(p))
+
+    def text_everywhere(self, p):
+        """stdout, stderr and the receipt, as one string, for leak checks."""
+        out, _ = self.streams(p)
+        receipt = pathlib.Path(out[0]["paths"]["receipt"]).read_text() if out else ""
+        return p.stdout + p.stderr + receipt
+
+    def rendering(self, p, fmt="roadmap"):
+        text = pl.rendering(self.streams(p)[0], fmt)
+        self.assertIsNotNone(text, f"no {fmt} rendering (exit {p.returncode}): {p.stderr[:400]}")
+        return text
+
+    def error_codes(self, p):
+        return [e["code"] for e in pl.of(self.streams(p)[1], "parley.error")]
 
     @staticmethod
     def ids(r):
@@ -103,7 +142,7 @@ class Parsing(Harness):
     def test_verify_dag_spec_still_works(self):
         spec = self.tmp / "dag.json"
         spec.write_text(json.dumps({"nodes": {f"{HOME}#1": {"title": "a"}, f"{HOME}#2": {"title": "b", "depends_on": [f"{HOME}#1"]}}}))
-        p = subprocess.run([sys.executable, str(SCRIPT), "--verify-dag", str(spec)], capture_output=True, text=True)
+        p = subprocess.run([sys.executable, str(SCRIPT), "--verify-dag", str(spec)], capture_output=True, text=True, env=self.env(), cwd=str(self.tmp))
         self.assertEqual(p.returncode, 0, p.stdout)
         self.assertEqual(self.out(p)["metrics"]["critical_path"], [f"{HOME}#1", f"{HOME}#2"])
 
@@ -165,7 +204,7 @@ class Validation(Harness):
         state["issues"][f"{HOME}#1"]["body"] = body
         p = self.run_dag(state, "--from-github", "--root", f"{HOME}#9")
         r = self.out(p)
-        self.assertEqual(p.returncode, 1, r)
+        self.assertEqual(p.returncode, 2, r)
         self.assertTrue(any(needle in v for v in r["frontmatter"]["violations"].get(f"{HOME}#1", [])), r["frontmatter"])
 
     def test_unknown_dot_key_fails(self):
@@ -200,17 +239,17 @@ class QualifiedReferences(Harness):
 
     def test_bare_blocker_number_is_invalid(self):
         p, r = self.run_with(fm(f"{HOME}#1", blocked_by=["#2"]))
-        self.assertEqual(p.returncode, 1, r)
+        self.assertEqual(p.returncode, 2, r)
         self.assertTrue(any("bare numbers are not allowed" in v for v in r["frontmatter"]["violations"][f"{HOME}#1"]))
 
     def test_bare_id_is_invalid(self):
         p, r = self.run_with(fm("#1", blocked_by=[f"{ECHO}#5"]))
-        self.assertEqual(p.returncode, 1, r)
+        self.assertEqual(p.returncode, 2, r)
         self.assertTrue(any("must be owner/repo#N" in v for v in r["frontmatter"]["violations"][f"{HOME}#1"]))
 
     def test_retired_schema_is_invalid(self):
         p, r = self.run_with(fm(f"{HOME}#1", blocked_by=[f"{ECHO}#5"]).replace("issue-dag/2", "issue-dag/1"))
-        self.assertEqual(p.returncode, 1, r)
+        self.assertEqual(p.returncode, 2, r)
         self.assertTrue(any("retired" in v for v in r["frontmatter"]["violations"][f"{HOME}#1"]))
 
     def test_bare_cli_references_are_rejected(self):
@@ -224,7 +263,7 @@ class QualifiedReferences(Harness):
         state["issues"][f"{BUNNY}#66"] = state["issues"].pop(f"{ECHO}#6")
         p = self.run_dag(state, "--from-github", "--root", f"{HOME}#9")
         r = self.out(p)
-        self.assertEqual(p.returncode, 1, r)
+        self.assertEqual(p.returncode, 2, r)
         self.assertTrue(any(f"{ECHO}#6 moved to {BUNNY}#66" in v for v in r["frontmatter"]["violations"][f"{HOME}#9"]))
 
     def test_output_ids_are_always_qualified(self):
@@ -283,8 +322,8 @@ class PullRequestStates(Harness):
                 self.assertEqual([pr["isDraft"] for pr in node["linked_open_prs"]], drafts)
                 rendered = self.run_dag(state, "--from-github", "--emit-roadmap")
                 self.assertEqual(rendered.returncode, 0, rendered.stdout)
-                self.assertIn(f"| {expected} |", rendered.stdout)
-                self.assertIn(f"({expected})", rendered.stdout)
+                self.assertIn(f"| {expected} |", self.rendering(rendered))
+                self.assertIn(f"({expected})", self.rendering(rendered))
 
     def test_untrusted_ready_pr_does_not_promote_a_trusted_draft(self):
         for foreign, author in [(True, "owner"), (False, STRANGER)]:
@@ -316,7 +355,7 @@ class PullRequestStates(Harness):
                         del state["prs"][-1]["isDraft"]
                     p = self.run_dag(state, "--from-github")
                     self.assertEqual(p.returncode, 2, p.stdout)
-                    self.assertIn("isDraft", p.stdout)
+                    self.assertIn("isDraft", p.stderr)
                     self.assertNotIn("waves", self.out(p))
 
 
@@ -342,7 +381,7 @@ class Mutation(Harness):
         before = state["issues"][f"{ECHO}#5"]["body"]
         p = self.run_dag(state, "--from-github", "--root", f"{HOME}#9", "--add-edge", f"{HOME}#2->{ECHO}#5")
         r = self.out(p)
-        self.assertEqual(p.returncode, 1, r)
+        self.assertEqual(p.returncode, 2, r)
         self.assertTrue(r["mutation"]["rolled_back"])
         self.assertEqual(self.current()["issues"][f"{ECHO}#5"]["body"], before)
 
@@ -353,12 +392,13 @@ class Mutation(Harness):
 
     def test_owner_is_required_for_another_repository(self):
         p = self.run_dag(plan_state(), "--from-github", "--add-edge", "echo#5->#2")
-        self.assertEqual(p.returncode, 1)
-        self.assertIn("Invalid edge syntax", p.stdout)
+        self.assertEqual(p.returncode, 2)
+        self.assertIn("Invalid edge syntax", p.stderr)
+        self.assertEqual(self.error_codes(p), ["edge.syntax_invalid"])
 
     def test_edit_refuses_a_child_without_frontmatter(self):
         p = self.run_dag(plan_state(), "--from-github", "--add-edge", f"{HOME}#1->{BUNNY}#110")
-        self.assertEqual(p.returncode, 1, p.stdout)
+        self.assertEqual(p.returncode, 2, p.stdout)
         self.assertEqual(self.current()["issues"][f"{BUNNY}#110"]["body"], "Plain body.")
 
 
@@ -375,7 +415,7 @@ class Mirror(Harness):
     def test_roadmap_renders(self):
         p = self.run_dag(plan_state(), "--from-github", "--root", f"{HOME}#9", "--emit-roadmap")
         self.assertEqual(p.returncode, 0, p.stdout[-600:])
-        self.assertIn(f"{ECHO}#6", p.stdout)
+        self.assertIn(f"{ECHO}#6", self.rendering(p))
 
 
 class Trust(Harness):
@@ -468,7 +508,7 @@ class Trust(Harness):
         state["issues"][f"{ECHO}#99"] = issue(5099, "SECRET STRANGER TITLE", fm(f"{ECHO}#99"), state="closed", reason="not_planned", author=STRANGER, association="NONE")
         p = self.run_dag(state, "--from-github", "--root", f"{HOME}#9")
         self.assertEqual(p.returncode, 0, p.stdout[-400:])
-        self.assertNotIn("SECRET STRANGER TITLE", p.stdout)
+        self.assertNotIn("SECRET STRANGER TITLE", self.text_everywhere(p))
         self.assertEqual(self.out(p)["source"]["not_planned_parents"][0]["title"], "(untrusted issue)")
 
     def test_add_edge_rolls_back_when_the_recompile_cannot_run(self):
@@ -496,7 +536,7 @@ class Trust(Harness):
         state["collaborators_forbidden"] = True
         p = self.run_dag(state, "--from-github", "--root", f"{HOME}#9")
         self.assertEqual(p.returncode, 2, p.stdout)
-        self.assertIn("collaborators/carol/permission", p.stdout)
+        self.assertIn("collaborators/carol/permission", p.stderr)
 
     def test_codeowners_allowlists_per_repository(self):
         state = plan_state()
@@ -588,7 +628,7 @@ class Trust(Harness):
         state = plan_state()
         state["issues"][f"{HOME}#300"] = issue(300, "A pull request", fm(f"{HOME}#300"), is_pr=True)
         p = self.run_dag(state, "--from-github", "--add-edge", f"{HOME}#1->{HOME}#300")
-        self.assertEqual(p.returncode, 1, p.stdout)
+        self.assertEqual(p.returncode, 2, p.stdout)
         self.assertFalse(any("PATCH" in c for c in self.calls()))
 
     def test_rendered_cells_escape_links_and_resource_pipes(self):
@@ -596,8 +636,8 @@ class Trust(Harness):
         state["issues"][f"{HOME}#1"]["title"] = "[click](https://example.invalid)"
         state["issues"][f"{ECHO}#5"]["body"] = fm(f"{ECHO}#5", blocked_by=[f"{BUNNY}#7"], extra=".holds: [a|b]")  # on the frontier, so its Resources cell renders
         p = self.run_dag(state, "--from-github", "--root", f"{HOME}#9", "--emit-roadmap")
-        self.assertNotIn("[click](https://example.invalid)", p.stdout)
-        self.assertIn("a\\|b", p.stdout)
+        self.assertNotIn("[click](https://example.invalid)", self.rendering(p))
+        self.assertIn("a\\|b", self.rendering(p))
 
     def test_compare_mode_fails_closed_on_a_gh_error(self):
         state = plan_state()
@@ -669,7 +709,7 @@ class Trust(Harness):
         state["issues"]["mallory/trap#1"] = issue(31337, "Trap", fm("mallory/trap#1"), author=STRANGER, association="OWNER")
         p = self.run_dag(state, "--from-github", "--root", f"{HOME}#9")
         r = self.out(p)
-        self.assertEqual(p.returncode, 1, r)
+        self.assertEqual(p.returncode, 2, r)
         self.assertTrue(any("outside the trusted repositories" in v for v in r["frontmatter"]["violations"][f"{HOME}#1"]))
         self.assertNotIn(["api", "repos/mallory/trap/issues/1"], self.calls())
 
@@ -744,13 +784,13 @@ class Trust(Harness):
         state["issues"][f"{HOME}#2"].update(author=STRANGER, association="NONE")
         before = state["issues"][f"{HOME}#2"]["body"]
         p = self.run_dag(state, "--from-github", "--add-edge", f"{ECHO}#6->{HOME}#2")
-        self.assertEqual(p.returncode, 1, p.stdout)
+        self.assertEqual(p.returncode, 2, p.stdout)
         self.assertEqual(self.current()["issues"][f"{HOME}#2"]["body"], before)
         self.assertFalse(any("PATCH" in c for c in self.calls()))
 
     def test_add_edge_refuses_a_parent_outside_the_scope(self):
         p = self.run_dag(plan_state(), "--from-github", "--add-edge", f"mallory/trap#1->{HOME}#2")
-        self.assertEqual(p.returncode, 1, p.stdout)
+        self.assertEqual(p.returncode, 2, p.stdout)
         self.assertFalse(any("PATCH" in c for c in self.calls()))
 
     def test_trust_lookup_failure_fails_closed(self):
@@ -772,14 +812,14 @@ class Trust(Harness):
         state["issues"][f"{HOME}#1"]["title"] = "<img src=x onerror=alert(1)> PWNED"
         p = self.run_dag(state, "--from-github", "--root", f"{HOME}#9", "--emit-roadmap")
         self.assertEqual(p.returncode, 0, p.stdout[-400:])
-        self.assertNotIn("PWNED", p.stdout)
+        self.assertNotIn("PWNED", self.text_everywhere(p))
 
     def test_rendered_cells_escape_html(self):
         state = plan_state()
         state["issues"][f"{HOME}#1"]["title"] = "Home <one>"
         p = self.run_dag(state, "--from-github", "--root", f"{HOME}#9", "--emit-roadmap")
-        self.assertIn("Home &lt;one&gt;", p.stdout)
-        self.assertNotIn("Home <one>", p.stdout)
+        self.assertIn("Home &lt;one&gt;", self.rendering(p))
+        self.assertNotIn("Home <one>", self.rendering(p))
 
     def test_trust_flags_require_from_github(self):
         p = self.run_dag(plan_state(), "--trust", STRANGER)

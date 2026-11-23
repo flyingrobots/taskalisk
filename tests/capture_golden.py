@@ -7,7 +7,7 @@ fixtures name, for example:
     git show 6e84058:skills/taskalisk/scripts/taskalisk.py > /some/scratch/taskalisk_v1.py
     python3 tests/capture_golden.py /some/scratch/taskalisk_v1.py 6e840586ab1b46f0e9f0039d56d248f991c89caf
 
-Each fixture records the commit, the arguments, the exit status and the parsed stdout document,
+Each fixture records the commit, the arguments, the exit status and the parsed stdout document (or, for a rendering, its text),
 with the per-run temporary directory replaced by a placeholder. The fixtures are captured output,
 never hand-written.
 """
@@ -24,9 +24,12 @@ def main(script, commit):
         with tempfile.TemporaryDirectory(prefix="taskalisk-golden-") as tmp:
             g.prepare(tmp)
             p = g.run_scenario(script, name, tmp)
-            doc = g.normalise(json.loads(p.stdout), tmp)
+            try:
+                out = {"stdout": g.normalise(json.loads(p.stdout), tmp)}
+            except json.JSONDecodeError:
+                out = {"stdout_text": p.stdout}  # --emit-roadmap and --emit-mermaid printed text
         fixture = {"captured_from": f"flyingrobots/taskalisk@{commit} skills/taskalisk/scripts/taskalisk.py",
-                   "scenario": name, "args": args, "exit": p.returncode, "stdout": doc}
+                   "scenario": name, "args": args, "exit": p.returncode, **out}
         (g.GOLDEN / f"{name}.json").write_text(json.dumps(fixture, indent=2, sort_keys=True) + "\n")
         print(json.dumps({"event": "captured", "scenario": name, "exit": p.returncode}))
     return 0
