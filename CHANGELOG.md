@@ -82,8 +82,8 @@ To be released as **2.0.0**: a breaking change to the output (flyingrobots/taska
 - `edit --dry-run`: checks an edge edit and writes nothing.
 - A receipt per run under `.parley/receipts/`, with a step for each lookup and trust decision,
   and issue bodies recorded as a declared input by id and digest only.
-- `GH_TOKEN`, `GITHUB_TOKEN` and `GH_ENTERPRISE_TOKEN` are declared secrets; a credential inside a
-  URL in `gh` or `git` output is redacted.
+- `GH_TOKEN`, `GITHUB_TOKEN`, `GH_ENTERPRISE_TOKEN` and `GITHUB_ENTERPRISE_TOKEN` are declared
+  secrets; a credential inside a URL in `gh` or `git` output is redacted.
 - The vendored writer `scripts/parley_emit.py` (flyingrobots/parley@e158c51, which takes the
   command by position, flyingrobots/parley#101), pinned by
   `scripts/parley_emit.pin.json`, ships in the release and its `SHA256SUMS`.

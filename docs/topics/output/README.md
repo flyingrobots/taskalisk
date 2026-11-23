@@ -205,7 +205,8 @@ type; `<command> --help` emits that command and the schemas of its results and e
 
 ## Secrets and paths
 
-`GH_TOKEN`, `GITHUB_TOKEN` and `GH_ENTERPRISE_TOKEN` are declared secrets: their values are
+`GH_TOKEN`, `GITHUB_TOKEN`, `GH_ENTERPRISE_TOKEN` and `GITHUB_ENTERPRISE_TOKEN`, every token
+variable `gh help environment` names, are declared secrets: their values are
 replaced by `[redacted]` in every line and in the receipt, and the receipt head names which were
 set. A credential inside a URL (`scheme://user:secret@host`) in `gh` or `git` output is replaced
 before it is recorded. The home directory is shown as `~` in worktree paths and command output,

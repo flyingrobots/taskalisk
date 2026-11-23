@@ -1493,8 +1493,9 @@ SCHEMA_VERSION = "1.0.0"
 MESSAGES = ("plan", "frontier_node", "node", "wave", "batch", "edge", "finding", "edge_edit", "rendering", "frontier_change",
             "inventory.summary", "inventory.worktree", "inventory.branch", "inventory.pull_request", "inventory.issue")
 COMMANDS = ("plan", "edit", "verify", "inventory")
-# gh reads these; their values are scrubbed from every line and named in the receipt head (spec 5.3).
-SECRETS = ["GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN"]
+# Every token variable `gh help environment` names; their values are scrubbed from every line and
+# named in the receipt head (spec 5.3).
+SECRETS = ["GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN"]
 OBSERVATIONS_INPUT = "github:issues"
 INVENTORY_INPUT = "github+git:inventory"
 RETENTION = 50

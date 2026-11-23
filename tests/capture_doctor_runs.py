@@ -48,7 +48,7 @@ def main(base):
         tmp = base / name
         tmp.mkdir()  # a fresh directory per capture; an existing one is an error, never reused
         g.prepare(tmp)
-        for k in ("GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "PARLEY_SESSION"):
+        for k in ("GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN", "PARLEY_SESSION"):
             os.environ.pop(k, None)  # a captured run carries no credential of the machine that captured it
         p = g.run_scenario(SCRIPT, scenario, tmp, extra_args=extra, env_extra={"XDG_STATE_HOME": str(tmp / "state")})
         receipts = sorted((tmp / ".parley" / "receipts").glob("*.jsonl"))
