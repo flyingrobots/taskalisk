@@ -73,7 +73,7 @@ area: free-form notes have no prefix
 ## Issue templates
 
 Every task issue is filed from one of the canonical templates in
-[`templates/issue/`](templates/issue/), one per `.type`: `feature`, `bug`,
+`templates/issue/`, one per `.type`: `feature`, `bug`,
 `decision`, `research`, `investigation`, `spike` and `task`. Each one carries
 the frontmatter block, the six body sections that
 [`WRITING-TASKS.md`](WRITING-TASKS.md) requires (Outcome, Scope, Out of scope,

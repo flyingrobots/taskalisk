@@ -34,7 +34,7 @@ Each of these means the test will probably fail:
 ## Body sections
 
 Write each task body from the canonical template for its `.type`, in
-[`templates/issue/`](templates/issue/). Every template opens with these
+`templates/issue/`. Every template opens with these
 sections after the frontmatter, under these exact headings and in this order,
 and its type's own sections follow them:
 
