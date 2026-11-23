@@ -128,7 +128,7 @@ def reconstruct(out, err):
     edit = one(out, "taskalisk.edge_edit")
     mutation = payload(edit) if edit else None
     if plan is None:
-        for code in ("edge.syntax_invalid", "edge.self_edge", "dag_spec.unreadable", "dag_spec.invalid"):
+        for code in ("dag_spec.unreadable", "dag_spec.invalid"):
             problem = error_problem(err, code)
             if problem:
                 return {"ok": False, "error": problem}

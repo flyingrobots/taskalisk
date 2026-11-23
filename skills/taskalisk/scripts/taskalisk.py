@@ -1635,16 +1635,9 @@ def github_plan(repo: str, roots: list[str], min_confidence: float, add_edge: st
     errors: list[dict[str, str]] = []
     undo: dict[str, Any] | None = None
     if add_edge or remove_edge:
-        text = add_edge or remove_edge or ""
-        parsed = parse_edge_arg(text)
-        if parsed is None:
-            out.failures.append(Failure("edge.syntax_invalid", f"Invalid edge syntax (expected 'owner/repo#parent->owner/repo#child'; bare numbers are not allowed): {text}",
-                                        {"edge": text}, "write the edge as owner/repo#parent->owner/repo#child", False))
-            return out
+        parsed = parse_edge_arg(add_edge or remove_edge or "")
+        assert parsed is not None and parsed[0] != parsed[1], "resolve() checks the edge before the bootstrap line"
         parent, child = parsed
-        if parent == child:
-            out.failures.append(Failure("edge.self_edge", f"Self-edge rejected: {node_id(*child)}", {"edge": text}, "an issue cannot block itself", False))
-            return out
         slug = gh_repo_slug(repo, errors)
         if slug is None:
             out.failures += [Failure.from_lookup(e, "edge_edit") for e in errors]
@@ -2155,6 +2148,18 @@ def resolve(args: list[str], command: str) -> dict[str, Any]:
         raise UsageError("--trust-owner takes an owner name; --trust-repo takes owner/repo")
     if ns.emit_mermaid and command == "inventory":
         raise UsageError("--emit-mermaid requires --from-github or --verify-dag")
+    # References are part of the argument grammar: a mistaken one did no work, so it fails before the
+    # bootstrap line with no receipt (Parley spec 3.2, as decided on flyingrobots/parley#91 and #98).
+    for text in ns.root:
+        if parse_issue_ref(text) is None:
+            raise UsageError(f"--root {text!r} is not a reference (use owner/repo#N; bare numbers are not allowed)")
+    edge = ns.add_edge or ns.remove_edge
+    if edge:
+        parsed = parse_edge_arg(edge)
+        if parsed is None:
+            raise UsageError(f"Invalid edge syntax (expected 'owner/repo#parent->owner/repo#child'; bare numbers are not allowed): {edge}")
+        if parsed[0] == parsed[1]:
+            raise UsageError(f"Self-edge rejected: {node_id(*parsed[1])}")
     ns.emit = "roadmap" if ns.emit_roadmap else ("mermaid" if ns.emit_mermaid else None)
     repo = os.path.relpath(os.path.realpath(ns.repo), os.path.realpath(os.getcwd()))
     if github:

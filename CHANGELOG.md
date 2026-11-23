@@ -19,7 +19,8 @@ To be released as **2.0.0**: a breaking change to the output (flyingrobots/taska
   | 1.x | 2.0 |
   | --- | --- |
   | 0 success | 0 |
-  | 1 invalid frontmatter, cycle, unknown prerequisite, bad edge, refused edit, unreadable DAG spec | 2, with a `parley.error` whose code says which (`frontmatter.invalid`, `graph.cycle`, `graph.unresolved_prerequisites`, `edge.*`, `dag_spec.*`) |
+  | 1 invalid frontmatter, cycle, unknown prerequisite, refused edit, unreadable DAG spec | 2, with a `parley.error` whose code says which (`frontmatter.invalid`, `graph.cycle`, `graph.unresolved_prerequisites`, `edge.*`, `dag_spec.*`) |
+  | 1 bad edge syntax, self-edge; 2 a `--root` that is not `owner/repo#N` | 3, one `parley.startup.failed` line, no receipt: checked before the run starts |
   | 2 `gh` or `git` failure, truncation, trust lookup failure, root out of scope | 2, with codes `gh.*`, `git.*`, `root.*` (`retryable` true for a failed call) |
   | 2 argparse usage error, text on stderr | 3, one `parley.startup.failed` line |
   | traceback | 2, `uncaught.exception`; the traceback only in the receipt |
@@ -58,7 +59,8 @@ To be released as **2.0.0**: a breaking change to the output (flyingrobots/taska
   (1.x ignored one of them).
 - A `--verify-dag` node whose `title`, `type`, `workstream`, `url`, `holds`, `meters` or
   `size_hours` has the wrong type is a `dag_spec.invalid` error (1.x crashed or printed it).
-- A self-edge is refused before any `gh` call.
+- Arguments, references included, are validated before the run starts (Parley spec 3.2): a bad
+  edge, a self-edge or a malformed `--root` makes no `gh` call and leaves no receipt.
 
 ### Added
 

@@ -124,8 +124,7 @@ it can carry is a trusted issue's frontmatter line in a `frontmatter.violation`.
 | `gh.response_invalid` | a `gh` answer had the wrong shape (no `isDraft`, no edit-history connection, unparseable JSON) | false |
 | `gh.mutation_failed` | the `PATCH` of a child's body failed | true |
 | `git.command_failed` | a `git` call failed (inventory, branches) | true |
-| `root.invalid_reference`, `root.out_of_scope` | a `--root` that is not `owner/repo#N`, or is outside the trusted scope | false |
-| `edge.syntax_invalid`, `edge.self_edge` | an edge argument that is not `owner/repo#a->owner/repo#b`, or names one issue twice | false |
+| `root.out_of_scope` | a `--root` outside the trusted scope | false |
 | `edge.out_of_scope`, `edge.child_not_issue`, `edge.child_untrusted`, `edge.child_frontmatter_missing`, `edge.child_frontmatter_invalid`, `edge.rewrite_impossible` | an edit refused before any write | false |
 | `edge.rollback_failed` | an added edge could not be removed after the run failed | true |
 | `frontmatter.invalid` | an issue in the closure has invalid frontmatter | false |
@@ -148,9 +147,11 @@ now 2, because Parley reserves 2 for a reported error; the error code's namespac
 against the rest) and `retryable` carry the distinction instead. The old argparse usage error,
 which printed text and exited 2, is now a startup failure, exit 3.
 
-The boundary for a usage error is the argument grammar: flags that do not parse or contradict each
-other fail before the bootstrap line. A reference that parses but is wrong (an edge's syntax, a
-self-edge, a `--root`) is a command error with a receipt.
+Arguments are validated before the bootstrap line, as Parley asks (spec 3.2; decided on
+flyingrobots/parley#91 and #98): a flag that does not parse, flags that contradict each other, a
+`--root` or an edge that is not `owner/repo#N`, and a self-edge are startup failures, exit 3, with
+no receipt, because a mistaken call did no work. Whatever needs GitHub to decide (a root outside
+the scope, an untrusted child) is a command error with a receipt.
 
 ## Receipts, `inv` and `artifact_hash`
 
