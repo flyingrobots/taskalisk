@@ -62,6 +62,11 @@ To be released as **2.0.0**: a breaking change to the output (flyingrobots/taska
 - Arguments, references included, are validated before the run starts (Parley spec 3.2): a bad
   edge, a self-edge or a malformed `--root` makes no `gh` call and leaves no receipt.
 
+### Fixed
+
+- A line break in an issue title no longer ends a Mermaid node label and starts a line of its own
+  in the rendered diagram (threat model C5).
+
 ### Added
 
 - Commands `plan`, `edit`, `verify` and `inventory`; the 1.x mode flags still select them.

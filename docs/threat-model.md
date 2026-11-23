@@ -195,8 +195,8 @@ missing field is untrusted.
 
 ### C5. Output escaping — implemented
 
-Rendered Markdown escapes `|`, `<` and `>` in cells. Mermaid labels already
-replace quotes and angle brackets. Untrusted titles are never rendered (C3).
+Rendered Markdown escapes `|`, `<` and `>` in cells. Mermaid labels replace
+quotes and angle brackets, and fold line breaks into spaces. Untrusted titles are never rendered (C3).
 
 ### C6. Executable settings come only from the operator — planned (#13, #14)
 
