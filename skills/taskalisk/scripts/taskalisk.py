@@ -1322,7 +1322,8 @@ def render_mermaid_flowchart(dag_result: dict[str, Any]) -> str:
             title = item.get("title", "")
             if len(title) > MERMAID_TITLE_MAX:
                 title = title[: MERMAID_TITLE_MAX - 3] + "..."
-            safe_label = " ".join(f"{nid}: {title}".split()).replace('"', "'")  # a line break in a title would end the label (C5).replace("<", "(").replace(">", ")").replace("[", "(").replace("]", ")")
+            # A line break in a title would end the label (C5): fold every run of whitespace into one space.
+            safe_label = " ".join(f"{nid}: {title}".split()).replace('"', "'").replace("<", "(").replace(">", ")").replace("[", "(").replace("]", ")")
             lines.append(f'    {safe_id(nid)}["{safe_label}"]')
             for child in item.get("directly_unlocks", []):
                 edges.append((safe_id(nid), safe_id(child)))
