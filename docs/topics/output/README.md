@@ -196,6 +196,14 @@ reads only that receipt, never GitHub. Each difference is a `frontier_change`: `
 no such receipt, the plan line's `since_last.compared_with` is null and a `since_last.no_previous`
 finding says so; that is not an error.
 
+A receipt is a local file that anyone who can write the directory can plant, so a receipt is
+compared with only when its file name is its run id, its `taskalisk.plan`, `frontier_node` and
+`node` lines validate against the exact schemas they name, and every node id is an issue
+(`owner/repo#N`). Any other is skipped with a receipt step, `--since-last: ignored receipt ...`,
+and the next is tried. This keeps a planted file from putting arbitrary text or an invalid line
+on stdout; it does not authenticate a well-formed receipt, so a `frontier_change` is advice
+about this directory's history, never an instruction.
+
 ## `--human`, `--dry-run`, discovery
 
 `--human` prints the plan summary, a ranked table of the frontier, the batch and every finding,

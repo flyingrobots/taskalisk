@@ -1924,9 +1924,31 @@ def positions_from_result(result: dict[str, Any]) -> dict[str, dict[str, int]]:
     return pos
 
 
+NODE_ID_RE = re.compile(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+#[1-9][0-9]*")
+COMPARED_LINES = ("plan", "frontier_node", "node")
+
+
+def unbelievable(name: str, lines: list[dict[str, Any]]) -> str | None:
+    """Why a receipt in the directory is not one this tool wrote, or None. A receipt is a local file
+    anyone with the directory can write, so --since-last compares only with one whose name is its
+    run, whose compared lines validate against the exact schema they name, and whose ids are issues."""
+    if name != f"{lines[0].get('run')}.jsonl":
+        return "its file name is not its run id"
+    extra = {schema_ref(m): load_schema(m) for m in COMPARED_LINES}
+    for line in lines:
+        ref = line.get("_schema") or {}
+        if ref.get("id") in {f"taskalisk.{m}" for m in COMPARED_LINES}:
+            if (ref.get("id"), ref.get("version")) not in extra or not pe.validate_line(line, extra).ok:
+                return f"a {ref.get('id')} line does not validate against taskalisk {SCHEMA_VERSION}"
+            if ref["id"] != "taskalisk.plan" and not NODE_ID_RE.fullmatch(str(line.get("id"))):
+                return f"a {ref['id']} line names no issue"
+    return None
+
+
 def previous_plan(run: Any, question: dict[str, Any]) -> tuple[str, dict[str, dict[str, int]]] | None:
     """The most recent other completed receipt of this tool, in this run's receipt directory, whose
-    resolved question is this one and whose plan compiled."""
+    resolved question is this one and whose plan compiled. One that fails `unbelievable` is skipped,
+    with a step saying why."""
     try:
         names = sorted((n for n in os.listdir(run.receipt_dir) if n.endswith(".jsonl") and n != f"{run.id}.jsonl"), reverse=True)
     except OSError:
@@ -1940,6 +1962,10 @@ def previous_plan(run: Any, question: dict[str, Any]) -> tuple[str, dict[str, di
             continue
         plan = next((l for l in lines if (l.get("_schema") or {}).get("id") == "taskalisk.plan"), None)
         if not plan or plan.get("outcome") != "compiled":
+            continue
+        why = unbelievable(name, lines)
+        if why is not None:
+            note(f"--since-last: ignored receipt {name[:64]!r}", why)
             continue
         return str(lines[0].get("run")), positions_from_lines(lines)
     return None
@@ -1983,11 +2009,12 @@ def run_plan(run: Any, ns: argparse.Namespace, command: str) -> None:
             for f in rollback_failure(outcome):
                 f.report(run)
         raise
+    if outcome.mutation is not None:
+        # First on stdout, as before, and before anything below can fail: a write is never silent.
+        run.result({"event": "edge_edit", **outcome.mutation}, schema_ref("edge_edit"))
     if outcome.source is not None:
         supply_observations(run, outcome.source["fetched"])
     if outcome.result is None:
-        if outcome.mutation is not None:
-            run.result({"event": "edge_edit", **outcome.mutation}, schema_ref("edge_edit"))
         for f in outcome.failures:
             f.report(run)
         return
@@ -2001,7 +2028,7 @@ def run_plan(run: Any, ns: argparse.Namespace, command: str) -> None:
             closed = set(outcome.source["merged"]) if outcome.source else set()
             since = {"run": prev[0], "changes": frontier_changes(prev[1], positions_from_result(outcome.result), closed, prev[0])}
             note(f"--since-last: compared with run {prev[0]}", "the most recent completed receipt of the same question in this directory", {"changes": len(since["changes"])})
-    emit_plan(run, outcome.result, "github", outcome.failures, since, ns.emit, outcome.rel_failed, outcome.mutation)
+    emit_plan(run, outcome.result, "github", outcome.failures, since, ns.emit, outcome.rel_failed)
 
 
 def check_spec(data: Any) -> str | None:
