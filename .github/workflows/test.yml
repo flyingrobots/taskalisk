@@ -15,7 +15,7 @@ concurrency:
 jobs:
   offline:
     name: Offline tests (Python ${{ matrix.python }})
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     strategy:
       fail-fast: false
