@@ -1,0 +1,372 @@
+{
+  "args": [
+    "--from-github",
+    "--root",
+    "flyingrobots/geordi#9"
+  ],
+  "captured_from": "flyingrobots/taskalisk@6e840586ab1b46f0e9f0039d56d248f991c89caf skills/taskalisk/scripts/taskalisk.py",
+  "exit": 1,
+  "scenario": "plan_violations",
+  "stdout": {
+    "batch_skipped": [],
+    "conflict_free_frontier_batch": [
+      {
+        "holds": [],
+        "id": "flyingrobots/echo#5",
+        "meters": [],
+        "priority_score": 121,
+        "title": "Echo five",
+        "url": "https://github.com/flyingrobots/echo/issues/5",
+        "workstream": "feature"
+      },
+      {
+        "holds": [],
+        "id": "flyingrobots/geordi#1",
+        "meters": [],
+        "priority_score": 121,
+        "title": "Home one",
+        "url": "https://github.com/flyingrobots/geordi/issues/1",
+        "workstream": "feature"
+      }
+    ],
+    "edges": [
+      {
+        "evidence": "frontmatter: flyingrobots/geordi#110 .blocked_by flyingrobots/bunny#110",
+        "from": "flyingrobots/bunny#110",
+        "to": "flyingrobots/geordi#110"
+      },
+      {
+        "evidence": "frontmatter: flyingrobots/echo#6 .blocked_by flyingrobots/echo#5",
+        "from": "flyingrobots/echo#5",
+        "to": "flyingrobots/echo#6"
+      },
+      {
+        "evidence": "frontmatter: flyingrobots/geordi#2 .blocked_by flyingrobots/geordi#1",
+        "from": "flyingrobots/geordi#1",
+        "to": "flyingrobots/geordi#2"
+      }
+    ],
+    "error": "1 issue(s) have invalid frontmatter",
+    "frontmatter": {
+      "violating_issues": 1,
+      "violations": {
+        "flyingrobots/geordi#1": [
+          "unknown key .blockedby",
+          ".blocked_by: invalid reference '#2' (use owner/repo#N; bare numbers are not allowed)"
+        ]
+      },
+      "warnings": {}
+    },
+    "meta": {
+      "artifact_hash": "610edc0e19d957ba243207b1e4e3a02db51a9a029ec89fbe57e59e24c3e230ae"
+    },
+    "metrics": {
+      "critical_path": [
+        "flyingrobots/geordi#1",
+        "flyingrobots/geordi#2"
+      ],
+      "critical_path_length": 2,
+      "edge_density": 0.2,
+      "edge_density_band_ok": true,
+      "isolated_open_node_count": 0,
+      "isolated_open_nodes": [],
+      "max_parallel_width": 3,
+      "merged_count": 1,
+      "open_node_count": 6,
+      "raw_open_edge_count": 3,
+      "reduced_open_edge_count": 3,
+      "transitive_redundant_edges_removed_count": 0
+    },
+    "ok": false,
+    "open_frontier_count": 3,
+    "open_frontier_ranked": [
+      {
+        "completed_parents": [],
+        "critical_path_remaining_depth": 2,
+        "derived_status": "open-frontier",
+        "directly_unlocks": [
+          "flyingrobots/geordi#110"
+        ],
+        "holds": [],
+        "id": "flyingrobots/bunny#110",
+        "in_filter": true,
+        "linked_open_prs": [],
+        "meters": [],
+        "milestone": null,
+        "opaque": true,
+        "open_parents": [],
+        "priority_score": 121,
+        "recoverable_branches": [],
+        "size_hours": null,
+        "status": "blocked",
+        "title": "Bunny 110, no frontmatter",
+        "transitive_unblocks_count": 1,
+        "type": "opaque",
+        "untrusted": false,
+        "url": "https://github.com/flyingrobots/bunny/issues/110",
+        "workstream": "unassigned"
+      },
+      {
+        "completed_parents": [
+          "flyingrobots/bunny#7"
+        ],
+        "critical_path_remaining_depth": 2,
+        "derived_status": "open-frontier",
+        "directly_unlocks": [
+          "flyingrobots/echo#6"
+        ],
+        "holds": [],
+        "id": "flyingrobots/echo#5",
+        "in_filter": true,
+        "linked_open_prs": [],
+        "meters": [],
+        "milestone": null,
+        "opaque": false,
+        "open_parents": [],
+        "priority_score": 121,
+        "recoverable_branches": [],
+        "size_hours": null,
+        "status": "open",
+        "title": "Echo five",
+        "transitive_unblocks_count": 1,
+        "type": "feature",
+        "untrusted": false,
+        "url": "https://github.com/flyingrobots/echo/issues/5",
+        "workstream": "feature"
+      },
+      {
+        "completed_parents": [],
+        "critical_path_remaining_depth": 2,
+        "derived_status": "open-frontier",
+        "directly_unlocks": [
+          "flyingrobots/geordi#2"
+        ],
+        "holds": [],
+        "id": "flyingrobots/geordi#1",
+        "in_filter": true,
+        "linked_open_prs": [],
+        "meters": [],
+        "milestone": null,
+        "opaque": false,
+        "open_parents": [],
+        "priority_score": 121,
+        "recoverable_branches": [],
+        "size_hours": null,
+        "status": "open",
+        "title": "Home one",
+        "transitive_unblocks_count": 1,
+        "type": "feature",
+        "untrusted": false,
+        "url": "https://github.com/flyingrobots/geordi/issues/1",
+        "workstream": "feature"
+      }
+    ],
+    "semaphores_with_unknown_capacity_treated_as_1": [],
+    "soft_or_low_confidence_edges": [],
+    "source": {
+      "containers_excluded": [
+        {
+          "id": "flyingrobots/geordi#9",
+          "number": 9,
+          "title": "Roadmap"
+        }
+      ],
+      "kind": "issue-frontmatter",
+      "not_planned_parents": [],
+      "opaque_nodes": [
+        {
+          "id": "flyingrobots/bunny#110",
+          "referenced_by": [
+            "flyingrobots/geordi#110"
+          ],
+          "state": "open",
+          "title": "Bunny 110, no frontmatter"
+        }
+      ],
+      "repository": "flyingrobots/geordi",
+      "roots": [
+        "flyingrobots/geordi#9"
+      ],
+      "schema": "issue-dag/2",
+      "trust": {
+        "codeowners": null,
+        "codeowners_teams_not_expanded": {},
+        "logins": [],
+        "owners": [
+          "flyingrobots"
+        ],
+        "repos": []
+      },
+      "unmodeled_open_issues": [],
+      "untrusted_issues": [],
+      "untrusted_linked_prs": []
+    },
+    "stale_merged_hints": [],
+    "transitive_redundant_edges_removed": [],
+    "unknown_dependencies": [],
+    "waves": {
+      "Wave 0": [
+        {
+          "completed_parents": [],
+          "critical_path_remaining_depth": 2,
+          "derived_status": "open-frontier",
+          "directly_unlocks": [
+            "flyingrobots/geordi#110"
+          ],
+          "holds": [],
+          "id": "flyingrobots/bunny#110",
+          "in_filter": true,
+          "linked_open_prs": [],
+          "meters": [],
+          "milestone": null,
+          "opaque": true,
+          "open_parents": [],
+          "priority_score": 121,
+          "recoverable_branches": [],
+          "size_hours": null,
+          "status": "blocked",
+          "title": "Bunny 110, no frontmatter",
+          "transitive_unblocks_count": 1,
+          "type": "opaque",
+          "untrusted": false,
+          "url": "https://github.com/flyingrobots/bunny/issues/110",
+          "workstream": "unassigned"
+        },
+        {
+          "completed_parents": [
+            "flyingrobots/bunny#7"
+          ],
+          "critical_path_remaining_depth": 2,
+          "derived_status": "open-frontier",
+          "directly_unlocks": [
+            "flyingrobots/echo#6"
+          ],
+          "holds": [],
+          "id": "flyingrobots/echo#5",
+          "in_filter": true,
+          "linked_open_prs": [],
+          "meters": [],
+          "milestone": null,
+          "opaque": false,
+          "open_parents": [],
+          "priority_score": 121,
+          "recoverable_branches": [],
+          "size_hours": null,
+          "status": "open",
+          "title": "Echo five",
+          "transitive_unblocks_count": 1,
+          "type": "feature",
+          "untrusted": false,
+          "url": "https://github.com/flyingrobots/echo/issues/5",
+          "workstream": "feature"
+        },
+        {
+          "completed_parents": [],
+          "critical_path_remaining_depth": 2,
+          "derived_status": "open-frontier",
+          "directly_unlocks": [
+            "flyingrobots/geordi#2"
+          ],
+          "holds": [],
+          "id": "flyingrobots/geordi#1",
+          "in_filter": true,
+          "linked_open_prs": [],
+          "meters": [],
+          "milestone": null,
+          "opaque": false,
+          "open_parents": [],
+          "priority_score": 121,
+          "recoverable_branches": [],
+          "size_hours": null,
+          "status": "open",
+          "title": "Home one",
+          "transitive_unblocks_count": 1,
+          "type": "feature",
+          "untrusted": false,
+          "url": "https://github.com/flyingrobots/geordi/issues/1",
+          "workstream": "feature"
+        }
+      ],
+      "Wave 1": [
+        {
+          "completed_parents": [],
+          "critical_path_remaining_depth": 1,
+          "derived_status": "blocked",
+          "directly_unlocks": [],
+          "holds": [],
+          "id": "flyingrobots/echo#6",
+          "in_filter": true,
+          "linked_open_prs": [],
+          "meters": [],
+          "milestone": null,
+          "opaque": false,
+          "open_parents": [
+            "flyingrobots/echo#5"
+          ],
+          "priority_score": 10,
+          "recoverable_branches": [],
+          "size_hours": null,
+          "status": "open",
+          "title": "Echo six",
+          "transitive_unblocks_count": 0,
+          "type": "feature",
+          "untrusted": false,
+          "url": "https://github.com/flyingrobots/echo/issues/6",
+          "workstream": "feature"
+        },
+        {
+          "completed_parents": [],
+          "critical_path_remaining_depth": 1,
+          "derived_status": "blocked",
+          "directly_unlocks": [],
+          "holds": [],
+          "id": "flyingrobots/geordi#110",
+          "in_filter": true,
+          "linked_open_prs": [],
+          "meters": [],
+          "milestone": null,
+          "opaque": false,
+          "open_parents": [
+            "flyingrobots/bunny#110"
+          ],
+          "priority_score": 10,
+          "recoverable_branches": [],
+          "size_hours": null,
+          "status": "open",
+          "title": "Home 110",
+          "transitive_unblocks_count": 0,
+          "type": "feature",
+          "untrusted": false,
+          "url": "https://github.com/flyingrobots/geordi/issues/110",
+          "workstream": "feature"
+        },
+        {
+          "completed_parents": [],
+          "critical_path_remaining_depth": 1,
+          "derived_status": "blocked",
+          "directly_unlocks": [],
+          "holds": [],
+          "id": "flyingrobots/geordi#2",
+          "in_filter": true,
+          "linked_open_prs": [],
+          "meters": [],
+          "milestone": null,
+          "opaque": false,
+          "open_parents": [
+            "flyingrobots/geordi#1"
+          ],
+          "priority_score": 10,
+          "recoverable_branches": [],
+          "size_hours": null,
+          "status": "open",
+          "title": "Home two",
+          "transitive_unblocks_count": 0,
+          "type": "feature",
+          "untrusted": false,
+          "url": "https://github.com/flyingrobots/geordi/issues/2",
+          "workstream": "feature"
+        }
+      ]
+    }
+  }
+}

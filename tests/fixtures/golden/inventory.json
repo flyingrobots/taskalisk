@@ -1,0 +1,65 @@
+{
+  "args": [],
+  "captured_from": "flyingrobots/taskalisk@6e840586ab1b46f0e9f0039d56d248f991c89caf skills/taskalisk/scripts/taskalisk.py",
+  "exit": 2,
+  "scenario": "inventory",
+  "stdout": {
+    "github": {
+      "open_issues": [
+        {
+          "labels": [],
+          "milestone": null,
+          "number": 9,
+          "title": "Roadmap",
+          "url": "https://github.com/flyingrobots/geordi/issues/9"
+        },
+        {
+          "labels": [],
+          "milestone": null,
+          "number": 1,
+          "title": "Home one",
+          "url": "https://github.com/flyingrobots/geordi/issues/1"
+        },
+        {
+          "labels": [],
+          "milestone": null,
+          "number": 2,
+          "title": "Home two",
+          "url": "https://github.com/flyingrobots/geordi/issues/2"
+        },
+        {
+          "labels": [],
+          "milestone": null,
+          "number": 110,
+          "title": "Home 110",
+          "url": "https://github.com/flyingrobots/geordi/issues/110"
+        }
+      ],
+      "open_prs": []
+    },
+    "inventory_errors": [
+      {
+        "error": "fatal: malformed object name origin/main",
+        "source": "git branch --no-merged"
+      },
+      {
+        "error": "fatal: malformed object name origin/main",
+        "source": "git branch -r --no-merged"
+      }
+    ],
+    "ok": false,
+    "unmerged_branches": {
+      "local": [],
+      "remote": []
+    },
+    "worktrees": [
+      {
+        "branch": "main",
+        "dirty": false,
+        "head": "000000000",
+        "path": "<TMP>/repo",
+        "path_exists": true
+      }
+    ]
+  }
+}

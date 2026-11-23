@@ -1,0 +1,198 @@
+{
+  "args": [
+    "--verify-dag",
+    "dag.json"
+  ],
+  "captured_from": "flyingrobots/taskalisk@6e840586ab1b46f0e9f0039d56d248f991c89caf skills/taskalisk/scripts/taskalisk.py",
+  "exit": 0,
+  "scenario": "verify_ok",
+  "stdout": {
+    "batch_skipped": [],
+    "conflict_free_frontier_batch": [
+      {
+        "holds": [],
+        "id": "flyingrobots/geordi#1",
+        "meters": [],
+        "priority_score": 231,
+        "title": "a",
+        "url": null,
+        "workstream": ""
+      }
+    ],
+    "edges": [
+      {
+        "evidence": "Declared in DAG specification",
+        "from": "flyingrobots/geordi#1",
+        "to": "flyingrobots/geordi#2"
+      },
+      {
+        "evidence": "Declared in DAG specification",
+        "from": "flyingrobots/geordi#2",
+        "to": "flyingrobots/geordi#3"
+      }
+    ],
+    "meta": {
+      "artifact_hash": "5d34392021b55591a306508ddf76d62e019b32b05068bfd7514b2e37e60736dd"
+    },
+    "metrics": {
+      "critical_path": [
+        "flyingrobots/geordi#1",
+        "flyingrobots/geordi#2",
+        "flyingrobots/geordi#3"
+      ],
+      "critical_path_length": 3,
+      "edge_density": 0.6667,
+      "edge_density_band_ok": false,
+      "isolated_open_node_count": 0,
+      "isolated_open_nodes": [],
+      "max_parallel_width": 1,
+      "merged_count": 1,
+      "open_node_count": 3,
+      "raw_open_edge_count": 3,
+      "reduced_open_edge_count": 2,
+      "transitive_redundant_edges_removed_count": 1
+    },
+    "ok": true,
+    "open_frontier_count": 1,
+    "open_frontier_ranked": [
+      {
+        "completed_parents": [
+          "flyingrobots/geordi#0"
+        ],
+        "critical_path_remaining_depth": 3,
+        "derived_status": "open-frontier",
+        "directly_unlocks": [
+          "flyingrobots/geordi#2"
+        ],
+        "holds": [],
+        "id": "flyingrobots/geordi#1",
+        "in_filter": true,
+        "linked_open_prs": [],
+        "meters": [],
+        "milestone": null,
+        "opaque": false,
+        "open_parents": [],
+        "priority_score": 231,
+        "recoverable_branches": [],
+        "size_hours": null,
+        "status": "open",
+        "title": "a",
+        "transitive_unblocks_count": 2,
+        "type": "",
+        "untrusted": false,
+        "url": null,
+        "workstream": ""
+      }
+    ],
+    "semaphores_with_unknown_capacity_treated_as_1": [],
+    "soft_or_low_confidence_edges": [
+      {
+        "confidence": 0.4,
+        "evidence": "maybe",
+        "from": "flyingrobots/geordi#9",
+        "isHard": false,
+        "to": "flyingrobots/geordi#2",
+        "type": "accepted"
+      }
+    ],
+    "stale_merged_hints": [],
+    "transitive_redundant_edges_removed": [
+      {
+        "from": "flyingrobots/geordi#1",
+        "implied_via": "flyingrobots/geordi#2",
+        "to": "flyingrobots/geordi#3"
+      }
+    ],
+    "unknown_dependencies": [],
+    "waves": {
+      "Wave 0": [
+        {
+          "completed_parents": [
+            "flyingrobots/geordi#0"
+          ],
+          "critical_path_remaining_depth": 3,
+          "derived_status": "open-frontier",
+          "directly_unlocks": [
+            "flyingrobots/geordi#2"
+          ],
+          "holds": [],
+          "id": "flyingrobots/geordi#1",
+          "in_filter": true,
+          "linked_open_prs": [],
+          "meters": [],
+          "milestone": null,
+          "opaque": false,
+          "open_parents": [],
+          "priority_score": 231,
+          "recoverable_branches": [],
+          "size_hours": null,
+          "status": "open",
+          "title": "a",
+          "transitive_unblocks_count": 2,
+          "type": "",
+          "untrusted": false,
+          "url": null,
+          "workstream": ""
+        }
+      ],
+      "Wave 1": [
+        {
+          "completed_parents": [],
+          "critical_path_remaining_depth": 2,
+          "derived_status": "blocked",
+          "directly_unlocks": [
+            "flyingrobots/geordi#3"
+          ],
+          "holds": [],
+          "id": "flyingrobots/geordi#2",
+          "in_filter": true,
+          "linked_open_prs": [],
+          "meters": [],
+          "milestone": null,
+          "opaque": false,
+          "open_parents": [
+            "flyingrobots/geordi#1"
+          ],
+          "priority_score": 121,
+          "recoverable_branches": [],
+          "size_hours": null,
+          "status": "open",
+          "title": "b",
+          "transitive_unblocks_count": 1,
+          "type": "",
+          "untrusted": false,
+          "url": null,
+          "workstream": ""
+        }
+      ],
+      "Wave 2": [
+        {
+          "completed_parents": [],
+          "critical_path_remaining_depth": 1,
+          "derived_status": "blocked",
+          "directly_unlocks": [],
+          "holds": [],
+          "id": "flyingrobots/geordi#3",
+          "in_filter": true,
+          "linked_open_prs": [],
+          "meters": [],
+          "milestone": null,
+          "opaque": false,
+          "open_parents": [
+            "flyingrobots/geordi#2"
+          ],
+          "priority_score": 10,
+          "recoverable_branches": [],
+          "size_hours": null,
+          "status": "open",
+          "title": "c",
+          "transitive_unblocks_count": 0,
+          "type": "",
+          "untrusted": false,
+          "url": null,
+          "workstream": ""
+        }
+      ]
+    }
+  }
+}

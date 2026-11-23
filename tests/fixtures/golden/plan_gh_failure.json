@@ -1,0 +1,19 @@
+{
+  "args": [
+    "--from-github"
+  ],
+  "captured_from": "flyingrobots/taskalisk@6e840586ab1b46f0e9f0039d56d248f991c89caf skills/taskalisk/scripts/taskalisk.py",
+  "exit": 2,
+  "scenario": "plan_gh_failure",
+  "stdout": {
+    "error": "GitHub inventory failed; refusing to compile a partial graph",
+    "github_errors": [
+      {
+        "error": "gh: GraphQL unavailable (fake)",
+        "source": "gh api graphql (edit history of flyingrobots/geordi#1)"
+      }
+    ],
+    "mutation": null,
+    "ok": false
+  }
+}
