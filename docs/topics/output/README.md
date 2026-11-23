@@ -203,14 +203,15 @@ prerequisite) has no frontier, so it is not compared: there is no `frontier_chan
 `since_last` on its plan line, and a receipt step says why.
 
 A receipt is a local file that anyone who can write the directory can plant, so a receipt is
-compared with only when its file name is its run id, its `taskalisk.plan`, `frontier_node` and
-`node` lines validate against the exact schemas they name, and every node id is an issue
+compared with only when its file name is its run id, that run id is a ULID (26 Crockford base32
+characters, which is what the writer mints), its `taskalisk.plan`, `frontier_node` and `node`
+lines validate against the exact schemas they name, and every node id is an issue
 (`owner/repo#N`). Any other is skipped with a receipt step, `--since-last: ignored receipt ...`,
-and the next is tried. This keeps a planted file from putting an invalid line, or a node id that
-is not an issue, on stdout. It does not authenticate a well-formed receipt. A planted receipt can
-still choose its run id (its file name, which only has to match the `run` inside it), and that
-string appears on stdout as the plan line's `since_last.compared_with` and each change's
-`since_run`; a `frontier_change` is advice about this directory's history, never an instruction.
+and the next is tried; the step repeats the file name only when it is a ULID. This keeps a
+planted file from putting an invalid line or free text on stdout: the only strings taken from a
+receipt are ULID-shaped run ids (`since_last.compared_with`, `since_run`) and issue-shaped node
+ids. It does not authenticate a well-formed receipt, so a `frontier_change` is advice about this
+directory's history, never an instruction.
 
 ## `--human`, `--dry-run`, discovery
 

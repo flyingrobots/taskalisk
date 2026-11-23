@@ -1936,6 +1936,7 @@ def positions_from_result(result: dict[str, Any]) -> dict[str, dict[str, int]]:
 
 NODE_ID_RE = re.compile(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+#[1-9][0-9]*")
 COMPARED_LINES = ("plan", "frontier_node", "node")
+RUN_ID_RE = re.compile(r"[0-9A-HJKMNP-TV-Z]{26}")  # a ULID, which is what the writer mints (Parley spec 2.1)
 
 
 def unbelievable(name: str, lines: list[dict[str, Any]]) -> str | None:
@@ -1944,6 +1945,8 @@ def unbelievable(name: str, lines: list[dict[str, Any]]) -> str | None:
     run, whose compared lines validate against the exact schema they name, and whose ids are issues."""
     if name != f"{lines[0].get('run')}.jsonl":
         return "its file name is not its run id"
+    if not RUN_ID_RE.fullmatch(str(lines[0].get("run"))):
+        return "its run id is not one the writer mints"
     extra = {schema_ref(m): load_schema(m) for m in COMPARED_LINES}
     for line in lines:
         ref = line.get("_schema") or {}
@@ -1975,7 +1978,8 @@ def previous_plan(run: Any, question: dict[str, Any]) -> tuple[str, dict[str, di
             continue
         why = unbelievable(name, lines)
         if why is not None:
-            note(f"--since-last: ignored receipt {name[:64]!r}", why)
+            shown = repr(name) if RUN_ID_RE.fullmatch(name[:-len(".jsonl")]) else "with a name that is no run id"
+            note(f"--since-last: ignored receipt {shown}", why)
             continue
         return str(lines[0].get("run")), positions_from_lines(lines)
     return None
