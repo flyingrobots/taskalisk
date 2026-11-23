@@ -173,6 +173,14 @@ class Errors(Harness):
     def test_unreadable_dag_spec(self):
         self.assert_error(self.run_dag(plan_state(), "--verify-dag", str(self.tmp / "missing.json")), "dag_spec.unreadable")
 
+    def test_an_unreadable_dag_spec_is_recorded_unread_with_no_inv(self):
+        """OUT-29: a file verify could not read is never hashed by the writer (flyingrobots/parley#110)."""
+        out, _ = self.assert_error(self.run_dag(plan_state(), "--verify-dag", str(self.tmp / "missing.json")), "dag_spec.unreadable")
+        inputs = pl.one(pl.receipt_lines(out), "parley.receipt.inputs")
+        self.assertNotIn("inv", inputs)
+        self.assertEqual([i.get("error") for i in inputs["inputs"]], ["dag_spec.unreadable"])
+        self.assertNotIn("sha256", inputs["inputs"][0])
+
     def test_malformed_dag_spec_field(self):
         spec = self.tmp / "dag.json"
         spec.write_text(json.dumps({"nodes": {"a": {"title": 5}}}))
