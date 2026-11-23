@@ -386,9 +386,10 @@ class Injection(Harness):
         out, _ = self.streams(p)
         self.assertEqual([l["event"] for l in out].count("end"), 1)
         self.assertIn(self.TITLE, [n["title"] for n in pl.of(out, "taskalisk.node")])
-        h = self.run_dag(state, "--from-github", "--root", f"{HOME}#9", "--human")
-        self.assertIsNone(CONTROL.search(h.stdout.replace("\n", "")))
-        self.assertNotIn('{"event":"end"', h.stdout)
+        for extra in ([], ["--emit-roadmap"]):
+            h = self.run_dag(state, "--from-github", "--root", f"{HOME}#9", "--human", *extra)
+            self.assertIsNone(CONTROL.search(h.stdout.replace("\n", "")), extra)
+            self.assertNotIn('{"event":"end"', h.stdout)
 
 
 class Traceback(Harness):
