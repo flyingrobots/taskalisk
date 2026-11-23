@@ -20,8 +20,11 @@ schema is [`references/frontmatter-model.md`](references/frontmatter-model.md),
 inside this skill. It is the repository's `docs/frontmatter-model.md`; the
 threat model below is bundled the same way.
 
-The skill keeps **zero local state**: no cached graph, no ledger file. Every
-run recompiles from GitHub issue bodies, and every mutation is an edit of an
+The skill keeps **no planning state**: no cached graph, no ledger file. The
+only local files are each run's receipt under `.parley/receipts/` in the
+working directory (git-ignored; the oldest past 50 are deleted), which
+`--since-last` reads and nothing else does. Every run recompiles from GitHub
+issue bodies, and every mutation is an edit of an
 issue body, so GitHub's issue edit history is the ledger. Labels, milestones,
 body sections, and GitHub issue relationships never create edges. GitHub
 sub-issues and `blocked_by` relationships are an optional mirror for the

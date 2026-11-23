@@ -245,5 +245,7 @@ The Parley doctor cannot run in this repository's CI. It was run locally on capt
 committed under `tests/fixtures/doctor/` (plan, inventory, edit, an edit that made a cycle, a `gh`
 failure, verify, `--help`, `--schema`, and the receipt of a `--human` run), and on live plans of
 flyingrobots/taskalisk and flyingrobots/parley; each verdict was `CONFORMS 0 violation(s)`. The
-suite re-validates every committed line offline against the exact schema it names, with the
-writer's bounded checker. `tests/capture_doctor_runs.py` recaptures them.
+doctor validates the `parley.*` lines against the protocol and reports the `taskalisk.*` lines as
+partial, because it does not hold the tool's schemas; those lines are checked by the suite, which
+re-validates every committed line offline against the exact schema it names, with the writer's
+bounded checker. `tests/capture_doctor_runs.py` recaptures them.

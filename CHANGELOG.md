@@ -7,7 +7,9 @@ schema version under `Unreleased` is a draft and may change in place.
 
 ## Unreleased
 
-To be released as **2.0.0**: a breaking change to the output (flyingrobots/taskalisk#70).
+To be released as **2.0.0**: a breaking change to the output (flyingrobots/taskalisk#70). Do not
+replace an installed copy of the skill before 2.0.0 is released: running agents read the installed
+copy's output, and the 1.x document is gone (decision 0002).
 
 ### Changed
 
