@@ -141,5 +141,8 @@ frontmatter. The frontmatter wins.
 
 ## Failure
 
-The run fails closed. A `gh` failure exits `2`. An invalid frontmatter in the
-closure, an unknown reference, or a cycle exits `1`.
+The run fails closed. A `gh` failure, an invalid frontmatter in the closure,
+an unknown reference, or a cycle is a typed error and exits `2`; the error's
+code tells them apart (`gh.command_failed`, `frontmatter.invalid`,
+`graph.unresolved_prerequisites`, `graph.cycle`). The codes and the output
+are in `docs/topics/output/README.md`.

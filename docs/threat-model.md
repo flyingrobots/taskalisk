@@ -161,7 +161,8 @@ and excluded from executor prompts (C7). Checking the actors of
 The closure follows references only into trusted repositories. The scope is
 the home repository's owner by default, extended with `--trust-owner <owner>`
 and `--trust-repo <owner/repo>`. A reference outside the scope is a
-frontmatter violation on the referencing issue (exit `1`), and the referenced
+frontmatter violation on the referencing issue (`frontmatter.invalid`, exit
+`2`), and the referenced
 issue is never fetched. A `--root` outside the scope is an error.
 
 Association counts only inside the scope. Cross-organisation DAGs declare their
@@ -170,7 +171,7 @@ owners explicitly; the flags are the declaration.
 ### C3. Untrusted issues are never nodes — implemented
 
 - An untrusted **seed** (an open home issue, or a `--root`) that no trusted
-  issue references is listed in `source.untrusted_issues` with the reason and
+  issue references is listed as an `issue.untrusted` finding with the reason and
   is not a node. Its frontmatter is not parsed.
 - An untrusted issue that a trusted issue **references** is an opaque
   blocker, whether or not it is also a seed: it blocks its dependents until
@@ -178,7 +179,9 @@ owners explicitly; the flags are the declaration.
   or title. It is listed with the reason.
 
 Nothing an untrusted author wrote reaches the graph, the batch, the ranking,
-or any rendered output, including the `not_planned_parents` report. An
+any output line, the run's receipt, or any rendered output, including the
+`parent.not_planned` findings. The receipt records each issue that was read by
+id, state and the SHA-256 of its title and body, never the text. An
 untrusted blocker appears only as the placeholder `(untrusted issue)` with
 its reference, so a dependent's blocked state stays visible.
 
@@ -187,7 +190,7 @@ its reference, so a dependent's blocked state stays visible.
 A PR marks a task in flight only when `isCrossRepository` is false (the head
 is a branch of the same repository) **and** its author is trusted under C1's
 login rule. Every other PR that closes a task is listed in
-`source.untrusted_linked_prs` and has no effect on status or ranking. A
+a `pull_request.untrusted` finding and has no effect on status or ranking. A
 missing field is untrusted.
 
 ### C5. Output escaping — implemented
