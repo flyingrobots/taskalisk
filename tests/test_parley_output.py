@@ -748,6 +748,7 @@ class SinceLastProvenance(Harness):
             "an id that is no issue": (z, z + ".jsonl", lambda l: l.update(id=PLANTED_ID)),
             "a rank that is no number": (z, z + ".jsonl", lambda l: l.update(rank="first")),
             "a wave that is no number": (z, z + ".jsonl", lambda l: l.update(wave="one")),
+            "a run id that is no ULID": (PLANTED_ID, PLANTED_ID + ".jsonl", lambda l: None),
         }
         for label, (run_id, name, edit) in cases.items():
             with self.subTest(label):
