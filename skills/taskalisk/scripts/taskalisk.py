@@ -1816,6 +1816,16 @@ def wave_number(label: str) -> int:
     return int(label.rsplit(" ", 1)[1])
 
 
+def node_fields(n: dict[str, Any]) -> dict[str, Any]:
+    """A node as its line carries it. A `.size_hours` that is not an integer is already a
+    frontmatter.violation (the plan is not ok); the line says null rather than fail its schema. The
+    result document, and so `artifact_hash`, keeps the 1.x value."""
+    size = n.get("size_hours")
+    if size is None or (isinstance(size, int) and not isinstance(size, bool)):
+        return n
+    return {**n, "size_hours": None}
+
+
 def emit_plan(run: Any, result: dict[str, Any], mode: str, failures: list[Failure], since: dict[str, Any] | None,
               rendering: str | None, rel_failed: bool = False, mutation: dict[str, Any] | None = None) -> None:
     """Plan summary first (the smallest line that answers 'what next'), the frontier in rank order,
@@ -1844,7 +1854,7 @@ def emit_plan(run: Any, result: dict[str, Any], mode: str, failures: list[Failur
     run.result(plan, schema_ref("plan"))
     if compiled:
         for rank, n in enumerate(result["open_frontier_ranked"], 1):
-            run.result({"event": "frontier_node", "rank": rank, "wave": 0, **n, "score": score_terms(n)}, schema_ref("frontier_node"))
+            run.result({"event": "frontier_node", "rank": rank, "wave": 0, **node_fields(n), "score": score_terms(n)}, schema_ref("frontier_node"))
         run.result({"event": "batch", "members": result["conflict_free_frontier_batch"], "skipped": result["batch_skipped"],
                     "semaphores_with_unknown_capacity_treated_as_1": result["semaphores_with_unknown_capacity_treated_as_1"]}, schema_ref("batch"))
     for change in (since or {}).get("changes", []):
@@ -1854,7 +1864,7 @@ def emit_plan(run: Any, result: dict[str, Any], mode: str, failures: list[Failur
             k = wave_number(label)
             if k:
                 for n in items:
-                    run.result({"event": "node", "wave": k, **n}, schema_ref("node"))
+                    run.result({"event": "node", "wave": k, **node_fields(n)}, schema_ref("node"))
         for label, items in result["waves"].items():
             run.result({"event": "wave", "wave": wave_number(label), "label": label, "ids": [n["id"] for n in items]}, schema_ref("wave"))
         for e in result["edges"]:
@@ -2019,7 +2029,9 @@ def run_plan(run: Any, ns: argparse.Namespace, command: str) -> None:
             f.report(run)
         return
     since = None
-    if ns.since_last:
+    if ns.since_last and "metrics" not in outcome.result:
+        note("--since-last: not compared", "the plan did not compile, so it has no frontier to compare")
+    elif ns.since_last:
         prev = previous_plan(run, STATE["resolved"]["question"])
         if prev is None:
             since = {"run": None, "changes": []}
@@ -2060,9 +2072,14 @@ def check_spec(data: Any) -> str | None:
         deps = meta.get("depends_on", meta.get("prerequisites", []))
         if not isinstance(deps, list) or not all(isinstance(d, (str, dict)) for d in deps):
             return f"DAG spec node {nid!r}: depends_on must be a list of ids or edge objects"
-        for key in ("linked_open_prs", "recoverable_branches"):
-            if not isinstance(meta.get(key, []), list):
-                return f"DAG spec node {nid!r}: {key} must be a list"
+        branches = meta.get("recoverable_branches", [])
+        if not isinstance(branches, list) or not all(isinstance(b, str) for b in branches):
+            return f"DAG spec node {nid!r}: recoverable_branches must be a list of strings"
+        prs = meta.get("linked_open_prs", [])
+        if not isinstance(prs, list) or not all(
+                isinstance(pr, dict) and isinstance(pr.get("number"), int) and not isinstance(pr.get("number"), bool)
+                and isinstance(pr.get("isDraft"), bool) and isinstance(pr.get("url"), (str, type(None))) for pr in prs):
+            return f"DAG spec node {nid!r}: linked_open_prs must be a list of {{number, isDraft, url?}}"
     return None
 
 

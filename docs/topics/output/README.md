@@ -120,6 +120,10 @@ and equals `priority_score`.
 A finding's `message` is built from ids, states, logins and the rule broken; the only issue text
 it can carry is a trusted issue's frontmatter line in a `frontmatter.violation`.
 
+A node line's `size_hours` is an integer or null. An issue whose `.size_hours` is not an integer is
+a `frontmatter.violation` (the plan is not `ok`), and its line carries null; the plan's
+`artifact_hash` is computed over the 1.x document, which keeps the value as written.
+
 ## Errors and exit status
 
 | Code | When | `retryable` |
@@ -194,7 +198,9 @@ reads only that receipt, never GitHub. Each difference is a `frontier_change`: `
 (blocked before, frontier now), `added` (absent before, frontier now), `newly_blocked`, `closed`
 (open before, closed now) or `left` (open before, now absent and not known to be closed). With
 no such receipt, the plan line's `since_last.compared_with` is null and a `since_last.no_previous`
-finding says so; that is not an error.
+finding says so; that is not an error. A plan that did not compile (a cycle, an unresolved
+prerequisite) has no frontier, so it is not compared: there is no `frontier_change` and no
+`since_last` on its plan line, and a receipt step says why.
 
 A receipt is a local file that anyone who can write the directory can plant, so a receipt is
 compared with only when its file name is its run id, its `taskalisk.plan`, `frontier_node` and
