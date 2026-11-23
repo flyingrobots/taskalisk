@@ -28,6 +28,10 @@ exit status. The compiler owns the result messages below.
 | `verify` | `--verify-dag FILE` | the file | nothing |
 | `inventory` | no mode flag | git worktrees and branches, open pull requests and issues | nothing |
 
+Inventory applies no trust gate: its `inventory.issue` and `inventory.pull_request` lines, and its
+receipt, carry every open issue and pull request as GitHub returns it, strangers' titles, authors and
+fork branch names included (threat model C3). The trust gate applies to `plan`, `edit` and `verify`.
+
 A command may be named, as the first argument (`taskalisk.py plan --root ...`); only that argument is
 taken as the command, so a flag value such as `--reason edit` is the flag's. When none is named, the 1.x mode
 flag selects it and the receipt's `argv` shows the command put first, with a step saying it was
@@ -163,7 +167,9 @@ receipt holds the redacted arguments, the resolved question, one step per decisi
 repository and trust lookup as it is read, with the reason), copies of every result and error,
 and `end`.
 
-It never holds an issue's title or body. Discovery records what it read as one step,
+It never holds an issue's body. It holds the titles of trusted issues, because it copies the
+result lines that carry them (and, for `inventory`, every open issue's title; see Commands).
+Discovery records what it read as one step,
 `observed N issue(s)`, whose detail lists each issue by `id`, `state`, `state_reason` and the
 SHA-256 of its title and body. Those bodies are the run's declared input `github:issues`
 (role `observations`): its digest is over that list in canonical JSON, so `inv` (in

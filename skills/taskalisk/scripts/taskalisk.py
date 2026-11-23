@@ -2351,7 +2351,7 @@ def define() -> Any:
             "verify": {"intent": "Compile a hand-written DAG specification and rank it (read-only; --verify-dag)",
                        "effects": {"reads": ["<the --verify-dag file>"], "writes": [], "network": False, "idempotent": True},
                        "secrets": SECRETS, "emits": emits(*(n for n in PLAN_LINES if n != "frontier_change"))},
-            "inventory": {"intent": "List worktrees, unmerged branches, open pull requests and open issues of a repository (read-only, fail-closed)",
+            "inventory": {"intent": "List worktrees, unmerged branches, open pull requests and open issues of a repository (read-only, fail-closed). Inventory applies no trust gate: strangers' titles, authors and branch names are listed as data",
                           "effects": {"reads": ["<repo> git worktrees and branches", "github:pull-requests", "github:issues"], "writes": [], "network": True, "idempotent": True},
                           "secrets": SECRETS, "emits": emits("inventory.summary", "inventory.worktree", "inventory.branch", "inventory.pull_request", "inventory.issue")},
         },

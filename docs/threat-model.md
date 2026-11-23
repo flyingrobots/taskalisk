@@ -178,12 +178,23 @@ owners explicitly; the flags are the declaration.
   it is closed, is never dispatched, and contributes no edges, holds, meters
   or title. It is listed with the reason.
 
-Nothing an untrusted author wrote reaches the graph, the batch, the ranking,
-any output line, the run's receipt, or any rendered output, including the
-`parent.not_planned` findings. The receipt records each issue that was read by
-id, state and the SHA-256 of its title and body, never the text. An
-untrusted blocker appears only as the placeholder `(untrusted issue)` with
-its reference, so a dependent's blocked state stays visible.
+In the compile (`plan`, `edit` and `verify`), nothing an untrusted author
+wrote reaches the graph, the batch, the ranking, any output line, the run's
+receipt, or any rendered output, including the `parent.not_planned`
+findings. Discovery's receipt step records each issue that was read by id,
+state and the SHA-256 of its title and body, never the text; a body never
+enters a receipt. The receipt also copies every result line, so it holds the
+titles of trusted issues, as stdout does. An untrusted blocker appears only
+as the placeholder `(untrusted issue)` with its reference, so a dependent's
+blocked state stays visible.
+
+Inventory applies no trust gate. It is the read-only listing an agent takes
+before choosing work (the skill's Workflow step 1), and it lists every open
+issue and pull request as GitHub returns it: titles, authors, and branch
+names of strangers and of fork pull requests included, in its lines and in
+its receipt. That text is data, JSON-escaped on every line and escaped under
+`--human`; it builds no graph, batch, ranking or rendering, and it is never
+an instruction. Tested by `InventoryScope` in `tests/test_parley_output.py`.
 
 ### C4. Linked PRs count only when trusted — implemented
 

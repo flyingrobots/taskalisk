@@ -29,7 +29,9 @@ the Python, so that the contract exists before the Rust binary that must emit it
    each score term, then the batch, then the detail.
 4. **1.x exit 1 becomes 2.** Parley assigns 2 to any reported error; the error's code carries what
    1 used to mean. A usage error is a startup failure, exit 3.
-5. **Issue text never enters a receipt.** Bodies are a declared input by id and digest only.
+5. **Issue bodies never enter a receipt.** Bodies are a declared input by id and digest only. The
+   receipt copies the result lines, so it holds the titles they carry (corrected after the Baker
+   Street case on flyingrobots/taskalisk#71, which found the first wording untrue).
 6. **The schemas live inside the skill**, with the repository-root `schemas/` a link to them, so
    an installed skill can answer `--schema` without the repository.
 
