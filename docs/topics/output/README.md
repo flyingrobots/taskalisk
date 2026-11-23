@@ -10,7 +10,7 @@ requirements and their tests are the [test plan](test-plan.md).
 ## The writer
 
 Lines are written by `skills/taskalisk/scripts/parley_emit.py`, the Python Parley writer, copied
-unmodified from flyingrobots/parley at `8fc64b090ebd3a8b77b2fdf14b1433a5c12b9b74`.
+unmodified from flyingrobots/parley at `e158c51ed8fce39422abc9cc7e75fe4fc1e57171`.
 `parley_emit.pin.json` beside it records its SHA-256 and that commit, and a test fails when the
 copy's digest differs from the pin. `python3 parley_emit.py --vendor-info` prints the digest and a
 `shasum -c` command. The writer is Apache-2.0; its `LICENSE` and `NOTICE` sit beside it.
@@ -28,7 +28,8 @@ exit status. The compiler owns the result messages below.
 | `verify` | `--verify-dag FILE` | the file | nothing |
 | `inventory` | no mode flag | git worktrees and branches, open pull requests and issues | nothing |
 
-A command may be named first (`taskalisk.py plan --root ...`). When none is named, the 1.x mode
+A command may be named, as the first argument (`taskalisk.py plan --root ...`); only that argument is
+taken as the command, so a flag value such as `--reason edit` is the flag's. When none is named, the 1.x mode
 flag selects it and the receipt's `argv` shows the command put first, with a step saying it was
 inferred. A bare `--help` or `--schema` describes every command.
 
@@ -221,9 +222,6 @@ as in 1.x. The bootstrap line's receipt path is absolute because the protocol re
 - A `--emit-roadmap` text, or a receipt step listing a large closure, can exceed 65,536 bytes;
   the writer then stores it beside the receipt as a sidecar.
 - A hard crash of the interpreter or a signal can leave the streams without `end` (Parley §6).
-- The vendored writer drops every argument whose text equals the command's name, so a flag value
-  such as `--reason edit` in an `edit` run is lost and the run fails as a usage error
-  (flyingrobots/parley#101). Reword the value until the writer is fixed and re-vendored.
 - `gh` is run with its output captured, so nothing it prints reaches the streams directly; its
   stderr text reaches a line only inside an error's `detail`, after the sanitising above.
 

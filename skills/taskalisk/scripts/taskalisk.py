@@ -2103,6 +2103,18 @@ def infer_command(args: list[str]) -> list[str]:
     put first. An explicit command is left alone, and so is a bare --help or --schema."""
     if args[:1] and args[0] in COMMANDS:
         return list(args)
+    # A command named after some flags (`--repo x plan --help`) is the first positional argument;
+    # the writer takes the command by position, so it is moved first. A flag's value is never one.
+    takes_value = {a for act in build_parser()._actions if act.nargs is None and act.option_strings for a in act.option_strings}
+    i = 0
+    while i < len(args):
+        a = args[i]
+        if a.startswith("-"):
+            i += 2 if (a in takes_value) else 1
+            continue
+        if a in COMMANDS:
+            return [a, *args[:i], *args[i + 1:]]
+        break
 
     def has(flag: str) -> bool:
         return any(a == flag or a.startswith(flag + "=") for a in args)
@@ -2321,7 +2333,7 @@ def main(argv: list[str] | None = None) -> int:
     raw = list(sys.argv[1:] if argv is None else argv)
     args = infer_command(raw)
     STATE.clear()
-    STATE["inferred"] = args != raw
+    STATE["inferred"] = bool(args) and args[0] in COMMANDS and args[0] not in raw
     human = any(a in ("--human", "--humanize") for a in raw)
     return pe.main(define(), ["taskalisk", *args], handler, resolved=resolve, inputs=declared_inputs,
                    stdout=HumanStdout(pe.FdSink(1)) if human else None)
