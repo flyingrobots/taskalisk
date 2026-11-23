@@ -25,6 +25,10 @@ To be released as **2.0.0**: a breaking change to the output (flyingrobots/taska
   | 2 argparse usage error, text on stderr | 3, one `parley.startup.failed` line |
   | traceback | 2, `uncaught.exception`; the traceback only in the receipt |
 
+  New in 2.0: a missing or damaged schema file in an installed skill is a startup failure, exit 3,
+  code `startup.declaration_unreadable`; a missing `scripts/parley_emit.py` is the one documented
+  exception, Python's own import error and exit 1.
+
 - **Where each 1.x field went:**
 
   | 1.x document | 2.0 lines |

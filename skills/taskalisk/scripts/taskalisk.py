@@ -68,6 +68,7 @@ from pathlib import Path
 import re
 import subprocess
 import sys
+import time
 from typing import Any, Callable
 
 __version__ = "2.0.0"
@@ -2360,13 +2361,38 @@ def define() -> Any:
     )
 
 
+def declaration_unreadable(exc: Exception, human: bool) -> int:
+    """Spec 3.2: a run that cannot read its own declaration emits one `startup.failed` line and exits 3.
+
+    The writer starts from the declaration, so it cannot report this one failure itself: the line is
+    built here under the writer's own `parley.startup.failed` schema and checked by the writer's
+    validator before it is written. Nothing reaches stdout and no receipt is created."""
+    name = Path(getattr(exc, "filename", None) or "").name or "a schema file"
+    line = {"event": "startup.failed", "t": max(0, int(time.time() * 1000)), "seq": 0, "run": pe.ulid(), "tool": "taskalisk",
+            "v": __version__, "code": "startup.declaration_unreadable",
+            "problem": f"the declaration could not be read: {name} ({type(exc).__name__})",
+            "remedy": "reinstall the skill; its schemas directory is incomplete or damaged",
+            "_schema": dict(pe.SCHEMA_IDS["startup_failed"])}
+    check = pe.validate_line(line)
+    if not check.ok:  # a defect here, not in the installation
+        raise RuntimeError(f"startup.failed line does not validate: {check.errors}") from exc
+    text = f"startup failed {line['code']}: {line['problem']} ({line['remedy']})" if human else json.dumps(line, separators=(",", ":"), ensure_ascii=False)
+    sys.stderr.write(text + "\n")
+    sys.stderr.flush()
+    return 3
+
+
 def main(argv: list[str] | None = None) -> int:
     raw = list(sys.argv[1:] if argv is None else argv)
     args = infer_command(raw)
     STATE.clear()
     STATE["inferred"] = bool(args) and args[0] in COMMANDS and args[0] not in raw
     human = any(a in ("--human", "--humanize") for a in raw)
-    return pe.main(define(), ["taskalisk", *args], handler, resolved=resolve, inputs=declared_inputs,
+    try:
+        tool = define()
+    except (OSError, ValueError) as exc:  # a missing or damaged schema file (json errors are ValueErrors)
+        return declaration_unreadable(exc, human)
+    return pe.main(tool, ["taskalisk", *args], handler, resolved=resolve, inputs=declared_inputs,
                    stdout=HumanStdout(pe.FdSink(1)) if human else None)
 
 

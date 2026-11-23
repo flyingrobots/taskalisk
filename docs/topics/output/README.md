@@ -144,8 +144,9 @@ An error from a `gh` or `git` call carries `detail: {source, error, phase}`, whe
 | --- | --- |
 | 0 | the command succeeded |
 | 2 | it failed and reported one or more `parley.error` lines |
-| 3 | a usage error before the run began: one `parley.startup.failed` line on stderr, nothing on stdout, no receipt |
+| 3 | a usage error before the run began, or a schema file of the declaration that cannot be read (`startup.declaration_unreadable`): one `parley.startup.failed` line on stderr, nothing on stdout, no receipt |
 | 4 | an output or receipt sink failed |
+| 1 | only when `scripts/parley_emit.py` is missing: Python cannot import the writer and prints its own error (see What is not guaranteed) |
 
 1.x used 1 for "the graph or frontmatter is invalid" and 2 for "GitHub could not be read". Both are
 now 2, because Parley reserves 2 for a reported error; the error code's namespace (`gh.`, `git.`
@@ -229,6 +230,12 @@ as in 1.x. The bootstrap line's receipt path is absolute because the protocol re
 - A `--emit-roadmap` text, or a receipt step listing a large closure, can exceed 65,536 bytes;
   the writer then stores it beside the receipt as a sidecar.
 - A hard crash of the interpreter or a signal can leave the streams without `end` (Parley §6).
+- If `scripts/parley_emit.py` is missing from an installed skill, the import fails before any
+  Taskalisk code runs: Python prints a `ModuleNotFoundError` traceback on stderr and exits 1. This
+  is the one plain-text error and the one status outside 0, 2, 3 and 4. A missing or damaged schema
+  file, by contrast, is a startup failure (exit 3): `taskalisk.py` builds that one line itself,
+  under the writer's `parley.startup.failed` schema and checked by the writer's validator, because
+  the writer needs the declaration to start.
 - `gh` is run with its output captured, so nothing it prints reaches the streams directly; its
   stderr text reaches a line only inside an error's `detail`, after the sanitising above.
 
