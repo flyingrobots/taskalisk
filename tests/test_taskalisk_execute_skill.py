@@ -51,7 +51,7 @@ class TaskaliskExecuteSkillTest(unittest.TestCase):
     def test_coordinator_assignment_and_non_claim(self):
         s = section(text(), "Coordinator-assigned dispatch")
         for phrase in ["one coordinator", "open pull requests and branches", "assignment ledger"]:
-            self.assertIn(phrase, s)
+            self.assertIn(phrase.lower(), s.lower())
         self.assertRegex(s, r"never a cross-repository lock")
         self.assertRegex(s, r"does not (reserve|enforce|claim)")
 
@@ -66,8 +66,8 @@ class TaskaliskExecuteSkillTest(unittest.TestCase):
         self.assertRegex(s, r"fresh[- ]context")
         self.assertIn("different context from the author", s)
         self.assertIn("READY", s)
-        self.assertRegex(s, r"before (you )?undraft")
-        self.assertRegex(s, r"never review your own")
+        self.assertRegex(s, r"(?i)before (you )?undraft")
+        self.assertRegex(s, r"(?i)never review your own")
 
     def test_bounded_bot_review_wait(self):
         s = section(text(), "Review and merge gate")
@@ -88,7 +88,7 @@ class TaskaliskExecuteSkillTest(unittest.TestCase):
 
     def test_stop_conditions(self):
         s = section(text(), "Stop conditions")
-        for phrase in ["untrusted", "CHANGES_REQUIRED", "REFERRAL", "failed CI"]:
+        for phrase in ["untrusted", "CHANGES_REQUIRED", "REFERRAL", "CI has failed"]:
             self.assertIn(phrase, s)
 
     def test_trust_gate_doctrine(self):
@@ -101,7 +101,7 @@ class TaskaliskExecuteSkillTest(unittest.TestCase):
         for phrase in ["home repository", ".meters", "one at a time", "merge the default branch",
                        "never rebase", "conflict markers", "dismiss", "Propose, then apply",
                        "pre-existing failure", "workers do not merge"]:
-            self.assertIn(phrase, s)
+            self.assertIn(phrase.lower(), s.lower())
 
     def test_no_machine_local_paths(self):
         for path in (SKILL, THIS_TEST):

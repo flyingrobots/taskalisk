@@ -6,6 +6,11 @@ repositories, rank the open frontier, and edit edges in frontmatter. The skill i
 `skills/taskalisk/`. Install it from a release (below), not by linking a working
 checkout.
 
+A second skill, `skills/taskalisk-execute/`, is the procedure for executing a compiled
+frontier: coordinator-assigned dispatch, draft pull request first, a fresh-context
+Baker Street review, and a strict merge gate. It is a written specification, not an
+executor, and it is not part of the release ZIP yet.
+
 Repositories are public, so anyone can file an issue or a fork PR. The threat
 model and the binding security policy are in `docs/threat-model.md`; the
 compiler applies its trust gate on every run.
