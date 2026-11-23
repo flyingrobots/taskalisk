@@ -792,5 +792,42 @@ class EditNeverSilent(unittest.TestCase):
         self.assertEqual([l["event"] for l in run.lines], ["edge_edit"])
 
 
+# ---- the remediation check on 0464b24: repair R-22 and follow-up R-23 -------------------------
+
+
+class SchemaValidOnMalformedInput(Harness):
+    """OUT-01 (R-22): malformed metadata is refused or reported, never emitted as an invalid line."""
+
+    def test_a_verify_spec_with_wrongly_typed_list_elements_is_refused(self):
+        for key, value in (("recoverable_branches", [7]), ("linked_open_prs", [3]), ("linked_open_prs", [{"number": "x", "isDraft": False}])):
+            with self.subTest(key=key, value=value):
+                spec = self.tmp / "dag.json"
+                spec.write_text(json.dumps({"nodes": {"a": {"title": "a", key: value}}}))
+                p = self.run_dag(plan_state(), "--verify-dag", str(spec))
+                out, err = self.streams(p)  # every line validates
+                self.assertEqual(p.returncode, 2, p.stdout[-400:])
+                self.assertEqual([e["code"] for e in pl.of(err, "parley.error")], ["dag_spec.invalid"])
+
+    def test_a_size_hours_typo_is_reported_and_every_line_validates(self):
+        state = plan_state()
+        state["issues"][f"{HOME}#1"]["body"] = fm(f"{HOME}#1", blocked_by=[f"{ECHO}#5"], extra=".size_hours: bad")
+        p = self.run_dag(state, "--from-github", "--root", f"{HOME}#9")
+        out, err = self.streams(p)  # every line validates
+        self.assertEqual(p.returncode, 2)
+        self.assertIn("frontmatter.invalid", [e["code"] for e in pl.of(err, "parley.error")])
+        self.assertFalse(pl.one(out, "taskalisk.plan")["ok"])
+
+
+class SinceLastUncompiled(Harness):
+    def test_an_uncompiled_plan_is_not_compared(self):
+        """OUT-09 (R-23): a plan that did not compile reports no frontier changes against the last one."""
+        self.assertEqual(self.run_dag(plan_state(), "--from-github", "--root", f"{HOME}#9").returncode, 0)
+        p = self.run_dag(plan_state(), "--from-github", "--root", f"{HOME}#9", "--add-edge", f"{HOME}#2->{ECHO}#5", "--since-last")
+        out, _ = self.streams(p)
+        self.assertEqual(p.returncode, 2)
+        self.assertEqual(pl.one(out, "taskalisk.plan")["outcome"], "cycle")
+        self.assertEqual(pl.of(out, "taskalisk.frontier_change"), [])
+
+
 if __name__ == "__main__":
     unittest.main()
