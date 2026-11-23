@@ -1620,7 +1620,7 @@ class Outcome:
 def rollback(outcome: Outcome, repo: str, undo: dict[str, Any] | None) -> None:
     """Restore the child's body after an added edge, whatever made the run fail (doctrine 8)."""
     m = outcome.mutation
-    if not (m and m["type"] == "add_blocked_by" and undo and undo["changed"]):
+    if not (m and m["type"] == "add_blocked_by" and undo and undo["changed"]) or "rolled_back" in m:
         return
     rb_errors: list[dict[str, str]] = []
     m["rolled_back"] = gh_patch_body(repo, undo["child"], undo["old_body"], rb_errors)
@@ -1630,10 +1630,22 @@ def rollback(outcome: Outcome, repo: str, undo: dict[str, Any] | None) -> None:
          "an added edge is undone when the run that would have checked it fails")
 
 
+def rollback_failure(outcome: Outcome) -> list[Failure]:
+    """The error for an added edge that could not be removed again, on every path that tried."""
+    m = outcome.mutation
+    if not (m and m.get("rolled_back") is False):
+        return []
+    return [Failure("edge.rollback_failed", f"the added edge {m['parent']}->{m['child']} could not be removed again",
+                    {"rollback_errors": m.get("rollback_errors", [])}, "remove it by hand with edit --remove-edge", True)]
+
+
 def github_plan(repo: str, roots: list[str], min_confidence: float, add_edge: str | None, remove_edge: str | None, reason: str,
-                capacities: dict[str, int] | None, compare: bool, trust: dict[str, Any], dry_run: bool) -> Outcome:
-    """The 1.x compile, unchanged in what it computes: the same result document, the same hash."""
-    out = Outcome()
+                capacities: dict[str, int] | None, compare: bool, trust: dict[str, Any], dry_run: bool, out: Outcome | None = None) -> Outcome:
+    """The 1.x compile, unchanged in what it computes: the same result document, the same hash.
+
+    `out` is filled in place, so a caller still holds the mutation if an exception escapes. An
+    exception after an added edge's write, before the compile has admitted the edit, undoes it."""
+    out = Outcome() if out is None else out
     errors: list[dict[str, str]] = []
     undo: dict[str, Any] | None = None
     if add_edge or remove_edge:
@@ -1658,10 +1670,22 @@ def github_plan(repo: str, roots: list[str], min_confidence: float, add_edge: st
             note("dry run: wrote nothing and compiled nothing", "a dry run performs no subject-matter write (spec 4.3), and the unedited graph would not answer the question")
             return out
 
+    try:
+        return compile_github(out, repo, roots, min_confidence, capacities, compare, trust, errors, undo)
+    except BaseException:
+        if out.result is None or not out.result.get("ok"):
+            rollback(out, repo, undo)  # the compile never admitted the edit (doctrine 8)
+        raise
+
+
+def compile_github(out: Outcome, repo: str, roots: list[str], min_confidence: float, capacities: dict[str, int] | None,
+                   compare: bool, trust: dict[str, Any], errors: list[dict[str, str]], undo: dict[str, Any] | None) -> Outcome:
+    """Discovery and the compile, after any edit; an edit that does not compile is rolled back."""
     source = collect_frontmatter_dag(repo, roots, errors, trust)
     if errors:
         out.failures += [Failure.from_lookup(e, "discovery") for e in errors]
         rollback(out, repo, undo)
+        out.failures += rollback_failure(out)
         return out
     out.source = source
 
@@ -1710,10 +1734,7 @@ def github_plan(repo: str, roots: list[str], min_confidence: float, add_edge: st
                                     {"violating_issues": sorted(source["violations"], key=id_sort_key)},
                                     "fix each frontmatter.violation finding; do not dispatch from this plan", False))
     out.failures += [Failure.from_lookup(e, "relationships") for e in rel_errors]
-    m = out.mutation
-    if m and m.get("rolled_back") is False:
-        out.failures.append(Failure("edge.rollback_failed", f"the added edge {m['parent']}->{m['child']} could not be removed again",
-                                    {"rollback_errors": m.get("rollback_errors", [])}, "remove it by hand with edit --remove-edge", True))
+    out.failures += rollback_failure(out)
     return out
 
 
@@ -1950,8 +1971,17 @@ def trust_of(ns: argparse.Namespace) -> dict[str, Any]:
 
 def run_plan(run: Any, ns: argparse.Namespace, command: str) -> None:
     repo = os.path.abspath(ns.repo)
-    outcome = github_plan(repo, ns.root, ns.min_confidence, ns.add_edge, ns.remove_edge, ns.reason, parse_capacities(ns.sem_capacity),
-                          ns.compare_relationships, trust_of(ns), run.dry_run)
+    outcome = Outcome()
+    try:
+        github_plan(repo, ns.root, ns.min_confidence, ns.add_edge, ns.remove_edge, ns.reason, parse_capacities(ns.sem_capacity),
+                    ns.compare_relationships, trust_of(ns), run.dry_run, out=outcome)
+    except BaseException:
+        # The edit happened (and may have been undone): say so before the writer reports the exception.
+        if outcome.mutation is not None:
+            run.result({"event": "edge_edit", **outcome.mutation}, schema_ref("edge_edit"))
+            for f in rollback_failure(outcome):
+                f.report(run)
+        raise
     if outcome.source is not None:
         supply_observations(run, outcome.source["fetched"])
     if outcome.result is None:
