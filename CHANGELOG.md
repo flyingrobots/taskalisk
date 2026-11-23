@@ -5,11 +5,11 @@ The Taskalisk skill's releases. The skill version (the release tag, and `__versi
 under `skills/taskalisk/schemas/` has its own version and moves only when that message changes. A
 schema version under `Unreleased` is a draft and may change in place.
 
-## Unreleased
+## 2.0.0 - 2026-11-23
 
-To be released as **2.0.0**: a breaking change to the output (flyingrobots/taskalisk#70). Do not
-replace an installed copy of the skill before 2.0.0 is released: running agents read the installed
-copy's output, and the 1.x document is gone (decision 0002).
+A breaking change to the output (flyingrobots/taskalisk#70). Running agents read the installed
+copy's output, and the 1.x document is gone (decision 0002): update whatever parses it before
+replacing an installed copy.
 
 ### Changed
 
@@ -90,9 +90,13 @@ copy's output, and the 1.x document is gone (decision 0002).
   and issue bodies recorded as a declared input by id and digest only.
 - `GH_TOKEN`, `GITHUB_TOKEN`, `GH_ENTERPRISE_TOKEN` and `GITHUB_ENTERPRISE_TOKEN` are declared
   secrets; a credential inside a URL in `gh` or `git` output is redacted.
-- The vendored writer `scripts/parley_emit.py` (flyingrobots/parley@e158c51, which takes the
-  command by position, flyingrobots/parley#101), pinned by
-  `scripts/parley_emit.pin.json`, ships in the release and its `SHA256SUMS`.
+- The vendored writer `scripts/parley_emit.py` is the released `parley_emit.py` 0.1.1
+  (flyingrobots/parley tag `parley-emit-py-v0.1.1`), pinned by `scripts/parley_emit.pin.json`; it
+  ships in the release and its `SHA256SUMS`. That version takes the command by position, ends its
+  own flags at `--`, keeps receipts out of a checkout whose `.parley/.gitignore` re-includes them,
+  and publishes schema documents unscrubbed.
+- `verify` records a DAG file it could not read as an unread input under `dag_spec.unreadable`,
+  with no `inv`; a file that was read but is not JSON is recorded by the bytes read.
 
 ## 1.0.0 - 2026-11-15
 

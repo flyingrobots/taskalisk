@@ -2089,10 +2089,16 @@ def check_spec(data: Any) -> str | None:
 
 def run_verify(run: Any, ns: argparse.Namespace, command: str) -> None:
     label = STATE["dag_label"]
+    raw = None
     try:
         raw = Path(ns.verify_dag).read_bytes()
         data = json.loads(raw.decode("utf-8"))
     except (OSError, ValueError) as exc:
+        # The receipt names the bytes this run saw: the ones read, or none. Never a later reading.
+        if raw is None:
+            run.input_unreadable(label, "dag_spec.unreadable")
+        else:
+            run.input(label, raw)
         run.error("dag_spec.unreadable", f"Cannot read DAG spec: {sanitize_text(str(exc))}", remedy="pass a readable JSON file to --verify-dag",
                   retryable=False, detail={"path": label})
         return
