@@ -392,9 +392,10 @@ class Mutation(Harness):
 
     def test_owner_is_required_for_another_repository(self):
         p = self.run_dag(plan_state(), "--from-github", "--add-edge", "echo#5->#2")
-        self.assertEqual(p.returncode, 2)
+        self.assertEqual(p.returncode, 3)  # checked before the bootstrap line (Parley spec 3.2): a startup failure
+        self.assertEqual(p.stdout, "")
         self.assertIn("Invalid edge syntax", p.stderr)
-        self.assertEqual(self.error_codes(p), ["edge.syntax_invalid"])
+        self.assertEqual(json.loads(p.stderr)["code"], "startup.arguments_invalid")
 
     def test_edit_refuses_a_child_without_frontmatter(self):
         p = self.run_dag(plan_state(), "--from-github", "--add-edge", f"{HOME}#1->{BUNNY}#110")

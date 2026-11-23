@@ -149,11 +149,6 @@ class Errors(Harness):
         out, _ = self.assert_error(self.run_dag(plan_state(), "--verify-dag", str(spec)), "graph.unresolved_prerequisites")
         self.assertEqual(pl.details(out, "prerequisite.unknown"), [{"node": "a", "unknown_prerequisite": "ghost"}])
 
-    def test_bad_edge_syntax_and_self_edge(self):
-        self.assert_error(self.run_dag(plan_state(), "--from-github", "--add-edge", f"{HOME}#1-{HOME}#2"), "edge.syntax_invalid")
-        self.assert_error(self.run_dag(plan_state(), "--from-github", "--add-edge", f"{HOME}#1->{HOME}#1"), "edge.self_edge")
-        self.assertFalse(any("PATCH" in c for c in self.calls()))
-
     def test_refused_edit(self):
         state = plan_state()
         state["issues"][f"{HOME}#2"].update(author=STRANGER, association="NONE")
@@ -194,7 +189,9 @@ class Usage(Harness):
     def test_usage_errors_are_startup_failures(self):
         """OUT-06."""
         for args in (["--from-github", "--add-edge", f"{HOME}#1->{HOME}#2", "--remove-edge", f"{HOME}#1->{HOME}#2"],
-                     ["--from-github", "--sem-capacity", "gpu=0"], ["--emit-roadmap"], ["--from-github", "--frobnicate"]):
+                     ["--from-github", "--sem-capacity", "gpu=0"], ["--emit-roadmap"], ["--from-github", "--frobnicate"],
+                     ["--from-github", "--add-edge", f"{HOME}#1-{HOME}#2"], ["--from-github", "--add-edge", f"{HOME}#1->{HOME}#1"],
+                     ["--from-github", "--root", "#9"], ["--from-github", "--root", "geordi"]):
             with self.subTest(args):
                 p = self.run_dag(plan_state(), *args)
                 self.assertEqual(p.returncode, 3, p.stderr)
@@ -204,6 +201,7 @@ class Usage(Harness):
                 self.assertEqual(err[0]["code"], "startup.arguments_invalid")
                 self.assertEqual(pl.problems(err), [])
                 self.assertEqual(self.calls(), [])
+                self.assertFalse((self.tmp / ".parley" / "receipts").exists() and any((self.tmp / ".parley" / "receipts").iterdir()))
 
 
 class Discovery(Harness):
