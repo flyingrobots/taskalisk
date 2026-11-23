@@ -237,7 +237,7 @@ class Discovery(Harness):
                 out, _ = self.streams(p)
                 commands = pl.of(out, "parley.command")
                 self.assertEqual([c["name"] for c in commands], ["plan"])
-                self.assertEqual(commands[0]["secrets"], ["GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN"])
+                self.assertEqual(commands[0]["secrets"], list(GH_TOKEN_VARIABLES))
                 ids = {s["id"] for s in pl.of(out, "parley.schema")}
                 self.assertIn("taskalisk.frontier_node", ids)
                 self.assertIn("parley.error", ids)
