@@ -70,6 +70,15 @@ class BuildSkillReleaseTest(unittest.TestCase):
             return {info.filename: (bundle.read(info), info.external_attr >> 16, info.date_time)
                     for info in bundle.infolist()}
 
+    def test_the_archive_carries_the_license_and_notice(self):
+        """flyingrobots/taskalisk#72: the bundle holds the repository's Apache-2.0 text, not a link to it."""
+        members = self.members(builder.build(ROOT, self.out / "a", "1.0.0"))
+        for name in ("LICENSE", "NOTICE"):
+            self.assertIn(f"taskalisk/{name}", members)
+            self.assertEqual(members[f"taskalisk/{name}"][0], committed_file(name))
+        self.assertIn(b"Apache License", members["taskalisk/LICENSE"][0])
+        self.assertIn(b"Version 2.0, January 2004", members["taskalisk/LICENSE"][0])
+
     def test_two_builds_are_byte_identical(self):
         first = builder.build(ROOT, self.out / "a", "1.0.0")
         second = builder.build(ROOT, self.out / "b", "1.0.0")
