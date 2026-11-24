@@ -31,7 +31,8 @@ in `.parley/receipts/` (ignored by git). The contract is
 
 Each release has `taskalisk-v<version>.zip` and `SHA256SUMS`. The ZIP holds one
 `taskalisk/` folder: the skill, its compiler, the bundled frontmatter and
-threat models in `references/`, and a per-file `SHA256SUMS`.
+threat models in `references/`, `LICENSE` and `NOTICE`, and a per-file
+`SHA256SUMS`.
 
 ```sh
 gh release download v1.0.0 --repo flyingrobots/taskalisk --pattern 'taskalisk-v1.0.0.zip' --pattern SHA256SUMS
@@ -59,7 +60,8 @@ untracked file or names another link is refused. An existing output
 directory is never overwritten, and a failed build leaves none behind. The
 same revision always gives identical archive bytes.
 
-`skills/taskalisk/references/` holds symlinks. A checkout made without
+`skills/taskalisk/references/` holds symlinks, and `skills/taskalisk/LICENSE`
+and `NOTICE` are symlinks to the files at the root. A checkout made without
 symlink support, such as Git for Windows by default, shows them as one-line
 files naming their targets; read `docs/` directly there. Release archives
 always contain the documents themselves.
@@ -74,3 +76,9 @@ The tests run offline. `tests/fake_gh.py` stands in for `gh` and logs every
 call, so a test can check which repository each request went to. Every run in
 the suite has each of its lines validated against its schema, and
 `tests/fixtures/golden/` holds the 1.x output the lines must reconstruct.
+
+## License
+
+Apache-2.0. See [LICENSE](LICENSE) and [NOTICE](NOTICE). The vendored Parley
+writer, `skills/taskalisk/scripts/parley_emit.py`, is Apache-2.0 under its own
+`parley_emit.LICENSE` and `parley_emit.NOTICE` beside it.

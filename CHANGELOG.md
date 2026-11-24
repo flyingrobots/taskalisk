@@ -5,6 +5,14 @@ The Taskalisk skill's releases. The skill version (the release tag, and `__versi
 under `skills/taskalisk/schemas/` has its own version and moves only when that message changes. A
 schema version under `Unreleased` is a draft and may change in place.
 
+## 2.1.1 - 2026-11-24
+
+### Added
+
+- **A license: Apache-2.0** (flyingrobots/taskalisk#72). `LICENSE` and `NOTICE` at the root, and in
+  the release archive as `taskalisk/LICENSE` and `taskalisk/NOTICE`. Earlier releases carried no
+  license and so granted nothing. No behaviour or schema changes.
+
 ## 2.1.0 - 2026-11-23
 
 ### Added
