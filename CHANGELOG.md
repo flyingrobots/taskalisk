@@ -5,6 +5,23 @@ The Taskalisk skill's releases. The skill version (the release tag, and `__versi
 under `skills/taskalisk/schemas/` has its own version and moves only when that message changes. A
 schema version under `Unreleased` is a draft and may change in place.
 
+## 2.1.2 - 2026-11-24
+
+### Changed
+
+- **The vendored Parley writer is `parley_emit.py` 0.3.0** (flyingrobots/taskalisk#86), up from
+  0.1.1, pinned by the digest on flyingrobots/parley's release `parley-emit-py-v0.3.0`. It
+  implements Parley spec 0.2.1. What a caller of the skill can see:
+  - a line in which a declared secret was replaced, and which no longer fits its schema, is
+    withheld and the run ends with status 4 and a `redaction.schema_conflict` error; before, the
+    line was published. The secrets Taskalisk declares are the `gh` token variables, and none of
+    its messages carries one, so no ordinary run changes;
+  - an incomplete receipt is kept for 24 hours before retention may delete it;
+  - a `.parley/.gitignore` negation the writer cannot evaluate sends receipts to the state
+    directory, with a `receipt.relocated` warning.
+  No Taskalisk message, schema or exit status of its own changes. All fifteen of its schemas are
+  ones the new writer can evaluate.
+
 ## 2.1.1 - 2026-11-24
 
 ### Added

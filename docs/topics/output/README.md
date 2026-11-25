@@ -10,7 +10,7 @@ requirements and their tests are the [test plan](test-plan.md).
 ## The writer
 
 Lines are written by `skills/taskalisk/scripts/parley_emit.py`, the Python Parley writer, copied
-unmodified from flyingrobots/parley's release `parley-emit-py-v0.1.1` (version 0.1.1).
+unmodified from flyingrobots/parley's release `parley-emit-py-v0.3.0` (version 0.3.0, Parley spec 0.2.1).
 `parley_emit.pin.json` beside it records its SHA-256 and that commit, and a test fails when the
 copy's digest differs from the pin. `python3 parley_emit.py --vendor-info` prints the digest and a
 `shasum -c` command. The writer is Apache-2.0; its `LICENSE` and `NOTICE` sit beside it.

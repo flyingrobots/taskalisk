@@ -71,7 +71,7 @@ import sys
 import time
 from typing import Any, Callable
 
-__version__ = "2.1.1"
+__version__ = "2.1.2"
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 SCHEMA_DIR = SCRIPT_DIR.parent / "schemas"
