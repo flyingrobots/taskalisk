@@ -28,8 +28,8 @@ import time
 import traceback
 from typing import Any, Callable, Dict, Iterable, List, Mapping, Optional, Sequence, Set, Tuple, Union
 
-__version__ = "0.1.1"
-SPEC_VERSION = "0.2.0"
+__version__ = "0.3.0"
+SPEC_VERSION = "0.2.1"
 
 REDACTED = "[redacted]"
 SIDECAR_THRESHOLD = 65_536
@@ -45,7 +45,22 @@ _INCOMPLETE_GRACE_MS = 24 * 60 * 60 * 1000
 # occur in except by coincidence of hex, and the public identity a writer-built record carries (the
 # tool's name and version, a command's name, a schema's id and version, and the code of a diagnostic
 # the writer itself raises). A tool's own diagnostic is not writer-built; its code is scrubbed.
-DIGEST_KEYS = frozenset(["sha256", "inv", "tool", "v", "name", "id", "version", "code"])
+#
+# `op` is the same kind of thing: a bookkeeping entry's operation is one of the protocol's own
+# tokens (`create`, `append`, `delete`), which `parley.command` enumerates. A declared secret whose
+# value is `create` is a coincidence with a public word, and replacing the word would publish a
+# line the released schema rejects.
+#
+# `error` is an input descriptor's diagnostic code, whose pattern `parley.receipt.inputs` states:
+# the writer's own `input.unreadable` or `input.unread`, or a code the tool gave
+# `input_unreadable`, which is replaced by the writer's token there if it carries a declared secret
+# value. No other writer-built record has a field of that name.
+#
+# What a writer-built record's scrub leaves alone, in full: the string under each key here; its
+# numbers and booleans; its field names (`rename_keys`); the head's `redacted` object and a
+# `schema` line's document (`verbatim`); and the envelope. Every other string in it is scrubbed.
+DIGEST_KEYS = frozenset(["sha256", "inv", "tool", "v", "name", "id", "version", "code", "op", "error"])
+_INPUT_UNREADABLE = "input.unreadable"
 
 SCHEMA_IDS: Dict[str, Dict[str, str]] = {
     "bootstrap": {"id": "parley.run.bootstrap", "version": "1.1.1"},
@@ -83,18 +98,72 @@ class ParleyClosed(RuntimeError):
         super().__init__("the run has ended; nothing may follow end (spec section 3.3)")
 
 
+# The code of the error a writer reports in place of a record redaction made invalid
+# (spec section 5.3, flyingrobots/parley#131).
+REDACTION_CONFLICT_CODE = "redaction.schema_conflict"
+
+
+class ParleyRedactionConflict(RuntimeError):
+    """Raised by an emission whose record redaction made invalid under its declared schema (spec
+    section 5.3, flyingrobots/parley#131). By the time it is raised the writer has already
+    reported the structured error, written nothing of the record and taken no `seq` for it, and
+    the run will end with status 4. It is raised, like every other refusal to emit, because the
+    call has no record to return a `seq` for and the handler should not carry on as though its
+    answer had been delivered; `main` does not report it a second time. A handler may catch it
+    and continue: the status stays 4.
+
+    The message names the fields by JSON Pointer and the schema pair. It never carries a value, a
+    validator's message or any part of the schema, and its message and `pointers` are scrubbed
+    exactly as the published error line's `problem` and `detail.at` are, so it is safe to log: a
+    pointer can name a property the scrub renamed, and that name can be the secret. `schema` is
+    the declared pair as `{"id", "version"}` and `pointers` the JSON Pointer of each field that no
+    longer validates."""
+
+    def __init__(self, schema: Mapping[str, str], pointers: Sequence[str], message: str) -> None:
+        super().__init__(message)
+        self.schema: Dict[str, str] = {"id": schema["id"], "version": schema["version"]}
+        self.pointers: List[str] = list(pointers)
+
+
+# The code of the error a writer reports in place of a record redaction changed whose schema
+# document it holds and cannot evaluate (spec section 5.3, flyingrobots/parley#144).
+REDACTION_UNCHECKED_CODE = "redaction.schema_unchecked"
+
+
+class ParleyRedactionUnchecked(ParleyRedactionConflict):
+    """Raised by an emission whose record redaction changed, under a schema document the writer
+    holds and cannot evaluate: one that uses a construct outside the bounded checker. The writer
+    cannot show the redacted record is valid under its declared schema, so it withholds it exactly
+    as it withholds a conflict (spec section 5.3, flyingrobots/parley#144): the structured error
+    `redaction.schema_unchecked` is already reported, nothing of the record was written, no `seq`
+    was taken and the run will end with status 4.
+
+    It is a `ParleyRedactionConflict`, so a handler that already treats the conflict needs no
+    second branch; `pointers` is empty, because no field was shown to be invalid. `redacted` is
+    the JSON Pointer of each value the scrub replaced. `construct` names the first thing in the
+    schema the checker does not implement, as `schema_subset_gap` reports it; it is in this
+    exception and its message only, never on the error line, which carries no part of the schema.
+    It is None, and absent from the message, if it would carry a declared secret value. The
+    message never carries a value."""
+
+    def __init__(self, schema: Mapping[str, str], redacted: Sequence[str], construct: Optional[str], message: str) -> None:
+        super().__init__(schema, [], message)
+        self.redacted: List[str] = list(redacted)
+        self.construct: Optional[str] = construct
+
+
 # ---- the embedded schemas ------------------------------------------------------------------
 # Generated by scripts/sync_schemas.py from schemas/ at the repository root. Do not edit by hand.
 # BEGIN SCHEMAS
-SCHEMA_SOURCE: Dict[str, Any] = {"commit": "58c42ad4afed81a04662bd0bada901b405bdc961", "files": {
+SCHEMA_SOURCE: Dict[str, Any] = {"commit": "a2e902472f588416624717afcb4ef1e93b9857fd", "files": {
     "parley.cache.hit.schema.json": "d5b5b7a8571a3c74f99d49de1fb75b6ce056f18438d7a9f83e976dd82178c4e8",
     "parley.command.schema.json": "b496c818c7025cecb878dc50f7b97693692787609fc6da39eebd5a9da49c9782",
     "parley.end.schema.json": "bebd27748368241cef9bdbc6bff3efa48ec82a5798c246a967cf73d338318bab",
     "parley.error.schema.json": "66970cbe1a245947bbec234cf8f4cd2146a7c69fecd4f555bec3b1174f874b51",
     "parley.history.transform.schema.json": "36b03c4c80fa55f2584f61b0e2c1a3453fc2c742da8720510cb99fafd6861fcf",
-    "parley.lens.schema.json": "8718c8121c9c86e5ae54a293c6cd1b6f3fa47ac37d3095c27dc39dea98515e8c",
+    "parley.lens.schema.json": "31e5f262da10026abaee92f34f5d21a1697afc94c505e5794e216c96215aff25",
     "parley.page.schema.json": "86ef95b18e7ec1cddba6d337c99e8538da179ba69b000aecd6b683531a0594a6",
-    "parley.query.schema.json": "9ddceb209513d0d069c147c862d7bf5aa9ff93a8b0c68607b94b08d8db26ba07",
+    "parley.query.schema.json": "b7220369904ce9187b8cecc64078ba445e179c6b206b6f9f4720a2e935ed13dc",
     "parley.receipt.head.schema.json": "5728ae69c9b5abcce318bc86ecf2850936e9f09122a8f05453096b7878de79cd",
     "parley.receipt.inputs.schema.json": "dbc16f662e82e8eb5024cb1454c80fc01aae8554c918427559564f91191727f7",
     "parley.receipt.step.schema.json": "4bd32d020ec12f3ad5dba70031bbc70f5e5dc3f04dc20da7241b5103f112c3af",
@@ -111,9 +180,9 @@ _SCHEMA_TEXT: Dict[str, str] = {
     "parley.end.schema.json": "{\n  \"$schema\": \"https://json-schema.org/draft/2020-12/schema\",\n  \"$id\": \"https://flyingrobots.dev/parley/schemas/parley.end/1.0.0\",\n  \"title\": \"parley end\",\n  \"description\": \"The terminal event of a run that bootstrapped: written to stdout and to the receipt as one event. Its seq is the run's final sequence number (spec \\u00a73.3).\",\n  \"type\": \"object\",\n  \"required\": [\n    \"event\",\n    \"t\",\n    \"seq\",\n    \"run\",\n    \"status\",\n    \"receipt\",\n    \"redacted\",\n    \"_schema\"\n  ],\n  \"properties\": {\n    \"event\": {\n      \"const\": \"end\"\n    },\n    \"t\": {\n      \"type\": \"integer\",\n      \"minimum\": 0,\n      \"description\": \"POSIX time in milliseconds (spec \\u00a71.3).\"\n    },\n    \"seq\": {\n      \"type\": \"integer\",\n      \"minimum\": 1,\n      \"description\": \"The run's single counter (spec \\u00a71.3).\"\n    },\n    \"run\": {\n      \"type\": \"string\",\n      \"minLength\": 1,\n      \"description\": \"The execution this line belongs to (spec \\u00a72.1).\"\n    },\n    \"status\": {\n      \"type\": \"integer\",\n      \"minimum\": 0,\n      \"maximum\": 255,\n      \"not\": {\n        \"const\": 3\n      },\n      \"description\": \"The exit status the process is about to exit with (spec \\u00a73.4); never 3, since a run that could not bootstrap has no end.\"\n    },\n    \"receipt\": {\n      \"type\": \"string\",\n      \"pattern\": \"^/\",\n      \"minLength\": 2,\n      \"description\": \"The receipt path, absolute, as the bootstrap line declared it.\"\n    },\n    \"redacted\": {\n      \"type\": \"boolean\",\n      \"description\": \"True exactly when the head carries redacted or any redaction event was emitted (spec \\u00a73.3).\"\n    },\n    \"_schema\": {\n      \"type\": \"object\",\n      \"required\": [\n        \"id\",\n        \"version\"\n      ],\n      \"additionalProperties\": false,\n      \"properties\": {\n        \"id\": {\n          \"const\": \"parley.end\"\n        },\n        \"version\": {\n          \"const\": \"1.0.0\",\n          \"description\": \"Full validation is against the schema for this exact id and version (spec \\u00a74.5, \\u00a74.6).\"\n        }\n      }\n    }\n  }\n}\n",
     "parley.error.schema.json": "{\n  \"$schema\": \"https://json-schema.org/draft/2020-12/schema\",\n  \"$id\": \"https://flyingrobots.dev/parley/schemas/parley.error/2.0.0\",\n  \"title\": \"parley error\",\n  \"description\": \"Errors are data. measured, limit and remedy are what make an error actionable in one step rather than several.\",\n  \"type\": \"object\",\n  \"required\": [\n    \"event\",\n    \"t\",\n    \"seq\",\n    \"run\",\n    \"code\",\n    \"problem\",\n    \"_schema\"\n  ],\n  \"properties\": {\n    \"event\": {\n      \"const\": \"error\"\n    },\n    \"t\": {\n      \"type\": \"integer\",\n      \"minimum\": 0,\n      \"description\": \"POSIX time in milliseconds (spec \\u00a71.3).\"\n    },\n    \"seq\": {\n      \"type\": \"integer\",\n      \"minimum\": 1,\n      \"description\": \"The run's single counter; 0 is the bootstrap line (spec \\u00a71.3).\"\n    },\n    \"run\": {\n      \"type\": \"string\",\n      \"minLength\": 1,\n      \"description\": \"The execution this line belongs to. Required on every line so a detached line can still be attributed (spec \\u00a71.3).\"\n    },\n    \"code\": {\n      \"type\": \"string\",\n      \"pattern\": \"^[a-z0-9_]+(\\\\.[a-z0-9_]+)+$\",\n      \"description\": \"Stable identifier: two or more dot-separated segments of lowercase letters, digits and underscores (spec \\u00a76). Never a prose message.\"\n    },\n    \"problem\": {\n      \"type\": \"string\",\n      \"minLength\": 1,\n      \"description\": \"What is wrong, in one sentence.\"\n    },\n    \"measured\": {\n      \"description\": \"The value observed, when the failure is a threshold.\"\n    },\n    \"limit\": {\n      \"description\": \"The threshold that was not met.\"\n    },\n    \"remedy\": {\n      \"type\": \"string\",\n      \"description\": \"The lever to pull. Omit rather than invent one.\"\n    },\n    \"remedy_target\": {\n      \"type\": \"string\",\n      \"description\": \"What the remedy applies to.\"\n    },\n    \"retryable\": {\n      \"type\": \"boolean\"\n    },\n    \"_schema\": {\n      \"type\": \"object\",\n      \"required\": [\n        \"id\",\n        \"version\"\n      ],\n      \"additionalProperties\": false,\n      \"properties\": {\n        \"id\": {\n          \"const\": \"parley.error\"\n        },\n        \"version\": {\n          \"const\": \"2.0.0\",\n          \"description\": \"Full validation is against the schema for this exact id and version (spec \\u00a74.5, \\u00a74.6).\"\n        }\n      }\n    }\n  }\n}\n",
     "parley.history.transform.schema.json": "{\n  \"$schema\": \"https://json-schema.org/draft/2020-12/schema\",\n  \"$id\": \"https://flyingrobots.dev/parley/schemas/parley.history.transform/1.0.0\",\n  \"title\": \"parley history transform\",\n  \"description\": \"The opening line of a projected copy of a run on the shared history stream: every line of this run that follows on this stream is a projection of the receipt copy by the named transform, so a reader can tell a projected copy from a whole one and by what (spec \u00a78, informative). Stream only: the receipt copy is never projected and never carries this line.\",\n  \"type\": \"object\",\n  \"required\": [\n    \"event\",\n    \"t\",\n    \"seq\",\n    \"run\",\n    \"name\",\n    \"sha256\",\n    \"_schema\"\n  ],\n  \"properties\": {\n    \"event\": {\n      \"const\": \"history.transform\"\n    },\n    \"t\": {\n      \"type\": \"integer\",\n      \"minimum\": 0,\n      \"description\": \"POSIX time in milliseconds (spec \u00a71.3).\"\n    },\n    \"seq\": {\n      \"type\": \"integer\",\n      \"minimum\": 1,\n      \"description\": \"The run's single counter (spec \u00a71.3). This line takes a seq of its own and reaches no other sink, so the receipt copy has no line at this seq.\"\n    },\n    \"run\": {\n      \"type\": \"string\",\n      \"minLength\": 1,\n      \"description\": \"The execution whose copy on this stream is a projection (spec \u00a72.1).\"\n    },\n    \"name\": {\n      \"type\": \"string\",\n      \"minLength\": 1,\n      \"description\": \"What the transform is called: the name its configuration gave it, or the function's own name.\"\n    },\n    \"sha256\": {\n      \"type\": \"string\",\n      \"pattern\": \"^[0-9a-f]{64}$\",\n      \"description\": \"SHA-256, hex, of the transform's source text as the runtime renders it. It tells two projections apart and pins which one wrote this copy; it is not a build identity, and nothing fetches it.\"\n    },\n    \"_schema\": {\n      \"type\": \"object\",\n      \"required\": [\n        \"id\",\n        \"version\"\n      ],\n      \"additionalProperties\": false,\n      \"properties\": {\n        \"id\": {\n          \"const\": \"parley.history.transform\"\n        },\n        \"version\": {\n          \"const\": \"1.0.0\",\n          \"description\": \"Full validation is against the schema for this exact id and version (spec \u00a74.5, \u00a74.6).\"\n        }\n      }\n    }\n  }\n}\n",
-    "parley.lens.schema.json": "{\n  \"$schema\": \"https://json-schema.org/draft/2020-12/schema\",\n  \"$id\": \"https://flyingrobots.dev/parley/schemas/parley.lens/1.0.0\",\n  \"title\": \"parley lens\",\n  \"description\": \"The lens a result carries: the asker, the view, the budget and the window that produced it, the query it answers, a stated bound on what the view loses, and the records it was built from by (run, seq) (spec \u00a79, informative; decided in flyingrobots/parley#46). One lens line precedes the result it describes, so a later reader knows what it is looking at and can get back to the records.\",\n  \"type\": \"object\",\n  \"required\": [\n    \"event\",\n    \"t\",\n    \"seq\",\n    \"run\",\n    \"query\",\n    \"asker\",\n    \"view\",\n    \"budget\",\n    \"window\",\n    \"loss\",\n    \"records\",\n    \"_schema\"\n  ],\n  \"properties\": {\n    \"event\": {\n      \"const\": \"lens\"\n    },\n    \"t\": {\n      \"type\": \"integer\",\n      \"minimum\": 0,\n      \"description\": \"POSIX time in milliseconds (spec \u00a71.3).\"\n    },\n    \"seq\": {\n      \"type\": \"integer\",\n      \"minimum\": 1,\n      \"description\": \"The run's single counter (spec \u00a71.3).\"\n    },\n    \"run\": {\n      \"type\": \"string\",\n      \"minLength\": 1,\n      \"description\": \"The execution this line belongs to: the read itself, not the runs being read (spec \u00a72.1).\"\n    },\n    \"session\": {\n      \"type\": \"string\",\n      \"minLength\": 1,\n      \"description\": \"Working period spanning runs. Supplied by the caller or inherited; never invented (spec \u00a72.1).\"\n    },\n    \"query\": {\n      \"type\": \"object\",\n      \"required\": [\n        \"run\",\n        \"seq\"\n      ],\n      \"properties\": {\n        \"run\": {\n          \"type\": \"string\",\n          \"minLength\": 1\n        },\n        \"seq\": {\n          \"type\": \"integer\",\n          \"minimum\": 1\n        }\n      },\n      \"description\": \"The recorded query this result answers, by (run, seq). Required: \u00a79 records every query, and a result whose query was not recorded cannot be audited.\"\n    },\n    \"asker\": {\n      \"type\": \"object\",\n      \"required\": [\n        \"tool\"\n      ],\n      \"properties\": {\n        \"tool\": {\n          \"type\": \"string\",\n          \"minLength\": 1\n        },\n        \"cwd\": {\n          \"type\": \"string\",\n          \"pattern\": \"^/\",\n          \"minLength\": 2\n        },\n        \"task\": {\n          \"type\": \"string\",\n          \"minLength\": 1\n        }\n      },\n      \"description\": \"Echoed from the query: who the result is for.\"\n    },\n    \"view\": {\n      \"enum\": [\n        \"what-ran\",\n        \"what-failed\",\n        \"what-changed\",\n        \"how-it-decided\",\n        \"everything\"\n      ],\n      \"description\": \"The view this result is. Echoed from the query, from the same closed set.\"\n    },\n    \"budget\": {\n      \"type\": \"object\",\n      \"required\": [\n        \"records\"\n      ],\n      \"properties\": {\n        \"records\": {\n          \"type\": \"integer\",\n          \"minimum\": 1\n        },\n        \"bytes\": {\n          \"type\": \"integer\",\n          \"minimum\": 1\n        },\n        \"ms\": {\n          \"type\": \"integer\",\n          \"minimum\": 1\n        }\n      },\n      \"description\": \"The budget actually applied, including a default the query did not supply. Constitutive, not decoration: two results computed under different budgets are not comparable, so a lens without it does not identify the view that produced the result.\"\n    },\n    \"window\": {\n      \"type\": \"object\",\n      \"required\": [\n        \"from\",\n        \"to\"\n      ],\n      \"properties\": {\n        \"from\": {\n          \"type\": \"integer\",\n          \"minimum\": 0\n        },\n        \"to\": {\n          \"type\": \"integer\",\n          \"minimum\": 0\n        }\n      },\n      \"description\": \"The stretch of history the result covers, echoed from the query.\"\n    },\n    \"loss\": {\n      \"type\": \"object\",\n      \"required\": [\n        \"bound\",\n        \"excluded\"\n      ],\n      \"properties\": {\n        \"bound\": {\n          \"enum\": [\n            \"none\",\n            \"count-only\"\n          ],\n          \"description\": \"What kind of statement the loss is. none: nothing in the window was left out, so the result and the window hold the same records and excluded must be 0. Not restricted to the identity view: a view orders a result and filters none of it (flyingrobots/parley#49), so any view whose result reached the end of its order lost nothing. count-only: the excluded count is all that is known, which is a weak proxy. A measured distortion bound needs a translator to measure it and is a later version of this schema.\"\n        },\n        \"excluded\": {\n          \"type\": \"integer\",\n          \"minimum\": 0,\n          \"description\": \"How many records in the window the view did not name, whatever left them out: the budget, or a fold (folded). A proxy and a weak one: one withheld record can matter more than fifty, so this count cannot bound what the view loses.\"\n        },\n        \"folded\": {\n          \"type\": \"integer\",\n          \"minimum\": 0,\n          \"description\": \"How many of excluded were left out because their run was folded into another run of the same invocation and the same result, rather than by the budget (flyingrobots/parley#79): the records of every run a runs section's folded stands for, other than the section's own. It depends on the window alone, never on the budget, so excluded minus folded is what the budget cut. At most excluded, which a schema cannot check; a reader can. Optional so that lines written under the earlier drafts still validate; parley-read always writes it, 0 included.\"\n        }\n      },\n      \"description\": \"What the view loses against the records it was built from, so a later reader knows which questions this result can still answer and cannot mistake a digest for the whole. A digest that folded runs names fewer records than it stands for, and says how many in folded.\"\n    },\n    \"runs\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"type\": \"object\",\n        \"required\": [\n          \"run\"\n        ],\n        \"properties\": {\n          \"run\": {\n            \"type\": \"string\",\n            \"minLength\": 1,\n            \"description\": \"The run this section is about: one that records names.\"\n          },\n          \"tool\": {\n            \"type\": \"string\",\n            \"minLength\": 1,\n            \"description\": \"The run's receipt head's tool (spec \u00a75), as the loader read it.\"\n          },\n          \"v\": {\n            \"type\": \"string\",\n            \"minLength\": 1,\n            \"description\": \"The run's receipt head's v (spec \u00a75), as the loader read it.\"\n          },\n          \"argv\": {\n            \"type\": \"array\",\n            \"items\": {\n              \"type\": \"string\"\n            },\n            \"description\": \"The run's receipt head's argv (spec \u00a75), already redacted there (spec \u00a75.3). Never cut part-way: when it does not fit the section's bound it is dropped whole and named in dropped.\"\n          },\n          \"resolved\": {\n            \"type\": \"object\",\n            \"description\": \"The run's receipt head's resolved (spec \u00a75): its interpretation after defaults, environment and path resolution, copied whole and already redacted there (spec \u00a75.3), so a reader can tell, say, which commits a run compared without opening the head (flyingrobots/parley#90). Its shape is the tool's; the reader chooses none of its keys. Never cut part-way: when it does not fit the section's bound it is dropped whole, first of all fields, and named in dropped. Absent when the window does not hold the head or the head's resolved is not an object.\"\n          },\n          \"inv\": {\n            \"type\": \"string\",\n            \"minLength\": 1,\n            \"description\": \"The run's inv (spec \u00a72.2): the head's, or else the window's receipt.inputs for the run. Absent when neither carries one; never a placeholder.\"\n          },\n          \"outcome\": {\n            \"enum\": [\n              \"failed\",\n              \"undetermined\",\n              \"succeeded\"\n            ],\n            \"description\": \"What the records in the window establish about the run: failed for an error, a startup failure or a non-zero end; succeeded for an end of 0 and nothing against it; undetermined otherwise (spec \u00a71.2a). It is the window's verdict, not the digest's: a run whose end the bound cut is still succeeded. Absent when the reader established none.\"\n          },\n          \"reason\": {\n            \"enum\": [\n              \"no_end_in_window\",\n              \"end_status_unusable\"\n            ],\n            \"description\": \"Why the outcome is undetermined, present exactly when it is. no_end_in_window: the window holds no end for the run, which cannot say whether the run ended later or never did. end_status_unusable: the window holds an end whose status is not a number.\"\n          },\n          \"head\": {\n            \"const\": \"not_in_window\",\n            \"description\": \"Present when the window does not hold the run's receipt head, so tool, v and argv are not known from it. Absent when it does.\"\n          },\n          \"folded\": {\n            \"type\": \"object\",\n            \"required\": [\n              \"others\",\n              \"records\"\n            ],\n            \"properties\": {\n              \"others\": {\n                \"type\": \"integer\",\n                \"minimum\": 1,\n                \"description\": \"How many other runs this section stands for, this run excluded: the section reads as this run plus others like it, so it stands for others + 1 runs (flyingrobots/parley#100).\"\n              },\n              \"records\": {\n                \"type\": \"integer\",\n                \"minimum\": 0,\n                \"description\": \"How many records of those other runs, in the window, the fold left out of records, this run's own excluded; each is counted in loss.excluded and loss.folded.\"\n              }\n            },\n            \"description\": \"Present when this run stands for other runs of the same invocation and the same result (flyingrobots/parley#79): runs with an equal inv (spec \u00a72.2) whose outcome, reason, end status and error, warning and startup-failure codes are equal too. This run is the most recent of them, and the others' records are not named. A run with no inv, and a redacted run, never stands for another (spec \u00a72.3). A run that stands for no other has no folded. The folded runs' ids are not listed, to keep the line small: a read of a window that holds one of them without this run, or a load of the window, finds them. Never dropped to fit the section's bound.\"\n          },\n          \"dropped\": {\n            \"type\": \"array\",\n            \"minItems\": 1,\n            \"items\": {\n              \"enum\": [\n                \"resolved\",\n                \"argv\",\n                \"inv\",\n                \"v\",\n                \"tool\"\n              ]\n            },\n            \"description\": \"The fields left out, whole, to bound the section's serialised JSON, in the order they were dropped, each at most once: resolved, then argv, then inv, then v, then tool. The bound is the reader's to state (parley-read: 512 UTF-8 bytes); a string or an object is never cut part-way.\",\n            \"maxItems\": 5\n          }\n        },\n        \"if\": {\n          \"type\": \"object\",\n          \"required\": [\n            \"outcome\"\n          ],\n          \"properties\": {\n            \"outcome\": {\n              \"const\": \"undetermined\"\n            }\n          }\n        },\n        \"then\": {\n          \"type\": \"object\",\n          \"required\": [\n            \"reason\"\n          ],\n          \"properties\": {\n            \"reason\": {\n              \"enum\": [\n                \"no_end_in_window\",\n                \"end_status_unusable\"\n              ]\n            }\n          }\n        },\n        \"else\": {\n          \"not\": {\n            \"type\": \"object\",\n            \"required\": [\n              \"reason\"\n            ],\n            \"properties\": {\n              \"reason\": {\n                \"enum\": [\n                  \"no_end_in_window\",\n                  \"end_status_unusable\"\n                ]\n              }\n            }\n          }\n        }\n      },\n      \"description\": \"One section per run that records names, in the order records first names it, and none for any other run (flyingrobots/parley#83). It states once what is true of every record of the run \u2014 which invocation it was and what became of it \u2014 rather than on each entry. Read off the window's records when the lens is built, so it cannot drift from the head it summarises. Part of the line budget.bytes bounds. Optional so that lines written under the earlier drafts still validate; parley-read always writes it.\"\n    },\n    \"records\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"type\": \"object\",\n        \"required\": [\n          \"run\",\n          \"seq\"\n        ],\n        \"properties\": {\n          \"run\": {\n            \"type\": \"string\",\n            \"minLength\": 1\n          },\n          \"seq\": {\n            \"type\": \"integer\",\n            \"minimum\": 0,\n            \"description\": \"0 for a bootstrap or startup-failure line (spec \u00a71.3).\"\n          },\n          \"event\": {\n            \"type\": \"string\",\n            \"minLength\": 1,\n            \"description\": \"The named record's event token as the loader read it, a tool's own token included verbatim (flyingrobots/parley#77). Absent when the record carries none; never filled in.\"\n          },\n          \"t\": {\n            \"type\": \"integer\",\n            \"minimum\": 0,\n            \"description\": \"The named record's POSIX time in milliseconds (spec \u00a71.3) as the loader read it. Absent when the record has no usable t; never a made-up one.\"\n          },\n          \"code\": {\n            \"type\": \"string\",\n            \"pattern\": \"^[a-z0-9_]+(\\\\.[a-z0-9_]+)+$\",\n            \"description\": \"On an error or warning entry, the record's code (spec \u00a76), so failures of one case read as one without opening them (flyingrobots/parley#83). Absent on any other record, and on a code that is not spec \u00a76's shape; never filled in.\"\n          }\n        }\n      },\n      \"description\": \"The records this result was built from, by (run, seq), never more than budget.records of them. Stored rather than recomputed: projecting down to a result is cheap and expanding back up may be impossible within a budget, so the way back has to be written here. A result is built from records, never from another result. Each entry may also carry a fixed summary of the record it names \u2014 event, t and, on an error or warning, its code \u2014 so a reader can choose what to open without opening it (flyingrobots/parley#77, flyingrobots/parley#83). What is true of the entry's whole run, its identity and outcome, is stated once in runs. The summary is read off the record when the lens is built and is part of the line budget.bytes bounds.\"\n    },\n    \"_schema\": {\n      \"type\": \"object\",\n      \"required\": [\n        \"id\",\n        \"version\"\n      ],\n      \"additionalProperties\": false,\n      \"properties\": {\n        \"id\": {\n          \"const\": \"parley.lens\"\n        },\n        \"version\": {\n          \"const\": \"1.0.0\",\n          \"description\": \"Full validation is against the schema for this exact id and version (spec \u00a74.5, \u00a74.6).\"\n        }\n      }\n    }\n  },\n  \"if\": {\n    \"type\": \"object\",\n    \"required\": [\n      \"loss\"\n    ],\n    \"properties\": {\n      \"loss\": {\n        \"type\": \"object\",\n        \"required\": [\n          \"bound\"\n        ],\n        \"properties\": {\n          \"bound\": {\n            \"const\": \"none\"\n          }\n        }\n      }\n    }\n  },\n  \"then\": {\n    \"type\": \"object\",\n    \"properties\": {\n      \"loss\": {\n        \"type\": \"object\",\n        \"properties\": {\n          \"excluded\": {\n            \"const\": 0\n          },\n          \"folded\": {\n            \"const\": 0\n          }\n        }\n      }\n    }\n  }\n}\n",
+    "parley.lens.schema.json": "{\n  \"$schema\": \"https://json-schema.org/draft/2020-12/schema\",\n  \"$id\": \"https://flyingrobots.dev/parley/schemas/parley.lens/1.1.0\",\n  \"title\": \"parley lens\",\n  \"description\": \"The lens a result carries: the asker, the view, the budget and the window that produced it, the query it answers, a stated bound on what the view loses, and the records it was built from by (run, seq) (spec \u00a79, informative; decided in flyingrobots/parley#46). One lens line precedes the result it describes, so a later reader knows what it is looking at and can get back to the records.\",\n  \"type\": \"object\",\n  \"required\": [\n    \"event\",\n    \"t\",\n    \"seq\",\n    \"run\",\n    \"query\",\n    \"asker\",\n    \"view\",\n    \"budget\",\n    \"window\",\n    \"loss\",\n    \"records\",\n    \"_schema\"\n  ],\n  \"properties\": {\n    \"event\": {\n      \"const\": \"lens\"\n    },\n    \"t\": {\n      \"type\": \"integer\",\n      \"minimum\": 0,\n      \"description\": \"POSIX time in milliseconds (spec \u00a71.3).\"\n    },\n    \"seq\": {\n      \"type\": \"integer\",\n      \"minimum\": 1,\n      \"description\": \"The run's single counter (spec \u00a71.3).\"\n    },\n    \"run\": {\n      \"type\": \"string\",\n      \"minLength\": 1,\n      \"description\": \"The execution this line belongs to: the read itself, not the runs being read (spec \u00a72.1).\"\n    },\n    \"session\": {\n      \"type\": \"string\",\n      \"minLength\": 1,\n      \"description\": \"Working period spanning runs. Supplied by the caller or inherited; never invented (spec \u00a72.1).\"\n    },\n    \"query\": {\n      \"type\": \"object\",\n      \"required\": [\n        \"run\",\n        \"seq\"\n      ],\n      \"properties\": {\n        \"run\": {\n          \"type\": \"string\",\n          \"minLength\": 1\n        },\n        \"seq\": {\n          \"type\": \"integer\",\n          \"minimum\": 1\n        }\n      },\n      \"description\": \"The recorded query this result answers, by (run, seq). Required: \u00a79 records every query, and a result whose query was not recorded cannot be audited.\"\n    },\n    \"asker\": {\n      \"type\": \"object\",\n      \"required\": [\n        \"tool\"\n      ],\n      \"properties\": {\n        \"tool\": {\n          \"type\": \"string\",\n          \"minLength\": 1\n        },\n        \"cwd\": {\n          \"type\": \"string\",\n          \"pattern\": \"^/\",\n          \"minLength\": 2\n        },\n        \"task\": {\n          \"type\": \"string\",\n          \"minLength\": 1\n        }\n      },\n      \"description\": \"Echoed from the query: who the result is for.\"\n    },\n    \"view\": {\n      \"enum\": [\n        \"what-ran\",\n        \"what-failed\",\n        \"what-changed\",\n        \"how-it-decided\",\n        \"everything\"\n      ],\n      \"description\": \"The view this result is. Echoed from the query, from the same closed set.\"\n    },\n    \"budget\": {\n      \"type\": \"object\",\n      \"required\": [\n        \"records\"\n      ],\n      \"properties\": {\n        \"records\": {\n          \"type\": \"integer\",\n          \"minimum\": 1\n        },\n        \"bytes\": {\n          \"type\": \"integer\",\n          \"minimum\": 1\n        },\n        \"ms\": {\n          \"type\": \"integer\",\n          \"minimum\": 1\n        }\n      },\n      \"description\": \"The budget actually applied, including a default the query did not supply. Constitutive, not decoration: two results computed under different budgets are not comparable, so a lens without it does not identify the view that produced the result.\"\n    },\n    \"window\": {\n      \"type\": \"object\",\n      \"required\": [\n        \"from\",\n        \"to\"\n      ],\n      \"properties\": {\n        \"from\": {\n          \"type\": \"integer\",\n          \"minimum\": 0\n        },\n        \"to\": {\n          \"type\": \"integer\",\n          \"minimum\": 0\n        }\n      },\n      \"description\": \"The stretch of history the result covers, echoed from the query.\"\n    },\n    \"fold\": {\n      \"type\": \"boolean\",\n      \"description\": \"Echoed from the query, present exactly when the query states it (flyingrobots/parley#133). false: the read folded nothing, so loss.folded is 0 and no runs section carries folded because none was allowed to, not because no runs repeated. Two results over one window, one folded and one not, are not comparable, so a lens says which it is.\"\n    },\n    \"loss\": {\n      \"type\": \"object\",\n      \"required\": [\n        \"bound\",\n        \"excluded\"\n      ],\n      \"properties\": {\n        \"bound\": {\n          \"enum\": [\n            \"none\",\n            \"count-only\"\n          ],\n          \"description\": \"What kind of statement the loss is. none: nothing in the window was left out, so the result and the window hold the same records and excluded must be 0. Not restricted to the identity view: a view orders a result and filters none of it (flyingrobots/parley#49), so any view whose result reached the end of its order lost nothing. count-only: the excluded count is all that is known, which is a weak proxy. A measured distortion bound needs a translator to measure it and is a later version of this schema.\"\n        },\n        \"excluded\": {\n          \"type\": \"integer\",\n          \"minimum\": 0,\n          \"description\": \"How many records in the window the view did not name, whatever left them out: the budget, or a fold (folded). A proxy and a weak one: one withheld record can matter more than fifty, so this count cannot bound what the view loses.\"\n        },\n        \"folded\": {\n          \"type\": \"integer\",\n          \"minimum\": 0,\n          \"description\": \"How many of excluded were left out because their run was folded into another run of the same invocation and the same result, rather than by the budget (flyingrobots/parley#79): the records of every run the fold left out. A runs section's folded.records counts those its own run stands for, so the sections' folded.records sum to this number unless the budget left a run that stands for others out of records; that run has no section, so the sum is then smaller and this count is all the lens says of its fold. It depends on the window, the view and fold, never on the budget, so excluded minus folded is what the budget cut. At most excluded, which a schema cannot check; a reader can. Optional so that lines written under the earlier drafts still validate; parley-read always writes it, 0 included.\"\n        }\n      },\n      \"description\": \"What the view loses against the records it was built from, so a later reader knows which questions this result can still answer and cannot mistake a digest for the whole. A digest that folded runs names fewer records than it stands for, and says how many in folded.\"\n    },\n    \"runs\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"type\": \"object\",\n        \"required\": [\n          \"run\"\n        ],\n        \"properties\": {\n          \"run\": {\n            \"type\": \"string\",\n            \"minLength\": 1,\n            \"description\": \"The run this section is about: one that records names.\"\n          },\n          \"tool\": {\n            \"type\": \"string\",\n            \"minLength\": 1,\n            \"description\": \"The run's receipt head's tool (spec \u00a75), as the loader read it.\"\n          },\n          \"v\": {\n            \"type\": \"string\",\n            \"minLength\": 1,\n            \"description\": \"The run's receipt head's v (spec \u00a75), as the loader read it.\"\n          },\n          \"argv\": {\n            \"type\": \"array\",\n            \"items\": {\n              \"type\": \"string\"\n            },\n            \"description\": \"The run's receipt head's argv (spec \u00a75), already redacted there (spec \u00a75.3). Never cut part-way: when it does not fit the section's bound it is dropped whole and named in dropped.\"\n          },\n          \"resolved\": {\n            \"type\": \"object\",\n            \"description\": \"The run's receipt head's resolved (spec \u00a75): its interpretation after defaults, environment and path resolution, copied whole and already redacted there (spec \u00a75.3), so a reader can tell, say, which commits a run compared without opening the head (flyingrobots/parley#90). Its shape is the tool's; the reader chooses none of its keys. Never cut part-way: when it does not fit the section's bound it is dropped whole, first of all fields, and named in dropped. Absent when the window does not hold the head or the head's resolved is not an object.\"\n          },\n          \"inv\": {\n            \"type\": \"string\",\n            \"minLength\": 1,\n            \"description\": \"The run's inv (spec \u00a72.2): the head's, or else the window's receipt.inputs for the run. Absent when neither carries one; never a placeholder.\"\n          },\n          \"outcome\": {\n            \"enum\": [\n              \"failed\",\n              \"undetermined\",\n              \"succeeded\"\n            ],\n            \"description\": \"What the records in the window establish about the run: failed for an error, a startup failure or a non-zero end; succeeded for an end of 0 and nothing against it; undetermined otherwise (spec \u00a71.2a). It is the window's verdict, not the digest's: a run whose end the bound cut is still succeeded. Absent when the reader established none.\"\n          },\n          \"reason\": {\n            \"enum\": [\n              \"no_end_in_window\",\n              \"end_status_unusable\"\n            ],\n            \"description\": \"Why the outcome is undetermined, present exactly when it is. no_end_in_window: the window holds no end for the run, which cannot say whether the run ended later or never did. end_status_unusable: the window holds an end whose status is not a number.\"\n          },\n          \"head\": {\n            \"const\": \"not_in_window\",\n            \"description\": \"Present when the window does not hold the run's receipt head, so tool, v and argv are not known from it. Absent when it does.\"\n          },\n          \"folded\": {\n            \"type\": \"object\",\n            \"required\": [\n              \"others\",\n              \"records\"\n            ],\n            \"properties\": {\n              \"others\": {\n                \"type\": \"integer\",\n                \"minimum\": 1,\n                \"description\": \"How many other runs this section stands for, this run excluded: the section reads as this run plus others like it, so it stands for others + 1 runs (flyingrobots/parley#100).\"\n              },\n              \"records\": {\n                \"type\": \"integer\",\n                \"minimum\": 0,\n                \"description\": \"How many records of those other runs, in the window, the fold left out of records, this run's own excluded; each is counted in loss.excluded and loss.folded.\"\n              },\n              \"stands_for\": {\n                \"type\": \"array\",\n                \"minItems\": 1,\n                \"items\": {\n                  \"type\": \"string\",\n                  \"minLength\": 1\n                },\n                \"description\": \"The run ids of the other runs this section stands for, this run excluded, most recent first by the rule that makes this run the most recent of them: the latest t among each run's records in the window, then the greater run id, a run with no dated record last (flyingrobots/parley#133). It names runs, not records: the others' seq numbers are not listed and need not be this run's, so their records are read under a window that holds them with fold false, or opened by (run, seq) once their seq is known. As many as others, which a schema cannot check; a reader can. Optional, as every field a minor version adds is (spec \u00a74.5); parley-read always writes it, never shortens it, never drops it to fit the section's bound and does not count it against that bound. It is part of the line budget.bytes bounds: when the line cannot hold it whole, no record of this run is named and this section is absent, and loss.folded still counts the fold.\"\n              }\n            },\n            \"description\": \"Present when this run stands for other runs of the same invocation and the same result (flyingrobots/parley#79): runs with an equal inv (spec \u00a72.2) whose outcome, reason, end status, error, warning and startup-failure codes and head's resolved are equal too, and whose result records are equal one for one in seq order: the tool's own records and any other record the protocol does not define, each page, each sidecar by its bytes and sha256, and a read's own lens without its session and the query it names, compared without the envelope's t, seq and run (flyingrobots/parley#133). A top-level session on a record of the tool's own or on a page is that record's own field and is compared (flyingrobots/parley#146). Under a view whose surface holds decision records those are equal as well, compared the same way: receipt.step under how-it-decided and everything, cache.hit under those two and what-ran. A decision record of a kind the view's surface does not hold is not compared, so runs that differ only in such records still stand for one another. Every comparison here is of the records the window holds: two runs whose results in the window differ are a divergence (spec \u00a72.3) and do not stand for one another, and a run only partly inside the window is compared by the part the window holds, so runs that stand for one another under one window can differ under a wider one. A section marks a run the window did not hold whole in two cases: head not_in_window when the window does not hold the run's head, and outcome undetermined with reason no_end_in_window when it holds no end for the run and no failure either; a run the window shows to have failed is failed with or without its end, so its section does not say whether the window holds the end. This run is the most recent of them, by the latest t among each run's records in the window and, where those are equal, the greater run id; the others' records are not named, and stands_for lists the others' run ids. A run with no inv in the window, a run the window shows to be redacted (its head carries redacted, an end in the window states redacted true, or the window holds a redaction event of the run), and a run the window does not show to be unredacted, because it holds neither the run's receipt head nor an end that states redacted false, do not stand for another (spec \u00a71.2a, \u00a72.3). A run that stands for no other has no folded. Never dropped to fit the section's bound.\"\n          },\n          \"dropped\": {\n            \"type\": \"array\",\n            \"minItems\": 1,\n            \"items\": {\n              \"enum\": [\n                \"resolved\",\n                \"argv\",\n                \"inv\",\n                \"v\",\n                \"tool\"\n              ]\n            },\n            \"description\": \"The fields left out, whole, to bound the section's serialised JSON, in the order they were dropped, each at most once: resolved, then argv, then inv, then v, then tool. The bound is the reader's to state (parley-read: 512 UTF-8 bytes); a string or an object is never cut part-way.\",\n            \"maxItems\": 5\n          }\n        },\n        \"if\": {\n          \"type\": \"object\",\n          \"required\": [\n            \"outcome\"\n          ],\n          \"properties\": {\n            \"outcome\": {\n              \"const\": \"undetermined\"\n            }\n          }\n        },\n        \"then\": {\n          \"type\": \"object\",\n          \"required\": [\n            \"reason\"\n          ],\n          \"properties\": {\n            \"reason\": {\n              \"enum\": [\n                \"no_end_in_window\",\n                \"end_status_unusable\"\n              ]\n            }\n          }\n        },\n        \"else\": {\n          \"not\": {\n            \"type\": \"object\",\n            \"required\": [\n              \"reason\"\n            ],\n            \"properties\": {\n              \"reason\": {\n                \"enum\": [\n                  \"no_end_in_window\",\n                  \"end_status_unusable\"\n                ]\n              }\n            }\n          }\n        }\n      },\n      \"description\": \"One section per run that records names, in the order records first names it, and none for any other run (flyingrobots/parley#83). It states once what is true of every record of the run \u2014 which invocation it was and what became of it \u2014 rather than on each entry. Read off the window's records when the lens is built, so it cannot drift from the head it summarises. Part of the line budget.bytes bounds. Optional so that lines written under the earlier drafts still validate; parley-read always writes it.\"\n    },\n    \"records\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"type\": \"object\",\n        \"required\": [\n          \"run\",\n          \"seq\"\n        ],\n        \"properties\": {\n          \"run\": {\n            \"type\": \"string\",\n            \"minLength\": 1\n          },\n          \"seq\": {\n            \"type\": \"integer\",\n            \"minimum\": 0,\n            \"description\": \"0 for a bootstrap or startup-failure line (spec \u00a71.3).\"\n          },\n          \"event\": {\n            \"type\": \"string\",\n            \"minLength\": 1,\n            \"description\": \"The named record's event token as the loader read it, a tool's own token included verbatim (flyingrobots/parley#77). Absent when the record carries none; never filled in.\"\n          },\n          \"t\": {\n            \"type\": \"integer\",\n            \"minimum\": 0,\n            \"description\": \"The named record's POSIX time in milliseconds (spec \u00a71.3) as the loader read it. Absent when the record has no usable t; never a made-up one.\"\n          },\n          \"code\": {\n            \"type\": \"string\",\n            \"pattern\": \"^[a-z0-9_]+(\\\\.[a-z0-9_]+)+$\",\n            \"description\": \"On an error or warning entry, the record's code (spec \u00a76), so failures of one case read as one without opening them (flyingrobots/parley#83). Absent on any other record, and on a code that is not spec \u00a76's shape; never filled in.\"\n          }\n        }\n      },\n      \"description\": \"The records this result was built from, by (run, seq), never more than budget.records of them. Stored rather than recomputed: projecting down to a result is cheap and expanding back up may be impossible within a budget, so the way back has to be written here. A result is built from records, never from another result. Each entry may also carry a fixed summary of the record it names \u2014 event, t and, on an error or warning, its code \u2014 so a reader can choose what to open without opening it (flyingrobots/parley#77, flyingrobots/parley#83). What is true of the entry's whole run, its identity and outcome, is stated once in runs. The summary is read off the record when the lens is built and is part of the line budget.bytes bounds.\"\n    },\n    \"_schema\": {\n      \"type\": \"object\",\n      \"required\": [\n        \"id\",\n        \"version\"\n      ],\n      \"additionalProperties\": false,\n      \"properties\": {\n        \"id\": {\n          \"const\": \"parley.lens\"\n        },\n        \"version\": {\n          \"const\": \"1.1.0\",\n          \"description\": \"Full validation is against the schema for this exact id and version (spec \u00a74.5, \u00a74.6).\"\n        }\n      }\n    }\n  },\n  \"if\": {\n    \"type\": \"object\",\n    \"required\": [\n      \"loss\"\n    ],\n    \"properties\": {\n      \"loss\": {\n        \"type\": \"object\",\n        \"required\": [\n          \"bound\"\n        ],\n        \"properties\": {\n          \"bound\": {\n            \"const\": \"none\"\n          }\n        }\n      }\n    }\n  },\n  \"then\": {\n    \"type\": \"object\",\n    \"properties\": {\n      \"loss\": {\n        \"type\": \"object\",\n        \"properties\": {\n          \"excluded\": {\n            \"const\": 0\n          },\n          \"folded\": {\n            \"const\": 0\n          }\n        }\n      }\n    }\n  }\n}\n",
     "parley.page.schema.json": "{\n  \"$schema\": \"https://json-schema.org/draft/2020-12/schema\",\n  \"$id\": \"https://flyingrobots.dev/parley/schemas/parley.page/1.0.0\",\n  \"title\": \"parley page\",\n  \"description\": \"One page of unbounded output; cursor required when has_more is true (spec \\u00a77.2).\",\n  \"type\": \"object\",\n  \"required\": [\n    \"event\",\n    \"t\",\n    \"seq\",\n    \"run\",\n    \"has_more\",\n    \"_schema\"\n  ],\n  \"properties\": {\n    \"event\": {\n      \"const\": \"page\"\n    },\n    \"t\": {\n      \"type\": \"integer\",\n      \"minimum\": 0,\n      \"description\": \"POSIX time in milliseconds (spec \\u00a71.3).\"\n    },\n    \"seq\": {\n      \"type\": \"integer\",\n      \"minimum\": 1,\n      \"description\": \"The run's single counter (spec \\u00a71.3).\"\n    },\n    \"run\": {\n      \"type\": \"string\",\n      \"minLength\": 1,\n      \"description\": \"The execution this line belongs to (spec \\u00a72.1).\"\n    },\n    \"cursor\": {\n      \"type\": \"string\",\n      \"minLength\": 1,\n      \"description\": \"Opaque to the caller.\"\n    },\n    \"has_more\": {\n      \"type\": \"boolean\"\n    },\n    \"_schema\": {\n      \"type\": \"object\",\n      \"required\": [\n        \"id\",\n        \"version\"\n      ],\n      \"additionalProperties\": false,\n      \"properties\": {\n        \"id\": {\n          \"const\": \"parley.page\"\n        },\n        \"version\": {\n          \"const\": \"1.0.0\",\n          \"description\": \"Full validation is against the schema for this exact id and version (spec \\u00a74.5, \\u00a74.6).\"\n        }\n      }\n    }\n  },\n  \"if\": {\n    \"type\": \"object\",\n    \"properties\": {\n      \"has_more\": {\n        \"const\": true\n      }\n    }\n  },\n  \"then\": {\n    \"type\": \"object\",\n    \"required\": [\n      \"cursor\"\n    ],\n    \"properties\": {\n      \"cursor\": {\n        \"type\": \"string\",\n        \"minLength\": 1\n      }\n    }\n  }\n}\n",
-    "parley.query.schema.json": "{\n  \"$schema\": \"https://json-schema.org/draft/2020-12/schema\",\n  \"$id\": \"https://flyingrobots.dev/parley/schemas/parley.query/1.0.0\",\n  \"title\": \"parley query\",\n  \"description\": \"A read against the history, recorded as an event: the asker it is for, the view it wants, the budget it will accept and the window it covers (spec \u00a79, informative; the representation is decided in flyingrobots/parley#46 and read against the observer-geometry treatment in docs/topics/related-work/observer-geometry.md). The envelope's run is the read's own run; asker is who the read is for. A drill-down, which opens records a lens named, is the same message with records stating which.\",\n  \"type\": \"object\",\n  \"required\": [\n    \"event\",\n    \"t\",\n    \"seq\",\n    \"run\",\n    \"asker\",\n    \"view\",\n    \"budget\",\n    \"window\",\n    \"_schema\"\n  ],\n  \"properties\": {\n    \"event\": {\n      \"const\": \"query\"\n    },\n    \"t\": {\n      \"type\": \"integer\",\n      \"minimum\": 0,\n      \"description\": \"POSIX time in milliseconds (spec \u00a71.3).\"\n    },\n    \"seq\": {\n      \"type\": \"integer\",\n      \"minimum\": 1,\n      \"description\": \"The run's single counter (spec \u00a71.3).\"\n    },\n    \"run\": {\n      \"type\": \"string\",\n      \"minLength\": 1,\n      \"description\": \"The execution this line belongs to: the read itself, not the runs being read (spec \u00a72.1).\"\n    },\n    \"session\": {\n      \"type\": \"string\",\n      \"minLength\": 1,\n      \"description\": \"Working period spanning runs. Supplied by the caller or inherited; never invented (spec \u00a72.1).\"\n    },\n    \"asker\": {\n      \"type\": \"object\",\n      \"required\": [\n        \"tool\"\n      ],\n      \"properties\": {\n        \"tool\": {\n          \"type\": \"string\",\n          \"minLength\": 1,\n          \"description\": \"The calling program, named as in spec \u00a72.1. Established from the caller's own identity or supplied as one argument; never invented, so a read that cannot establish it is refused.\"\n        },\n        \"cwd\": {\n          \"type\": \"string\",\n          \"pattern\": \"^/\",\n          \"minLength\": 2,\n          \"description\": \"Absolute POSIX working directory the read was made from. Inferred from the process; omitted when it is not meaningful.\"\n        },\n        \"task\": {\n          \"type\": \"string\",\n          \"minLength\": 1,\n          \"description\": \"The caller's current task id, supplied by the caller and never inferred (flyingrobots/parley#61); omitted when the caller does not state it. Not the session: a session is a working period, a task is a unit of work inside one.\"\n        }\n      },\n      \"description\": \"Who the read is for, and the context the budget is inferred from. The asker is not the view: two askers requesting the same view under the same budget get the same answer.\"\n    },\n    \"view\": {\n      \"enum\": [\n        \"what-ran\",\n        \"what-failed\",\n        \"what-changed\",\n        \"how-it-decided\",\n        \"everything\"\n      ],\n      \"description\": \"The shape of the answer, one token from a closed set. Never inferred: there is no privileged view, so a missing view is refused rather than guessed. Adding a token is a version of this schema.\"\n    },\n    \"budget\": {\n      \"type\": \"object\",\n      \"required\": [\n        \"records\"\n      ],\n      \"properties\": {\n        \"records\": {\n          \"type\": \"integer\",\n          \"minimum\": 1,\n          \"description\": \"The most records the answer may name. Required: a view with no bound collapses into \\\"return every record\\\".\"\n        },\n        \"bytes\": {\n          \"type\": \"integer\",\n          \"minimum\": 1,\n          \"description\": \"The most bytes the answer may occupy.\"\n        },\n        \"ms\": {\n          \"type\": \"integer\",\n          \"minimum\": 1,\n          \"description\": \"The most wall-clock milliseconds the read may spend.\"\n        }\n      },\n      \"description\": \"The size of answer the asker will accept. One documented default applies when it is not supplied, and the applied budget is carried verbatim by the result's lens, so a default is never invisible.\"\n    },\n    \"window\": {\n      \"type\": \"object\",\n      \"required\": [\n        \"from\",\n        \"to\"\n      ],\n      \"properties\": {\n        \"from\": {\n          \"type\": \"integer\",\n          \"minimum\": 0,\n          \"description\": \"Inclusive lower bound of the window, POSIX time in milliseconds. 0 means \\\"from the start of the history\\\".\"\n        },\n        \"to\": {\n          \"type\": \"integer\",\n          \"minimum\": 0,\n          \"description\": \"Inclusive upper bound of the window, POSIX time in milliseconds. Never below from.\"\n        }\n      },\n      \"description\": \"The stretch of history the read covers, always stated as two timestamps and echoed by the result's lens.\"\n    },\n    \"note\": {\n      \"type\": \"string\",\n      \"minLength\": 1,\n      \"description\": \"Free text from the asker, recorded and never parsed. Nothing in the answer branches on it.\"\n    },\n    \"records\": {\n      \"type\": \"array\",\n      \"minItems\": 1,\n      \"items\": {\n        \"type\": \"object\",\n        \"required\": [\n          \"run\",\n          \"seq\"\n        ],\n        \"properties\": {\n          \"run\": {\n            \"type\": \"string\",\n            \"minLength\": 1\n          },\n          \"seq\": {\n            \"type\": \"integer\",\n            \"minimum\": 0,\n            \"description\": \"0 for a bootstrap or startup-failure line (spec \u00a71.3).\"\n          }\n        }\n      },\n      \"description\": \"Present only on a drill-down: the records the read asks for by (run, seq), the identity a parley.lens names them by, in the order asked (flyingrobots/parley#51). A drill-down answers with exactly these records in full, a sidecar's stored record included, and an outcome per id; the view and window are recorded and select nothing, budget.records is the number of ids asked, and budget.bytes, when stated, bounds the records opened: whole records in the order asked while their summed size stays within it, and an over_budget outcome with no contents for each id past it (flyingrobots/parley#78). Absent on a read that answers with a digest.\"\n    },\n    \"_schema\": {\n      \"type\": \"object\",\n      \"required\": [\n        \"id\",\n        \"version\"\n      ],\n      \"additionalProperties\": false,\n      \"properties\": {\n        \"id\": {\n          \"const\": \"parley.query\"\n        },\n        \"version\": {\n          \"const\": \"1.0.0\",\n          \"description\": \"Full validation is against the schema for this exact id and version (spec \u00a74.5, \u00a74.6).\"\n        }\n      }\n    }\n  }\n}\n",
+    "parley.query.schema.json": "{\n  \"$schema\": \"https://json-schema.org/draft/2020-12/schema\",\n  \"$id\": \"https://flyingrobots.dev/parley/schemas/parley.query/1.1.0\",\n  \"title\": \"parley query\",\n  \"description\": \"A read against the history, recorded as an event: the asker it is for, the view it wants, the budget it will accept and the window it covers (spec \u00a79, informative; the representation is decided in flyingrobots/parley#46 and read against the observer-geometry treatment in docs/topics/related-work/observer-geometry.md). The envelope's run is the read's own run; asker is who the read is for. A drill-down, which opens records a lens named, is the same message with records stating which.\",\n  \"type\": \"object\",\n  \"required\": [\n    \"event\",\n    \"t\",\n    \"seq\",\n    \"run\",\n    \"asker\",\n    \"view\",\n    \"budget\",\n    \"window\",\n    \"_schema\"\n  ],\n  \"properties\": {\n    \"event\": {\n      \"const\": \"query\"\n    },\n    \"t\": {\n      \"type\": \"integer\",\n      \"minimum\": 0,\n      \"description\": \"POSIX time in milliseconds (spec \u00a71.3).\"\n    },\n    \"seq\": {\n      \"type\": \"integer\",\n      \"minimum\": 1,\n      \"description\": \"The run's single counter (spec \u00a71.3).\"\n    },\n    \"run\": {\n      \"type\": \"string\",\n      \"minLength\": 1,\n      \"description\": \"The execution this line belongs to: the read itself, not the runs being read (spec \u00a72.1).\"\n    },\n    \"session\": {\n      \"type\": \"string\",\n      \"minLength\": 1,\n      \"description\": \"Working period spanning runs. Supplied by the caller or inherited; never invented (spec \u00a72.1).\"\n    },\n    \"asker\": {\n      \"type\": \"object\",\n      \"required\": [\n        \"tool\"\n      ],\n      \"properties\": {\n        \"tool\": {\n          \"type\": \"string\",\n          \"minLength\": 1,\n          \"description\": \"The calling program, named as in spec \u00a72.1. Established from the caller's own identity or supplied as one argument; never invented, so a read that cannot establish it is refused.\"\n        },\n        \"cwd\": {\n          \"type\": \"string\",\n          \"pattern\": \"^/\",\n          \"minLength\": 2,\n          \"description\": \"Absolute POSIX working directory the read was made from. Inferred from the process; omitted when it is not meaningful.\"\n        },\n        \"task\": {\n          \"type\": \"string\",\n          \"minLength\": 1,\n          \"description\": \"The caller's current task id, supplied by the caller and never inferred (flyingrobots/parley#61); omitted when the caller does not state it. Not the session: a session is a working period, a task is a unit of work inside one.\"\n        }\n      },\n      \"description\": \"Who the read is for, and the context the budget is inferred from. The asker is not the view: two askers requesting the same view under the same budget get the same answer.\"\n    },\n    \"view\": {\n      \"enum\": [\n        \"what-ran\",\n        \"what-failed\",\n        \"what-changed\",\n        \"how-it-decided\",\n        \"everything\"\n      ],\n      \"description\": \"The shape of the answer, one token from a closed set. Never inferred: there is no privileged view, so a missing view is refused rather than guessed. Adding a token is a version of this schema.\"\n    },\n    \"budget\": {\n      \"type\": \"object\",\n      \"required\": [\n        \"records\"\n      ],\n      \"properties\": {\n        \"records\": {\n          \"type\": \"integer\",\n          \"minimum\": 1,\n          \"description\": \"The most records the answer may name. Required: a view with no bound collapses into \\\"return every record\\\".\"\n        },\n        \"bytes\": {\n          \"type\": \"integer\",\n          \"minimum\": 1,\n          \"description\": \"The most bytes the answer may occupy.\"\n        },\n        \"ms\": {\n          \"type\": \"integer\",\n          \"minimum\": 1,\n          \"description\": \"The most wall-clock milliseconds the read may spend.\"\n        }\n      },\n      \"description\": \"The size of answer the asker will accept. One documented default applies when it is not supplied, and the applied budget is carried verbatim by the result's lens, so a default is never invisible.\"\n    },\n    \"window\": {\n      \"type\": \"object\",\n      \"required\": [\n        \"from\",\n        \"to\"\n      ],\n      \"properties\": {\n        \"from\": {\n          \"type\": \"integer\",\n          \"minimum\": 0,\n          \"description\": \"Inclusive lower bound of the window, POSIX time in milliseconds. 0 means \\\"from the start of the history\\\".\"\n        },\n        \"to\": {\n          \"type\": \"integer\",\n          \"minimum\": 0,\n          \"description\": \"Inclusive upper bound of the window, POSIX time in milliseconds. Never below from.\"\n        }\n      },\n      \"description\": \"The stretch of history the read covers, always stated as two timestamps and echoed by the result's lens.\"\n    },\n    \"note\": {\n      \"type\": \"string\",\n      \"minLength\": 1,\n      \"description\": \"Free text from the asker, recorded and never parsed. Nothing in the answer branches on it.\"\n    },\n    \"fold\": {\n      \"type\": \"boolean\",\n      \"description\": \"Whether the read may fold runs it judges to be repeats of one invocation with one result into the most recent of them (flyingrobots/parley#79). false: nothing is folded, so every run in the window keeps its own records and the budget alone decides what the answer names (flyingrobots/parley#133). true or absent: the reader folds, and the result's lens names the runs a fold stands for in the section of the run that stands for them (parley.lens runs.folded.stands_for). The budget can leave that run out of the answer, and its section with it; the lens then reports that fold as a count alone (parley.lens loss.folded). Never inferred: the reader records it only when the asker states it, and the lens echoes it. It selects nothing on a drill-down.\"\n    },\n    \"records\": {\n      \"type\": \"array\",\n      \"minItems\": 1,\n      \"items\": {\n        \"type\": \"object\",\n        \"required\": [\n          \"run\",\n          \"seq\"\n        ],\n        \"properties\": {\n          \"run\": {\n            \"type\": \"string\",\n            \"minLength\": 1\n          },\n          \"seq\": {\n            \"type\": \"integer\",\n            \"minimum\": 0,\n            \"description\": \"0 for a bootstrap or startup-failure line (spec \u00a71.3).\"\n          }\n        }\n      },\n      \"description\": \"Present only on a drill-down: the records the read asks for by (run, seq), the identity a parley.lens names them by, in the order asked (flyingrobots/parley#51). A drill-down answers with exactly these records in full, a sidecar's stored record included, and an outcome per id; the view and window are recorded and select nothing, budget.records is the number of ids asked, and budget.bytes, when stated, bounds the records opened: whole records in the order asked while their summed size stays within it, and an over_budget outcome with no contents for each id past it (flyingrobots/parley#78). Absent on a read that answers with a digest.\"\n    },\n    \"_schema\": {\n      \"type\": \"object\",\n      \"required\": [\n        \"id\",\n        \"version\"\n      ],\n      \"additionalProperties\": false,\n      \"properties\": {\n        \"id\": {\n          \"const\": \"parley.query\"\n        },\n        \"version\": {\n          \"const\": \"1.1.0\",\n          \"description\": \"Full validation is against the schema for this exact id and version (spec \u00a74.5, \u00a74.6).\"\n        }\n      }\n    }\n  }\n}\n",
     "parley.receipt.head.schema.json": "{\n  \"$schema\": \"https://json-schema.org/draft/2020-12/schema\",\n  \"$id\": \"https://flyingrobots.dev/parley/schemas/parley.receipt.head/2.0.0\",\n  \"title\": \"parley receipt head\",\n  \"description\": \"First line of a receipt file. Carries what the bootstrap line deliberately omitted, so stdout stays small while the record stays complete.\",\n  \"type\": \"object\",\n  \"required\": [\n    \"event\",\n    \"t\",\n    \"seq\",\n    \"run\",\n    \"tool\",\n    \"v\",\n    \"argv\",\n    \"resolved\",\n    \"inputs\",\n    \"_schema\"\n  ],\n  \"properties\": {\n    \"event\": {\n      \"const\": \"receipt.head\"\n    },\n    \"t\": {\n      \"type\": \"integer\",\n      \"minimum\": 0,\n      \"description\": \"POSIX time in milliseconds (spec \\u00a71.3).\"\n    },\n    \"seq\": {\n      \"type\": \"integer\",\n      \"minimum\": 1,\n      \"description\": \"The run's single counter continues from the bootstrap line, which is seq 0 (spec \\u00a71.3).\"\n    },\n    \"run\": {\n      \"type\": \"string\",\n      \"minLength\": 1,\n      \"description\": \"The execution this line belongs to (spec \\u00a72.1). ULID or equivalent: unique per execution and lexicographically sortable.\"\n    },\n    \"tool\": {\n      \"type\": \"string\",\n      \"minLength\": 1,\n      \"description\": \"The program that wrote this receipt, so a receipt read alone says what produced it (spec \\u00a75).\"\n    },\n    \"v\": {\n      \"type\": \"string\",\n      \"minLength\": 1,\n      \"description\": \"That program's own version; with tool, a component of the inv preimage (spec \\u00a72.2) that a receipt read alone must carry.\"\n    },\n    \"inv\": {\n      \"type\": \"string\",\n      \"minLength\": 1,\n      \"description\": \"Content-addressed identity of the question (spec \\u00a72.2); never includes a declared secret. Optional in v0.2: supplied when the tool documents its derivation and the identity is known at this point; never a placeholder (spec \\u00a72.2).\"\n    },\n    \"session\": {\n      \"type\": \"string\",\n      \"minLength\": 1\n    },\n    \"argv\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"type\": \"string\"\n      },\n      \"description\": \"As received, after \\u00a75.3 redaction: a declared secret appears as the literal [redacted].\"\n    },\n    \"resolved\": {\n      \"type\": \"object\",\n      \"description\": \"After defaults, environment and path resolution. The gap between this and argv is where bugs live.\"\n    },\n    \"inputs\": {\n      \"type\": \"array\",\n      \"description\": \"Every declared input as a descriptor: its path, its role when the tool distinguishes roles, and a content digest once read. A digest that arrives later is carried by receipt.inputs (spec \\u00a72.2). Credential files are never inputs (\\u00a72.2).\",\n      \"items\": {\n        \"type\": \"object\",\n        \"required\": [\n          \"path\"\n        ],\n        \"properties\": {\n          \"path\": {\n            \"type\": \"string\",\n            \"minLength\": 1\n          },\n          \"role\": {\n            \"type\": \"string\",\n            \"minLength\": 1\n          },\n          \"sha256\": {\n            \"type\": \"string\",\n            \"pattern\": \"^[0-9a-f]{64}$\"\n          },\n          \"error\": {\n            \"type\": \"string\",\n            \"pattern\": \"^[a-z0-9_]+(\\\\.[a-z0-9_]+)+$\",\n            \"description\": \"Why the input could not be read; no digest then.\"\n          }\n        },\n        \"not\": {\n          \"type\": \"object\",\n          \"required\": [\n            \"sha256\",\n            \"error\"\n          ],\n          \"properties\": {\n            \"sha256\": {\n              \"type\": \"string\"\n            },\n            \"error\": {\n              \"type\": \"string\"\n            }\n          }\n        }\n      }\n    },\n    \"effects\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"reads\": {\n          \"type\": \"array\",\n          \"items\": {\n            \"type\": \"string\"\n          }\n        },\n        \"writes\": {\n          \"type\": \"array\",\n          \"items\": {\n            \"type\": \"string\"\n          }\n        },\n        \"network\": {\n          \"type\": \"boolean\"\n        },\n        \"idempotent\": {\n          \"type\": \"boolean\"\n        }\n      }\n    },\n    \"_schema\": {\n      \"type\": \"object\",\n      \"required\": [\n        \"id\",\n        \"version\"\n      ],\n      \"additionalProperties\": false,\n      \"properties\": {\n        \"id\": {\n          \"const\": \"parley.receipt.head\"\n        },\n        \"version\": {\n          \"const\": \"2.0.0\",\n          \"description\": \"Full validation is against the schema for this exact id and version (spec \\u00a74.5, \\u00a74.6).\"\n        }\n      }\n    },\n    \"redacted\": {\n      \"type\": \"object\",\n      \"minProperties\": 1,\n      \"description\": \"Present and non-empty whenever a declared secret was supplied to the run; absent otherwise (spec \\u00a75.3). Lists where the head carries a replaced value, and which credential sources were present.\",\n      \"properties\": {\n        \"argv\": {\n          \"type\": \"array\",\n          \"items\": {\n            \"type\": \"integer\",\n            \"minimum\": 0\n          },\n          \"description\": \"Indexes into argv.\"\n        },\n        \"resolved\": {\n          \"type\": \"array\",\n          \"items\": {\n            \"type\": \"string\",\n            \"format\": \"json-pointer\",\n            \"minLength\": 1\n          },\n          \"description\": \"JSON Pointers (RFC 6901) into resolved.\"\n        },\n        \"env\": {\n          \"type\": \"array\",\n          \"items\": {\n            \"type\": \"string\",\n            \"minLength\": 1\n          },\n          \"description\": \"Names of declared environment variables that were present.\"\n        },\n        \"inputs\": {\n          \"type\": \"array\",\n          \"items\": {\n            \"type\": \"integer\",\n            \"minimum\": 0\n          },\n          \"description\": \"Indexes into inputs whose path carried a replaced value.\"\n        },\n        \"sources\": {\n          \"type\": \"array\",\n          \"items\": {\n            \"type\": \"string\",\n            \"minLength\": 1\n          },\n          \"description\": \"Logical names of declared credential sources that were present (spec \\u00a75.3).\"\n        }\n      },\n      \"anyOf\": [\n        {\n          \"type\": \"object\",\n          \"required\": [\n            \"argv\"\n          ],\n          \"properties\": {\n            \"argv\": {\n              \"type\": \"array\",\n              \"minItems\": 1\n            }\n          }\n        },\n        {\n          \"type\": \"object\",\n          \"required\": [\n            \"resolved\"\n          ],\n          \"properties\": {\n            \"resolved\": {\n              \"type\": \"array\",\n              \"minItems\": 1\n            }\n          }\n        },\n        {\n          \"type\": \"object\",\n          \"required\": [\n            \"inputs\"\n          ],\n          \"properties\": {\n            \"inputs\": {\n              \"type\": \"array\",\n              \"minItems\": 1\n            }\n          }\n        },\n        {\n          \"type\": \"object\",\n          \"required\": [\n            \"env\"\n          ],\n          \"properties\": {\n            \"env\": {\n              \"type\": \"array\",\n              \"minItems\": 1\n            }\n          }\n        },\n        {\n          \"type\": \"object\",\n          \"required\": [\n            \"sources\"\n          ],\n          \"properties\": {\n            \"sources\": {\n              \"type\": \"array\",\n              \"minItems\": 1\n            }\n          }\n        }\n      ]\n    },\n    \"dry_run\": {\n      \"type\": \"boolean\",\n      \"description\": \"True when the run performed no subject-matter writes, no mutating remote action and no retention deletion (spec \\u00a74.3). Absent means false.\"\n    }\n  }\n}\n",
     "parley.receipt.inputs.schema.json": "{\n  \"$schema\": \"https://json-schema.org/draft/2020-12/schema\",\n  \"$id\": \"https://flyingrobots.dev/parley/schemas/parley.receipt.inputs/1.0.0\",\n  \"title\": \"parley receipt inputs\",\n  \"description\": \"The metadata-finalisation record: late input digests and, when known, inv; emitted once inputs are settled and before end (spec \\u00a72.2).\",\n  \"type\": \"object\",\n  \"required\": [\n    \"event\",\n    \"t\",\n    \"seq\",\n    \"run\",\n    \"inputs\",\n    \"_schema\"\n  ],\n  \"properties\": {\n    \"event\": {\n      \"const\": \"receipt.inputs\"\n    },\n    \"t\": {\n      \"type\": \"integer\",\n      \"minimum\": 0,\n      \"description\": \"POSIX time in milliseconds (spec \\u00a71.3).\"\n    },\n    \"seq\": {\n      \"type\": \"integer\",\n      \"minimum\": 1,\n      \"description\": \"The run's single counter (spec \\u00a71.3).\"\n    },\n    \"run\": {\n      \"type\": \"string\",\n      \"minLength\": 1,\n      \"description\": \"The execution this line belongs to (spec \\u00a72.1).\"\n    },\n    \"inputs\": {\n      \"type\": \"array\",\n      \"description\": \"Every declared input as a descriptor: its path, its role when the tool distinguishes roles, and a content digest once read. A digest that arrives later is carried by receipt.inputs (spec \\u00a72.2). Credential files are never inputs (\\u00a72.2).\",\n      \"items\": {\n        \"type\": \"object\",\n        \"required\": [\n          \"path\"\n        ],\n        \"properties\": {\n          \"path\": {\n            \"type\": \"string\",\n            \"minLength\": 1\n          },\n          \"role\": {\n            \"type\": \"string\",\n            \"minLength\": 1\n          },\n          \"sha256\": {\n            \"type\": \"string\",\n            \"pattern\": \"^[0-9a-f]{64}$\"\n          },\n          \"error\": {\n            \"type\": \"string\",\n            \"pattern\": \"^[a-z0-9_]+(\\\\.[a-z0-9_]+)+$\",\n            \"description\": \"Why the input could not be read; no digest then.\"\n          }\n        },\n        \"not\": {\n          \"type\": \"object\",\n          \"required\": [\n            \"sha256\",\n            \"error\"\n          ],\n          \"properties\": {\n            \"sha256\": {\n              \"type\": \"string\"\n            },\n            \"error\": {\n              \"type\": \"string\"\n            }\n          }\n        }\n      }\n    },\n    \"inv\": {\n      \"type\": \"string\",\n      \"minLength\": 1,\n      \"description\": \"Present when the identity could be computed (spec \\u00a72.2).\"\n    },\n    \"_schema\": {\n      \"type\": \"object\",\n      \"required\": [\n        \"id\",\n        \"version\"\n      ],\n      \"additionalProperties\": false,\n      \"properties\": {\n        \"id\": {\n          \"const\": \"parley.receipt.inputs\"\n        },\n        \"version\": {\n          \"const\": \"1.0.0\",\n          \"description\": \"Full validation is against the schema for this exact id and version (spec \\u00a74.5, \\u00a74.6).\"\n        }\n      }\n    }\n  }\n}\n",
     "parley.receipt.step.schema.json": "{\n  \"$schema\": \"https://json-schema.org/draft/2020-12/schema\",\n  \"$id\": \"https://flyingrobots.dev/parley/schemas/parley.receipt.step/1.0.0\",\n  \"title\": \"parley receipt step\",\n  \"description\": \"One decision the program made while working, with its reason; receipt only (spec \\u00a75).\",\n  \"type\": \"object\",\n  \"required\": [\n    \"event\",\n    \"t\",\n    \"seq\",\n    \"run\",\n    \"decision\",\n    \"because\",\n    \"_schema\"\n  ],\n  \"properties\": {\n    \"event\": {\n      \"const\": \"receipt.step\"\n    },\n    \"t\": {\n      \"type\": \"integer\",\n      \"minimum\": 0,\n      \"description\": \"POSIX time in milliseconds (spec \\u00a71.3).\"\n    },\n    \"seq\": {\n      \"type\": \"integer\",\n      \"minimum\": 1,\n      \"description\": \"The run's single counter (spec \\u00a71.3).\"\n    },\n    \"run\": {\n      \"type\": \"string\",\n      \"minLength\": 1,\n      \"description\": \"The execution this line belongs to (spec \\u00a72.1).\"\n    },\n    \"decision\": {\n      \"type\": \"string\",\n      \"minLength\": 1\n    },\n    \"because\": {\n      \"type\": \"string\",\n      \"minLength\": 1\n    },\n    \"detail\": {\n      \"type\": \"object\"\n    },\n    \"_schema\": {\n      \"type\": \"object\",\n      \"required\": [\n        \"id\",\n        \"version\"\n      ],\n      \"additionalProperties\": false,\n      \"properties\": {\n        \"id\": {\n          \"const\": \"parley.receipt.step\"\n        },\n        \"version\": {\n          \"const\": \"1.0.0\",\n          \"description\": \"Full validation is against the schema for this exact id and version (spec \\u00a74.5, \\u00a74.6).\"\n        }\n      }\n    }\n  }\n}\n",
@@ -375,12 +444,29 @@ def _escape_pointer(key: str) -> str:
     return key.replace("~", "~0").replace("/", "~1")
 
 
+def scrub_pointer(pointer: str, values: Iterable[str]) -> str:
+    """A JSON Pointer (RFC 6901) with every secret replaced inside each reference token, read as
+    the key it stands for: a pointer escapes `/` and `~`, so a key that is a secret holding either
+    would otherwise pass a search of the pointer's text. A pointer a validator reports can name a
+    key the record no longer has (the one a scrub renamed), and that key can be the secret."""
+    values = list(values)
+    if not values or not pointer.startswith("/"):
+        return replace_secrets(pointer, values)
+    tokens = pointer.split("/")
+    return "/".join([tokens[0]] + [_escape_pointer(replace_secrets(t.replace("~1", "/").replace("~0", "~"), values)) for t in tokens[1:]])
+
+
 def scrub(value: Any, values: Set[str], pointer: str = "", found: Optional[List[str]] = None,
-          skip_keys: Optional[frozenset] = None, scalars: bool = True) -> Any:
+          skip_keys: Optional[frozenset] = None, scalars: bool = True, rename_keys: bool = True) -> Any:
     """A deep copy of `value` with every secret replaced, recording the RFC 6901 pointer of each
     place that changed. Strings are replaced within; a number or boolean whose JSON form is a
     secret becomes `[redacted]` (a PIN parsed to a number is still the PIN); a key carrying a
-    secret is renamed, and the pointer recorded is the renamed key's."""
+    secret is renamed, and the pointer recorded is the renamed key's.
+
+    A writer-built record passes `skip_keys`, `scalars=False` and `rename_keys=False`: its field
+    names (`paths`, `status`, `op`) are the protocol's, named by the released schema, and renaming
+    one would publish a line that schema rejects. A tool's object that reaches a writer-built
+    record (`resolved`) was scrubbed in full, keys included, before the record was built."""
     if found is None:
         found = []
     if not values:
@@ -396,19 +482,19 @@ def scrub(value: Any, values: Set[str], pointer: str = "", found: Optional[List[
             return REDACTED
         return value
     if isinstance(value, (list, tuple)):
-        return [scrub(v, values, f"{pointer}/{i}", found, skip_keys, scalars) for i, v in enumerate(value)]
+        return [scrub(v, values, f"{pointer}/{i}", found, skip_keys, scalars, rename_keys) for i, v in enumerate(value)]
     if isinstance(value, dict):
         out: Record = {}
         for k, v in value.items():
             jk = _json_key(k)
-            key = replace_secrets(jk, values)
+            key = replace_secrets(jk, values) if rename_keys else jk
             p = f"{pointer}/{_escape_pointer(key)}"
             if key != jk:
                 found.append(p)
             if skip_keys is not None and jk in skip_keys and isinstance(v, str):
                 out[key] = v
             else:
-                out[key] = scrub(v, values, p, found, skip_keys, scalars)
+                out[key] = scrub(v, values, p, found, skip_keys, scalars, rename_keys)
         return out
     return value
 
@@ -468,13 +554,33 @@ def _unlink_safe(p: str) -> None:
         pass
 
 
+_PRINTABLE_ASCII = re.compile(r"[\x20-\x7e]*\Z")
+
+
 def _negation_reaches_receipts(line: str) -> bool:
     """Whether a `.gitignore` line is a negation that can match the directory `receipts` beside
-    it. With `*` in force nothing under `receipts/` can be staged unless the directory itself is
-    re-included, because git cannot re-include a file whose parent directory is excluded
-    (gitignore(5)). Conservative: a pattern this cannot evaluate (an inner `/`, a backslash, a
-    class no regex accepts) is taken to match, and the match ignores case, as git does where
-    `core.ignorecase` is set."""
+    it, or a line this writer cannot evaluate exactly, which spec section 5.2 says counts as one
+    that does. With `*` in force nothing under `receipts/` can be staged unless the directory
+    itself is re-included, because git cannot re-include a file whose parent directory is
+    excluded (gitignore(5)).
+
+    The rule, the same in the TypeScript writer:
+
+    - A line holding a NUL byte is not evaluated. git reads a pattern as a C string, so the
+      pattern it sees ends at the NUL; this writer does not guess at the rest.
+    - Otherwise only a line that starts with `!` is a negation. Trailing spaces, one trailing
+      `/`, one leading `/` and any leading `**/` are taken off.
+    - What is left is not evaluated when it holds a `/`, a backslash, or any character outside
+      printable ASCII (a tab, a control character, any non-ASCII letter: how git folds the case
+      of those is its own question), or a bracket expression that is unterminated or holds `[:`,
+      `[=` or `[.`.
+    - Anything else is matched against `receipts` as git's wildmatch reads one path component:
+      `*` any run, `?` one character, a bracket expression a set (`!` or `^` first negates it,
+      the first member is literal even when it is `]`, `a-z` is a range, and a `-` after a range
+      or beside either bracket is literal), everything else itself. The match ignores case, as
+      git does where `core.ignorecase` is set, which only ever adds matches."""
+    if "\x00" in line:
+        return True
     if not line.startswith("!"):
         return False
     pat = line[1:].rstrip(" ")
@@ -486,37 +592,83 @@ def _negation_reaches_receipts(line: str) -> bool:
         pat = pat[3:]
     if "/" in pat or "\\" in pat:
         return True
-    try:
-        return re.fullmatch(_glob_regex(pat), "receipts", re.IGNORECASE) is not None
-    except re.error:
+    if not _PRINTABLE_ASCII.match(pat):
         return True
+    glob = _parse_glob(pat)
+    return True if glob is None else _glob_matches(glob, 0, "receipts", 0)
 
 
-def _glob_regex(pat: str) -> str:
-    """One path component's glob as a regex: `*` and `**` any run, `?` one character, a bracket
-    a class (`!` or `^` negating it); everything else literal. The caller has already refused a
-    backslash, so no escape reaches here."""
-    out, i = "", 0
-    while i < len(pat):
+def _parse_glob(pat: str) -> Optional[List[Any]]:
+    """A glob of printable ASCII with no `/` and no backslash, as tokens: `"*"` any run, `"?"` any
+    one character, or `(negated, ranges)` a set of characters given as inclusive ranges. None
+    when it holds a bracket expression this writer does not evaluate."""
+    out: List[Any] = []
+    n = len(pat)
+
+    def special(j: int) -> bool:
+        return pat[j:j + 1] == "[" and pat[j + 1:j + 2] in (":", "=", ".")
+
+    i = 0
+    while i < n:
         c = pat[i]
         if c == "*":
-            out += ".*"
+            if not out or out[-1] != "*":
+                out.append("*")
         elif c == "?":
-            out += "."
-        elif c == "[":
-            j = pat.find("]", i + 2)
-            if j == -1:
-                out += re.escape(c)
-            else:
-                body = pat[i + 1:j]
-                neg = body[:1] in ("!", "^")
-                body = body[1:] if neg else body
-                out += "[" + ("^" if neg else "") + body.replace("]", "\\]") + "]"
-                i = j
+            out.append("?")
+        elif c != "[":
+            out.append((False, [(c, c)]))
         else:
-            out += re.escape(c)
+            j = i + 1
+            negated = pat[j:j + 1] in ("!", "^")
+            if negated:
+                j += 1
+            ranges: List[Tuple[str, str]] = []
+            prev: Optional[str] = None
+            first = True
+            while True:
+                if j >= n:
+                    return None  # unterminated
+                m = pat[j]
+                if m == "]" and not first:
+                    break
+                if special(j):
+                    return None
+                if m == "-" and prev is not None and j + 1 < n and pat[j + 1] != "]":
+                    if special(j + 1):
+                        return None
+                    ranges.append((prev, pat[j + 1]))
+                    prev = None
+                    j += 2
+                else:
+                    ranges.append((m, m))
+                    prev = m
+                    j += 1
+                first = False
+            out.append((negated, ranges))
+            i = j
         i += 1
     return out
+
+
+def _glob_matches(glob: Sequence[Any], ti: int, text: str, si: int) -> bool:
+    """Whether the tokens from `ti` match `text` from `si` to its end, ignoring case. `text` is
+    lower case."""
+    if ti == len(glob):
+        return si == len(text)
+    tok = glob[ti]
+    if tok == "*":
+        return any(_glob_matches(glob, ti + 1, text, k) for k in range(si, len(text) + 1))
+    if si >= len(text):
+        return False
+    if tok != "?":
+        negated, ranges = tok
+        c = text[si]
+        up = c.upper()
+        inside = any(lo <= c <= hi or lo <= up <= hi for lo, hi in ranges)
+        if inside == negated:
+            return False
+    return _glob_matches(glob, ti + 1, text, si + 1)
 
 
 def _hygiene(parley_dir: str, nonce: str) -> Optional[str]:
@@ -545,7 +697,9 @@ def _hygiene(parley_dir: str, nonce: str) -> Optional[str]:
         return f"{f} exists without a line consisting of *"
     for line in lines:
         if _negation_reaches_receipts(line):
-            return f"{f} has a line consisting of *, but its negation {line} can re-include receipts/, where git add would stage a receipt"
+            if not line.startswith("!"):
+                return f"{f} has a line consisting of *, but also a line holding a NUL byte, which this writer cannot rule out as a negation that re-includes receipts/, where git add would stage a receipt"
+            return f"{f} has a line consisting of *, but its negation {line} can re-include receipts/, or cannot be evaluated by this writer and so counts as one that can; git add would then stage a receipt"
     return None
 
 
@@ -610,12 +764,28 @@ _SUBSCHEMA = ("items", "not", "if", "then", "else", "additionalProperties")
 _SUBSCHEMA_LISTS = ("anyOf", "allOf", "oneOf")
 
 
+class _Issue(str):
+    """One failure's sentence, which also knows where in the record it is about."""
+
+    at: str
+
+    def __new__(cls, message: str, at: str) -> "_Issue":
+        self = super().__new__(cls, message)
+        self.at = at
+        return self
+
+
 class CheckResult:
-    """`ok` when the value satisfies the schema; otherwise `errors` says where. `unsupported` names
-    a construct the checker does not implement, in which case nothing was established."""
+    """`ok` when the value satisfies the schema; otherwise `errors` says where. `pointers` is the
+    JSON Pointer (RFC 6901) of each error, in the same order: the place in the record the error is
+    about, and for a missing or disallowed property, that property. A pointer is a location and
+    nothing else, so it is safe to print where an error's text, which can quote the schema, is not
+    (flyingrobots/parley#131). `unsupported` names a construct the checker does not implement, in
+    which case nothing was established and `pointers` is empty."""
 
     def __init__(self, ok: bool, errors: Sequence[str] = (), unsupported: Optional[str] = None):
         self.ok, self.errors, self.unsupported = ok, list(errors), unsupported
+        self.pointers: List[str] = [e.at for e in self.errors if isinstance(e, _Issue)]
 
     def __repr__(self) -> str:
         return f"CheckResult(ok={self.ok!r}, errors={self.errors!r}, unsupported={self.unsupported!r})"
@@ -627,35 +797,93 @@ class _Unsupported(Exception):
         self.keyword = keyword
 
 
+_TYPE_NAMES = frozenset(["null", "boolean", "object", "array", "number", "string", "integer"])
+_COUNTS = ("minLength", "maxLength", "minItems", "maxItems", "minProperties", "maxProperties")
+_BOUNDS = ("minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum")
+# What `schema_subset_gap` reports for a `pattern` this writer will not answer for. It names no
+# part of the pattern.
+_PATTERN_GAP = "a pattern this writer cannot evaluate as ECMAScript reads it"
+_UNEVALUATED_GAP = "a construct this checker could not evaluate"
+
+
+def _is_number(v: Any) -> bool:
+    """A finite JSON number: not a boolean, and not the NaN or Infinity `json` will parse."""
+    return isinstance(v, (int, float)) and not isinstance(v, bool) and v == v and v not in (float("inf"), float("-inf"))
+
+
+def _is_count(v: Any) -> bool:
+    """A non-negative integer, however JSON wrote it: `3` and `3.0` are the same number."""
+    return _is_number(v) and v >= 0 and (isinstance(v, int) or v.is_integer())
+
+
 def schema_subset_gap(schema: Any) -> Optional[str]:
     """The first construct in `schema` this checker does not implement, or None. A property of the
     whole document, walked before any value, so a keyword under a property the value lacks is
-    still found."""
+    still found.
+
+    A keyword whose value has the wrong shape is a schema this checker cannot evaluate, the same
+    as a keyword it does not implement: `enum: 5` has no reading to check a record against. Each
+    is reported here, so nothing below has to trust a shape it did not check and no malformed
+    document can make the walk raise. So is a `pattern` this writer does not read as ECMAScript
+    would (`_js_regex`). The TypeScript writer reports the same constructs in the same words."""
     if schema is True or schema is False or schema is None:
+        return None
+    return _walk_schema(schema)
+
+
+def _walk_schema(schema: Any) -> Optional[str]:
+    if schema is True or schema is False:
         return None
     if not isinstance(schema, dict):
         return "a schema that is not an object or a boolean"
-    for k, v in schema.items():
+    for k in schema:
         if k not in _SUPPORTED:
-            return k
-        if k == "format" and v not in _FORMATS:
-            return f"format {v}"
-    if isinstance(schema.get("items"), list):
+            return k if isinstance(k, str) else "a keyword that is not a string"
+    s = schema
+    if "type" in s:
+        names = s["type"] if isinstance(s["type"], list) else [s["type"]]
+        if not all(isinstance(t, str) and t in _TYPE_NAMES for t in names):
+            return "type that is not a type name or a list of type names"
+    if "enum" in s and not isinstance(s["enum"], list):
+        return "enum that is not a list"
+    if "required" in s and not (isinstance(s["required"], list) and all(isinstance(k, str) for k in s["required"])):
+        return "required that is not a list of strings"
+    for k in _COUNTS:
+        if k in s and not _is_count(s[k]):
+            return f"{k} that is not a non-negative integer"
+    for k in _BOUNDS:
+        if k in s and not _is_number(s[k]):
+            return f"{k} that is not a number"
+    if "pattern" in s:
+        if not isinstance(s["pattern"], str):
+            return "pattern that is not a string"
+        if _js_regex(s["pattern"]) is None:
+            return _PATTERN_GAP
+    if "format" in s:
+        if not isinstance(s["format"], str):
+            return "format that is not a string"
+        if s["format"] not in _FORMATS:
+            return f"format {s['format']}"
+    if isinstance(s.get("items"), list):
         return "items as a tuple"
     for k in _SUBSCHEMA:
-        if k in schema:
-            gap = schema_subset_gap(schema[k])
+        if k in s:
+            gap = _walk_schema(s[k])
             if gap is not None:
                 return gap
     for k in _SUBSCHEMA_LISTS:
-        if isinstance(schema.get(k), list):
-            for sub in schema[k]:
-                gap = schema_subset_gap(sub)
+        if k in s:
+            if not isinstance(s[k], list):
+                return f"{k} that is not a list"
+            for sub in s[k]:
+                gap = _walk_schema(sub)
                 if gap is not None:
                     return gap
-    if isinstance(schema.get("properties"), dict):
-        for sub in schema["properties"].values():
-            gap = schema_subset_gap(sub)
+    if "properties" in s:
+        if not isinstance(s["properties"], dict):
+            return "properties that is not an object"
+        for sub in s["properties"].values():
+            gap = _walk_schema(sub)
             if gap is not None:
                 return gap
     return None
@@ -670,6 +898,12 @@ def check_record(value: Any, schema: Any) -> CheckResult:
         _validate(schema, value, "", errors)
     except _Unsupported as e:
         return CheckResult(False, [str(e)], e.keyword)
+    except Exception:
+        # Nothing else is expected, since the walk above checked every shape the code below
+        # relies on. Whatever it is, it is this checker failing to evaluate the schema, and the
+        # answer to that is "nothing was established", never a raise and never the raised text,
+        # which can quote the schema (spec section 5.3).
+        return CheckResult(False, [f"the schema uses {_UNEVALUATED_GAP}, which this checker does not implement"], _UNEVALUATED_GAP)
     return CheckResult(not errors, errors)
 
 
@@ -685,6 +919,15 @@ def validate_line(line: Mapping[str, Any], extra: Optional[Mapping[Tuple[str, st
     if doc is None:
         return CheckResult(False, [f"no schema for {pair[0]}@{pair[1]}"], f"no schema for {pair[0]}@{pair[1]}")
     return check_record(line, doc)
+
+
+def _token(key: Any) -> str:
+    """One RFC 6901 reference token: `~` and `/` inside a key are escaped."""
+    return _escape_pointer(key if isinstance(key, str) else _json_key(key))
+
+
+def _fail(errors: List[str], path: str, message: str, where: Optional[str] = None) -> None:
+    errors.append(_Issue(f"{_at(path)} {message}", _at(path if where is None else where)))
 
 
 def _at(path: str) -> str:
@@ -736,47 +979,222 @@ def _satisfies(schema: Any, value: Any) -> bool:
 
 
 _REGEX_CACHE: Dict[str, Any] = {}
+# ECMAScript's `\s`: WhiteSpace and LineTerminator. Python's is a different set either way: with
+# re.ASCII it lacks U+00A0 and the rest, without it it adds U+001C to U+001F and U+0085 and lacks
+# U+FEFF. Written as the inside of a character class.
+_JS_SPACE = r"\t\n\x0b\x0c\r \xa0  -     　﻿"
+_JS_DOT = r"[^\n\r  ]"
+_JS_QUANTIFIER = re.compile(r"\{([0-9]+)(?:,([0-9]*))?\}")
+_HEX = frozenset("0123456789abcdefABCDEF")
+_ASCII_LETTERS = frozenset("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
+_ASCII_WORD = _ASCII_LETTERS | frozenset("0123456789")
+_SYNTAX = frozenset("^$\\.*+?()[]{}|/")
+_CONTROL = {"t": 9, "n": 10, "r": 13, "f": 12, "v": 11}
+
+
+def _is_hex(h: str) -> bool:
+    return bool(h) and all(c in _HEX for c in h)
+
+
+def _lit(cp: int) -> str:
+    """One code point as `re` source that means only itself, inside a class or outside one."""
+    c = chr(cp)
+    if c in _ASCII_WORD:
+        return c
+    return "\\u%04x" % cp if cp < 0x10000 else "\\U%08x" % cp
+
+
+def _js_escape(p: str, i: int, in_class: bool) -> Optional[Tuple[str, Any, int]]:
+    """The escape at `p[i]` (a backslash) as ECMAScript reads it with the `u` flag: `("char", code
+    point, next)`, `("set", re source, next)` or `("assert", re source, next)`. None for one this
+    writer does not translate, and for one ECMAScript rejects."""
+    c = p[i + 1:i + 2]
+    if c == "":
+        return None
+    if c in ("d", "D", "w", "W"):
+        return ("set", "\\" + c, i + 2)
+    if c == "s":
+        return ("set", _JS_SPACE if in_class else "[" + _JS_SPACE + "]", i + 2)
+    if c == "S":
+        return None if in_class else ("set", "[^" + _JS_SPACE + "]", i + 2)
+    if c == "b":
+        return ("char", 8, i + 2) if in_class else ("assert", "\\b", i + 2)
+    if c == "B":
+        return None if in_class else ("assert", "\\B", i + 2)
+    if c in _CONTROL:
+        return ("char", _CONTROL[c], i + 2)
+    if c == "0":
+        return None if p[i + 2:i + 3] in tuple("0123456789") else ("char", 0, i + 2)
+    if c == "x":
+        h = p[i + 2:i + 4]
+        return ("char", int(h, 16), i + 4) if len(h) == 2 and _is_hex(h) else None
+    if c == "u":
+        if p[i + 2:i + 3] == "{":
+            j = p.find("}", i + 3)
+            h = p[i + 3:j] if j != -1 else ""
+            if not _is_hex(h) or len(h) > 8:
+                return None
+            cp, nxt = int(h, 16), j + 1
+        else:
+            h = p[i + 2:i + 6]
+            if len(h) != 4 or not _is_hex(h):
+                return None
+            cp, nxt = int(h, 16), i + 6
+        # A surrogate escape is half of a pair in ECMAScript and a code point of its own here.
+        if cp > 0x10FFFF or 0xD800 <= cp <= 0xDFFF:
+            return None
+        return ("char", cp, nxt)
+    if c == "c":
+        letter = p[i + 2:i + 3]
+        return ("char", ord(letter) % 32, i + 3) if letter in _ASCII_LETTERS and letter else None
+    if c in _SYNTAX or (c == "-" and in_class):
+        return ("char", ord(c), i + 2)
+    return None
+
+
+def _js_class(p: str, i: int) -> Optional[Tuple[str, int]]:
+    """The character class at `p[i]` (a `[`) as `re` source, and the index after it."""
+    n = len(p)
+    j = i + 1
+    negated = p[j:j + 1] == "^"
+    if negated:
+        j += 1
+    out: List[str] = []
+
+    def atom(k: int) -> Optional[Tuple[str, Any, int]]:
+        if p[k] == "\\":
+            return _js_escape(p, k, True)
+        if 0xD800 <= ord(p[k]) <= 0xDFFF:
+            return None
+        return ("char", ord(p[k]), k + 1)
+
+    while True:
+        if j >= n:
+            return None
+        if p[j] == "]":
+            j += 1
+            break
+        a = atom(j)
+        if a is None:
+            return None
+        kind, payload, j = a
+        if p[j:j + 1] == "-" and j + 1 < n and p[j + 1] != "]":
+            b = atom(j + 1)
+            # ECMAScript with the `u` flag rejects a range whose end is a class, or out of order.
+            if b is None or kind != "char" or b[0] != "char" or b[1] < payload:
+                return None
+            out.append(_lit(payload) + "-" + _lit(b[1]))
+            j = b[2]
+        else:
+            out.append(_lit(payload) if kind == "char" else payload)
+    if not out:
+        return None  # `[]` matches nothing and `[^]` anything in ECMAScript; `re` reads neither so
+    return "[" + ("^" if negated else "") + "".join(out) + "]", j
+
+
+def _js_translate(p: str) -> Optional[str]:
+    r"""An ECMAScript pattern (read with the `u` flag, as JSON Schema says) as `re` source with the
+    same meaning, or None. Every construct is either translated on purpose or refused: nothing is
+    copied across on the hope that the two languages agree.
+
+    Translated: literals; `.` (anything but the four line terminators); `^` and `$` (the ends of
+    the input); `\d \D \w \W \b \B` (ASCII, with re.ASCII); `\s \S` (ECMAScript's set, spelled
+    out); `\t \n \r \f \v \0 \xHH \uHHHH \u{H…} \cX` and an escaped syntax character; classes with
+    ranges; groups `(…)` and `(?:…)`; lookahead; lookbehind, where `re` accepts it (fixed width);
+    `* + ? {n} {n,} {n,m}` and their lazy forms; `|`.
+
+    Refused: `\p{…}` and `\P{…}`; named groups and `\k<…>`; back-references; inline flags; `\S`
+    inside a class; the empty classes `[]` and `[^]`; a surrogate, escaped or not; and everything
+    ECMAScript itself rejects with the `u` flag, such as `\-` outside a class, a quantifier with
+    nothing to repeat, or a lone `{`, `}` or `]`."""
+    out: List[str] = []
+    stack: List[bool] = []  # one entry per open group: whether it is a lookaround
+    i, n, can_repeat = 0, len(p), False
+    while i < n:
+        c = p[i]
+        if 0xD800 <= ord(c) <= 0xDFFF:
+            return None
+        if c == "\\":
+            e = _js_escape(p, i, False)
+            if e is None:
+                return None
+            kind, payload, i = e
+            out.append(_lit(payload) if kind == "char" else payload)
+            can_repeat = kind != "assert"
+        elif c == "[":
+            cls = _js_class(p, i)
+            if cls is None:
+                return None
+            out.append(cls[0])
+            i, can_repeat = cls[1], True
+        elif c == "(":
+            head = next((h for h in ("(?:", "(?=", "(?!", "(?<=", "(?<!") if p.startswith(h, i)), None)
+            if head is None:
+                if p.startswith("(?", i):
+                    return None
+                head = "("
+            out.append(head)
+            stack.append(head not in ("(", "(?:"))
+            i, can_repeat = i + len(head), False
+        elif c == ")":
+            if not stack:
+                return None
+            out.append(")")
+            i, can_repeat = i + 1, not stack.pop()
+        elif c in ("|", "^", "$"):
+            out.append(r"\Z" if c == "$" else c)
+            i, can_repeat = i + 1, False
+        elif c == ".":
+            out.append(_JS_DOT)
+            i, can_repeat = i + 1, True
+        elif c in ("*", "+", "?", "{"):
+            if not can_repeat:
+                return None
+            if c == "{":
+                m = _JS_QUANTIFIER.match(p, i)
+                if m is None or (m.group(2) and int(m.group(2)) < int(m.group(1))):
+                    return None
+                out.append(m.group(0))
+                i = m.end()
+            else:
+                out.append(c)
+                i += 1
+            if p[i:i + 1] == "?":
+                out.append("?")
+                i += 1
+            can_repeat = False
+        elif c in ("}", "]"):
+            return None
+        else:
+            out.append(_lit(ord(c)))
+            i, can_repeat = i + 1, True
+    return None if stack else "".join(out)
 
 
 def _js_regex(pattern: str) -> Any:
-    """An ECMAScript pattern as Python's `re` reads it: `$` is the end of input, not the end before
-    a final newline, and `.` excludes the four ECMAScript line terminators. Escapes and character
-    classes are copied as written."""
+    """A schema's `pattern` compiled so that it matches what ECMAScript would match, or None when
+    this writer cannot do that (`_js_translate`), or `re` will not compile the translation. None
+    is "cannot evaluate", which `schema_subset_gap` reports; the engine's message, which quotes
+    the pattern, goes nowhere."""
     cached = _REGEX_CACHE.get(pattern)
     if cached is not None:
-        return cached
-    out: List[str] = []
-    i, in_class = 0, False
-    while i < len(pattern):
-        c = pattern[i]
-        if c == "\\" and i + 1 < len(pattern):
-            out.append(pattern[i:i + 2])
-            i += 2
-            continue
-        if in_class:
-            if c == "]":
-                in_class = False
-            out.append(c)
-        elif c == "[":
-            in_class = True
-            out.append(c)
-        elif c == "$":
-            out.append(r"\Z")
-        elif c == ".":
-            out.append("[^\n\r  ]")
-        else:
-            out.append(c)
-        i += 1
-    compiled = re.compile("".join(out), re.ASCII)
+        return cached or None
+    compiled: Any = False
+    try:
+        source = _js_translate(pattern)
+        if source is not None:
+            compiled = re.compile(source, re.ASCII)
+    except Exception:
+        compiled = False
     _REGEX_CACHE[pattern] = compiled
-    return compiled
+    return compiled or None
 
 
 def _validate(schema: Any, value: Any, path: str, errors: List[str]) -> None:
     if schema is True or schema is None:
         return
     if schema is False:
-        errors.append(f"{_at(path)} is not allowed here")
+        _fail(errors, path, f"is not allowed here")
         return
     if not isinstance(schema, dict):
         raise _Unsupported("a schema that is not an object or a boolean")
@@ -787,19 +1205,19 @@ def _validate(schema: Any, value: Any, path: str, errors: List[str]) -> None:
     if "type" in s:
         types = s["type"] if isinstance(s["type"], list) else [s["type"]]
         if not any(_is_type(value, t) for t in types):
-            errors.append(f"{_at(path)} is {_kind(value)}, not {' or '.join(types)}")
+            _fail(errors, path, f"is {_kind(value)}, not {' or '.join(types)}")
     if "const" in s and not _same(value, s["const"]):
-        errors.append(f"{_at(path)} must be {_dumps(s['const'])}")
+        _fail(errors, path, f"must be {_dumps(s['const'])}")
     if "enum" in s and not any(_same(value, o) for o in s["enum"]):
-        errors.append(f"{_at(path)} must be one of {_dumps(s['enum'])}")
+        _fail(errors, path, f"must be one of {_dumps(s['enum'])}")
     if "not" in s and _satisfies(s["not"], value):
-        errors.append(f"{_at(path)} must not match the excluded shape")
+        _fail(errors, path, f"must not match the excluded shape")
     for sub in s.get("allOf", []):
         _validate(sub, value, path, errors)
     if "anyOf" in s and not any(_satisfies(sub, value) for sub in s["anyOf"]):
-        errors.append(f"{_at(path)} matches none of the allowed shapes")
+        _fail(errors, path, f"matches none of the allowed shapes")
     if "oneOf" in s and sum(1 for sub in s["oneOf"] if _satisfies(sub, value)) != 1:
-        errors.append(f"{_at(path)} must match exactly one of the allowed shapes")
+        _fail(errors, path, f"must match exactly one of the allowed shapes")
     if "if" in s:
         branch = s.get("then") if _satisfies(s["if"], value) else s.get("else")
         if branch is not None:
@@ -807,31 +1225,35 @@ def _validate(schema: Any, value: Any, path: str, errors: List[str]) -> None:
 
     if isinstance(value, str):
         n = len(value)
-        if isinstance(s.get("minLength"), int) and n < s["minLength"]:
-            errors.append(f"{_at(path)} is shorter than {s['minLength']}")
-        if isinstance(s.get("maxLength"), int) and n > s["maxLength"]:
-            errors.append(f"{_at(path)} is longer than {s['maxLength']}")
-        if isinstance(s.get("pattern"), str) and not _js_regex(s["pattern"]).search(value):
-            errors.append(f"{_at(path)} does not match {s['pattern']}")
+        if _is_count(s.get("minLength")) and n < s["minLength"]:
+            _fail(errors, path, f"is shorter than {s['minLength']}")
+        if _is_count(s.get("maxLength")) and n > s["maxLength"]:
+            _fail(errors, path, f"is longer than {s['maxLength']}")
+        if isinstance(s.get("pattern"), str):
+            compiled = _js_regex(s["pattern"])
+            if compiled is None:
+                raise _Unsupported(_PATTERN_GAP)
+            if not compiled.search(value):
+                _fail(errors, path, f"does not match {s['pattern']}")
         if isinstance(s.get("format"), str):
             f = _FORMATS.get(s["format"])
             if f is None:
                 raise _Unsupported(f"format {s['format']}")
             if not f.match(value):
-                errors.append(f"{_at(path)} is not a {s['format']}")
+                _fail(errors, path, f"is not a {s['format']}")
 
     if isinstance(value, (int, float)) and not isinstance(value, bool):
         for key, bad, word in (("minimum", lambda x, b: x < b, "below"), ("maximum", lambda x, b: x > b, "above"),
                                ("exclusiveMinimum", lambda x, b: x <= b, "not above"), ("exclusiveMaximum", lambda x, b: x >= b, "not below")):
             b = s.get(key)
-            if isinstance(b, (int, float)) and not isinstance(b, bool) and bad(value, b):
-                errors.append(f"{_at(path)} is {word} {b}")
+            if _is_number(b) and bad(value, b):
+                _fail(errors, path, f"is {word} {b}")
 
     if isinstance(value, (list, tuple)):
-        if isinstance(s.get("minItems"), int) and len(value) < s["minItems"]:
-            errors.append(f"{_at(path)} has fewer than {s['minItems']} items")
-        if isinstance(s.get("maxItems"), int) and len(value) > s["maxItems"]:
-            errors.append(f"{_at(path)} has more than {s['maxItems']} items")
+        if _is_count(s.get("minItems")) and len(value) < s["minItems"]:
+            _fail(errors, path, f"has fewer than {s['minItems']} items")
+        if _is_count(s.get("maxItems")) and len(value) > s["maxItems"]:
+            _fail(errors, path, f"has more than {s['maxItems']} items")
         if "items" in s:
             if isinstance(s["items"], list):
                 raise _Unsupported("items as a tuple")
@@ -842,20 +1264,20 @@ def _validate(schema: Any, value: Any, path: str, errors: List[str]) -> None:
         if isinstance(s.get("required"), list):
             for k in s["required"]:
                 if k not in value:
-                    errors.append(f"{_at(path)} is missing {k}")
-        if isinstance(s.get("minProperties"), int) and len(value) < s["minProperties"]:
-            errors.append(f"{_at(path)} has fewer than {s['minProperties']} properties")
-        if isinstance(s.get("maxProperties"), int) and len(value) > s["maxProperties"]:
-            errors.append(f"{_at(path)} has more than {s['maxProperties']} properties")
+                    _fail(errors, path, f"is missing {k}", f"{path}/{_token(k)}")
+        if _is_count(s.get("minProperties")) and len(value) < s["minProperties"]:
+            _fail(errors, path, f"has fewer than {s['minProperties']} properties")
+        if _is_count(s.get("maxProperties")) and len(value) > s["maxProperties"]:
+            _fail(errors, path, f"has more than {s['maxProperties']} properties")
         props = s.get("properties") or {}
         ap = s.get("additionalProperties")
         for k, v in value.items():
             if k in props:
-                _validate(props[k], v, f"{path}/{k}", errors)
+                _validate(props[k], v, f"{path}/{_token(k)}", errors)
             elif ap is False:
-                errors.append(f"{_at(path)} must not carry {k}")
+                _fail(errors, path, f"must not carry {k}", f"{path}/{_token(k)}")
             elif ap is not None and ap is not True:
-                _validate(ap, v, f"{path}/{k}", errors)
+                _validate(ap, v, f"{path}/{_token(k)}", errors)
 
 
 # ---- sinks ---------------------------------------------------------------------------------
@@ -968,7 +1390,7 @@ class _Capture:
         if self.run.ended:
             return
         try:
-            self.run.step("captured stray output", f"something in the process wrote to sys.{name}; stdout and stderr carry only protocol lines (spec section 1.2), so the text is kept here", {"stream": name, "text": text})
+            self.run.writer_step("captured stray output", f"something in the process wrote to sys.{name}; stdout and stderr carry only protocol lines (spec section 1.2), so the text is kept here", {"stream": name, "text": text})
         except Exception:
             pass  # the run ended between the check and the write
 
@@ -1002,7 +1424,15 @@ class Run:
     def __init__(self, *, tool: str, v: str, id: str, session: Optional[str], dry_run: bool, stdout: Any, stderr: Any,
                  receipt_fd: int, receipt_path: str, receipt_dir: str, secret_values: Set[str], now: Callable[[], int],
                  cwd: str, command: str, resolved: Any, inputs: List[Record], head_redacted: bool,
-                 human: Optional[Callable[[Record], Optional[str]]]):
+                 human: Optional[Callable[[Record], Optional[str]]],
+                 schemas: Optional[Mapping[Tuple[str, str], Any]] = None):
+        # Every schema document the writer holds, by `(id, version)`: the embedded ones and the
+        # ones the tool declared. A record redaction changed is validated against its own pair's
+        # document before it is written (spec section 5.3, flyingrobots/parley#131).
+        self._schemas: Mapping[Tuple[str, str], Any] = schemas or {}
+        # A record was withheld because redaction made it invalid: like a sink failure, the run
+        # closes with 4 (spec sections 3.4, 5.3).
+        self._output_refused = False
         self.id, self.tool, self.v, self.session = id, tool, v, session
         self.dry_run, self.receipt_path, self.receipt_dir, self.cwd = dry_run, receipt_path, receipt_dir, cwd
         self._stdout, self._stderr, self._fd = stdout, stderr, receipt_fd
@@ -1037,11 +1467,18 @@ class Run:
     def sink_failed(self) -> bool:
         return bool(self._failed) or self._sidecar_failed
 
+    @property
+    def redaction_refused(self) -> bool:
+        """True when a record redaction changed was withheld, because it was left invalid under
+        its declared schema or because the writer could not evaluate that schema (spec section
+        5.3): the run closes with 4."""
+        return self._output_refused
+
     # -- emission ------------------------------------------------------------------------------
 
-    def _next(self) -> Tuple[int, int]:
+    def _next(self, t: Optional[int] = None) -> Tuple[int, int]:
         self._seq += 1
-        return self._seq, max(0, int(self._now()))
+        return self._seq, max(0, int(self._now())) if t is None else t
 
     def _envelope(self, payload: Record, schema: SchemaRef, at: Tuple[int, int]) -> Record:
         sid, ver = _pair(schema)
@@ -1114,15 +1551,22 @@ class Run:
     def _scrub_payload(self, payload: Record, found: List[str], writer: bool, verbatim: Optional[str] = None) -> Record:
         """Scrub everything but the event name and, for a writer-built record, the one field
         named by `verbatim`: the schema document of a `schema` line, a static declaration a
-        secret cannot reach (spec section 5.3, flyingrobots/parley#111)."""
+        secret cannot reach (spec section 5.3, flyingrobots/parley#111), or the head's
+        `redacted`, which holds indexes, JSON Pointers and names the caller has already
+        scrubbed. A writer-built record's field names are never renamed."""
         rest = {k: v for k, v in payload.items() if k != "event" and k != verbatim}
-        scrubbed = scrub(rest, self._secrets, "", found, DIGEST_KEYS if writer else None, not writer)
+        scrubbed = scrub(rest, self._secrets, "", found, DIGEST_KEYS if writer else None, not writer, not writer)
         if verbatim is not None and verbatim in payload:
-            scrubbed = {**scrubbed, verbatim: payload[verbatim]}
+            # Put back in its own place, so the record's key order is the one it was built with.
+            scrubbed = {k: (payload[k] if k == verbatim else scrubbed[k]) for k in payload if k != "event"}
         return scrubbed if "event" not in payload else {"event": payload["event"], **scrubbed}
 
     def _emit(self, to: Mapping[str, bool], payload: Record, schema: SchemaRef, receipt_extra: Optional[Record] = None,
-              writer: bool = False, no_sidecar: bool = False, defer: bool = False, verbatim: Optional[str] = None) -> int:
+              writer: bool = False, no_sidecar: bool = False, defer: bool = False, verbatim: Optional[str] = None,
+              replaced: Sequence[str] = ()) -> int:
+        """Emit one event. `replaced` is pointers into this record where the caller replaced a
+        secret before handing it over; each gets its `redaction` event as though the record's own
+        scrub had found it."""
         with self._lock:
             if self._closed:
                 raise ParleyClosed()
@@ -1137,7 +1581,21 @@ class Run:
             _dumps(scrubbed)
             if extra:
                 _dumps(extra)
-            at = self._next()
+                # The copies of one event agree on every field they share (spec section 1.3):
+                # compared as scrubbed, since that is what is written.
+                for k, v in extra.items():
+                    if k in scrubbed and json.dumps(v, sort_keys=True) != json.dumps(scrubbed[k], sort_keys=True):
+                        raise ValueError(f"receipt_extra[{k!r}] differs from the record's {k!r}; the copies of an event must agree on every field they share (spec section 1.3)")
+            # A tool's record the scrub changed is validated as each sink would receive it, before
+            # any copy is written and before a seq is taken (spec section 5.3,
+            # flyingrobots/parley#131). A writer-built record is never checked; what its scrub
+            # leaves alone so that it stays valid is listed at DIGEST_KEYS. The error this raises
+            # is itself writer-built, so it cannot raise another.
+            t: Optional[int] = None
+            if not writer and (found or extra_found):
+                t = max(0, int(self._now()))
+                self._refuse_redaction_conflict(to, payload, receipt_extra, scrubbed, extra, schema, (self._seq + 1, t), found + extra_found)
+            at = self._next(t)
             rec = self._envelope(scrubbed, schema, at)
             self._depth += 1
             try:
@@ -1147,13 +1605,14 @@ class Run:
                 if to.get("stderr"):
                     self._write_or_skip("stderr", self._prose(rec) if human else _dumps(rec) + "\n", defer)
                 if to.get("receipt"):
-                    full = self._envelope({**scrubbed, **extra, "event": scrubbed.get("event")}, schema, at) if extra else rec
+                    # A shared field is written from the payload, so the copies agree byte for byte on it.
+                    full = self._envelope({**scrubbed, **{k: v for k, v in extra.items() if k not in scrubbed}}, schema, at) if extra else rec
                     text = _dumps(full)
                     if not no_sidecar and len(text.encode("utf-8")) > SIDECAR_THRESHOLD:
                         self._sidecar(at[0], text)
                     else:
                         self._write("receipt", text + "\n")
-                for p in found + extra_found:
+                for p in dict.fromkeys(found + extra_found + list(replaced)):
                     self._redaction(at[0], p)
             finally:
                 self._depth -= 1
@@ -1161,6 +1620,99 @@ class Run:
                 msg, self._renderer_warning = self._renderer_warning, None
                 self.writer_warning("human.renderer_failed", f"the tool's --human renderer raised: {msg}; the default rendering is used for the rest of the run", remedy="fix the renderer; the receipt is complete regardless")
             return at[0]
+
+    def _copies(self, to: Mapping[str, bool], payload: Mapping[str, Any], extra: Optional[Mapping[str, Any]], schema: SchemaRef, at: Tuple[int, int]) -> List[Record]:
+        """The copies of one event as the sinks would receive them: the stream copy, and the
+        receipt copy when it carries more."""
+        out: List[Record] = []
+        if to.get("stdout") or to.get("stderr") or not extra:
+            out.append(self._envelope(dict(payload), schema, at))
+        if to.get("receipt") and extra:
+            out.append(self._envelope({**payload, **{k: v for k, v in extra.items() if k not in payload}}, schema, at))
+        return out
+
+    def _refuse_redaction_conflict(self, to: Mapping[str, bool], payload: Record, receipt_extra: Optional[Record], scrubbed: Record,
+                                   extra: Optional[Record], schema: SchemaRef, at: Tuple[int, int], redacted: List[str]) -> None:
+        """Refuse a record that redaction made invalid under its declared schema, or that the
+        writer cannot show is valid (spec section 5.3, flyingrobots/parley#131,
+        flyingrobots/parley#144). Called before a seq is taken, with the seq and time the record
+        would get, and only for a tool's record the scrub changed.
+
+        A pair with no schema document here is exempt, as section 5.3 says. A pair whose document
+        uses a construct outside the checker's subset is not: the writer holds the schema and
+        cannot evaluate it, so it cannot show the redacted record is valid, and it withholds the
+        record as `redaction.schema_unchecked`. Publishing it would be the silent invalid line
+        the rule exists to prevent.
+
+        Otherwise each copy is checked as scrubbed and as the tool handed it over; a failure the
+        scrubbed copy has and the original did not is one redaction caused, and is
+        `redaction.schema_conflict`. A record already invalid in the same way is not this rule's
+        business and is written as before.
+
+        Either way nothing of the record is written. One writer-built error names the schema pair
+        and the fields by JSON Pointer, and deliberately nothing the checker said: a validator's
+        message can quote the schema or the value, and the value is the secret or sits beside it.
+        The construct the checker could not evaluate is part of the schema, so it is not on the
+        line either; it is on the exception. The run is marked to close with 4, since a record
+        the writer would not write is an output it could not write (spec section 3.4), and the
+        refusal is raised."""
+        sid, ver = _pair(schema)
+        doc = self._schemas.get((sid, ver))
+        if doc is None:
+            return
+        after = self._copies(to, scrubbed, extra, schema, at)
+        before = self._copies(to, payload, receipt_extra, schema, at)
+        raw: List[str] = []
+        for now_, then in zip(after, before):
+            verdict = check_record(now_, doc)
+            if verdict.ok:
+                continue
+            if verdict.unsupported is not None:
+                self._refuse_unchecked(payload, sid, ver, redacted, verdict.unsupported)
+            was = check_record(then, doc)
+            already = set() if (was.ok or was.unsupported is not None) else set(zip(was.pointers, was.errors))
+            for p, e in zip(verdict.pointers, verdict.errors):
+                if (p, e) not in already and p not in raw:
+                    raw.append(p)
+        if not raw:
+            return
+        # A pointer the checker reports can name a property the record no longer has, because the
+        # scrub renamed it, and that name is then the secret. Each is scrubbed token by token
+        # before it goes anywhere; the line's own scrub then sees the same strings the exception
+        # is given.
+        pointers = [scrub_pointer(p, self._secrets) for p in raw]
+        # The receipt still records that a secret was replaced in the error line, and where.
+        replaced: List[str] = []
+        if pointers != raw:
+            replaced = ["/problem"] + [f"/detail/at/{i}" for i, p in enumerate(pointers) if p != raw[i]]
+        problem = f"the {payload.get('event')} record was not published: replacing a declared secret at {', '.join(redacted)} left it invalid under {sid}@{ver} at {', '.join(pointers)}"
+        self._output_refused = True
+        self._emit({"stderr": True, "receipt": True},
+                   {"event": "error", "code": REDACTION_CONFLICT_CODE, "problem": problem,
+                    "remedy": "keep a declared secret out of any field whose schema the literal [redacted] cannot satisfy: leave the field out, or declare it as an unconstrained string; the run will close with status 4",
+                    "detail": {"schema": {"id": sid, "version": ver}, "at": pointers, "redacted": list(redacted)}},
+                   SCHEMA_IDS["error"], writer=True, replaced=replaced)
+        raise ParleyRedactionConflict({"id": sid, "version": ver}, [replace_secrets(p, self._secrets) for p in pointers],
+                                      f"{replace_secrets(problem, self._secrets)}; reported as {REDACTION_CONFLICT_CODE}")
+
+    def _refuse_unchecked(self, payload: Record, sid: str, ver: str, redacted: List[str], construct: str) -> None:
+        """Withhold a record the scrub changed whose schema document the writer holds and cannot
+        evaluate (spec section 5.3, flyingrobots/parley#144). The error line names the pair and
+        the pointers the scrub replaced and nothing of the schema; `construct` goes to the
+        exception only, and not even there when it would carry a declared secret value, since an
+        exception's message is not scrubbed. Always raises."""
+        problem = (f"the {payload.get('event')} record was not published because it could not be checked: a declared secret was replaced at {', '.join(redacted)}, "
+                   f"and this writer cannot evaluate the schema document it holds for {sid}@{ver}, so the redacted record was not validated against it")
+        self._output_refused = True
+        self._emit({"stderr": True, "receipt": True},
+                   {"event": "error", "code": REDACTION_UNCHECKED_CODE, "problem": problem,
+                    "remedy": "keep the type's declared schema within the keywords this writer's checker evaluates (its README lists them), or keep declared secrets out of records of this type; the record was not shown to be invalid, and the value was replaced, not exposed; the run will close with status 4",
+                    "detail": {"schema": {"id": sid, "version": ver}, "redacted": list(redacted)}},
+                   SCHEMA_IDS["error"], writer=True)
+        # The exception's text is the published line's, scrubbed as the line is.
+        named = None if carries_secret(construct, self._secrets) else construct
+        raise ParleyRedactionUnchecked({"id": sid, "version": ver}, [replace_secrets(p, self._secrets) for p in redacted], named,
+                                       f"{replace_secrets(problem, self._secrets)}{'' if named is None else f': the schema uses {named}'}; reported as {REDACTION_UNCHECKED_CODE}")
 
     def _sidecar(self, source: int, text: str) -> None:
         rel = f"{self.id}/{source}.json"
@@ -1203,7 +1755,11 @@ class Run:
         self._emit({"stdout": True}, rec, SCHEMA_IDS["bootstrap"], writer=True, defer=True)
 
     def _head(self, fields: Record) -> None:
-        self._emit({"receipt": True}, {"event": "receipt.head", **fields}, SCHEMA_IDS["head"], writer=True, no_sidecar=True)
+        """The receipt head. `redacted` is written as the caller built it: its JSON Pointers are
+        locations in the already-scrubbed `resolved`, and a second scrub of a pointer as a string
+        could only damage it (a secret equal to `/token` would turn the pointer `/token` into
+        something that is not a pointer)."""
+        self._emit({"receipt": True}, {"event": "receipt.head", **fields}, SCHEMA_IDS["head"], writer=True, no_sidecar=True, verbatim="redacted")
 
     def _flush_deferred(self) -> None:
         held, self._deferred = self._deferred, []
@@ -1218,6 +1774,32 @@ class Run:
         """A warning the writer itself raises; its code is the writer's own identifier and is not
         scrubbed. Tools call `warning`."""
         return self._emit({"stderr": True, "receipt": True}, {"event": "warning", **_diagnostic(code, problem, fields)}, SCHEMA_IDS["warning"], writer=True)
+
+    def writer_step(self, decision: str, because: str, detail: Any = None) -> int:
+        """A decision the writer itself records, such as retention or captured stray output
+        (flyingrobots/parley#161). It is writer-built: its field names are the protocol's and are
+        never renamed, and it is never withheld by the redaction check, so a declared secret whose
+        value is `decision` cannot cost a run a record the tool had no part in. Every string in
+        it is still scrubbed: captured text, a file name and the writer's own prose alike, except
+        under a key in `DIGEST_KEYS`, so a `detail` built here never puts the tool's text under
+        one. Tools call `step`."""
+        payload: Record = {"event": "receipt.step", "decision": decision, "because": because}
+        if detail is not None:
+            payload["detail"] = detail
+        return self._emit({"receipt": True}, payload, SCHEMA_IDS["step"], writer=True)
+
+    def writer_error(self, code: str, problem: str, receipt_extra: Optional[Record] = None, **fields: Any) -> int:
+        """An error the writer itself reports, such as `uncaught.exception` for an exception that
+        escaped the handler (flyingrobots/parley#161). It is writer-built, like `writer_warning`:
+        the `code` is the writer's own and is not scrubbed, the field names are never renamed and
+        the record is never withheld by the redaction check, so `main` can always report the
+        failure. The `problem`, the `remedy` and everything in `receipt_extra` carry the tool's
+        text (an exception's name and message, a traceback, a path) and are scrubbed. The run
+        then closes with status 2, as after `error`. Tools call `error`."""
+        d = _diagnostic(code, problem, fields)
+        seq = self._emit({"stderr": True, "receipt": True}, {"event": "error", **d}, SCHEMA_IDS["error"], receipt_extra, writer=True)
+        self._error_reported = True
+        return seq
 
     # -- the public surface ---------------------------------------------------------------------
 
@@ -1254,15 +1836,50 @@ class Run:
         """A structured error (spec section 6). The run then closes with status 2 unless `end` is
         given another non-zero status."""
         d = _diagnostic(code, problem, fields)
+        seq = self._emit({"stderr": True, "receipt": True}, {"event": "error", **d}, SCHEMA_IDS["error"], receipt_extra)
         self._error_reported = True
-        return self._emit({"stderr": True, "receipt": True}, {"event": "error", **d}, SCHEMA_IDS["error"], receipt_extra)
+        return seq
 
     def input(self, path: str, data: Union[bytes, str]) -> None:
-        """Supply the bytes of a declared input the writer cannot read itself, such as stdin."""
+        """Supply the bytes of a declared input the writer cannot read itself, such as stdin. For a
+        declared file, `read_input` reads and records in one step."""
         self._supplied[path] = data.encode("utf-8") if isinstance(data, str) else bytes(data)
         self._unread.pop(path, None)
 
-    def input_unreadable(self, path: str, code: str = "input.unreadable") -> None:
+    def read_input(self, path: str) -> bytes:
+        """Read a declared file input and record it: the bytes returned are the bytes whose digest
+        the receipt carries for that input, whatever happens to the file afterwards (spec section
+        2.2, flyingrobots/parley#132). This is the way to read a declared file. A file the program
+        reads by other means is digested when the handler finishes, and that digest describes the
+        file as it is then, which a tool that edits in place has already changed.
+
+        `path` is the declared path, resolved as a declared input is: against the run's `cwd` when
+        relative. When the file cannot be read, the input is recorded as `input_unreadable` records
+        it and the `OSError` is raised. Raises `ValueError` for a path that is not a declared
+        input, for a `stdin` input (supply it with `input`) or a `tree` input, and once the inputs
+        are settled. A later `read_input`, `input` or `input_unreadable` for the same path replaces
+        the record."""
+        with self._lock:
+            if self._closed:
+                raise ParleyClosed()
+            if self._inputs_settled:
+                raise ValueError("the inputs are already settled; call read_input before finalise_inputs or end (spec section 2.2)")
+            decl = next((i for i in self._inputs if i["path"] == path), None)
+            if decl is None:
+                raise ValueError(f"{path!r} is not a declared input of this run")
+            if decl.get("role") in ("stdin", "tree"):
+                raise ValueError(f"{path!r} is a {decl['role']} input; read_input reads a declared file")
+            try:
+                with open(os.path.join(self.cwd, path), "rb") as f:
+                    data = f.read()
+            except OSError:
+                self.input_unreadable(path)
+                raise
+            self._supplied[path] = data
+            self._unread.pop(path, None)
+            return data
+
+    def input_unreadable(self, path: str, code: str = _INPUT_UNREADABLE) -> None:
         """Say that the program could not read a declared input, so the writer records it with
         `error` and no digest, and omits `inv`, rather than reading the path itself at
         finalisation and digesting bytes the program never saw (spec section 2.2,
@@ -1278,7 +1895,9 @@ class Run:
             if not isinstance(code, str) or not CODE.match(code):
                 raise ValueError(f"code {code!r} is not two or more dot-separated lowercase segments (spec section 6)")
             self._supplied.pop(path, None)
-            self._unread[path] = code
+            # A code is never scrubbed, so one that carries a declared secret value is not
+            # recorded: the writer's own token stands in for it (spec section 5.3).
+            self._unread[path] = _INPUT_UNREADABLE if carries_secret(code, self._secrets) else code
 
     def _descriptor(self, decl: Mapping[str, Any]) -> Record:
         code = self._unread.get(decl["path"])
@@ -1295,7 +1914,7 @@ class Run:
                 return []
             self._inputs_settled = True
             raw = [self._descriptor(i) for i in self._inputs]
-            inputs = scrub(raw, self._secrets, "", [], DIGEST_KEYS, False)
+            inputs = scrub(raw, self._secrets, "", [], DIGEST_KEYS, False, False)
             inv = compute_inv(self.tool, self.v, self._command, self._resolved, inputs)
             payload: Record = {"event": "receipt.inputs", "inputs": inputs}
             if inv:
@@ -1305,7 +1924,8 @@ class Run:
 
     def end(self, status: Optional[int] = None) -> int:
         """Close the run (spec section 3.3). Status defaults to 2 when an error was reported, else 0;
-        a sink failure forces 4. Returns the exit status the process should exit with."""
+        a sink failure, or a record withheld because redaction made it invalid (section 5.3),
+        forces 4. Returns the exit status the process should exit with."""
         with self._lock:
             if self._closed:
                 return 4 if self._final is None else self._final
@@ -1318,7 +1938,9 @@ class Run:
             except Exception:
                 pass  # an unreadable input is already recorded; nothing else can fail here
             s = status if status is not None else (2 if self._error_reported else 0)
-            if self.sink_failed:
+            # A record withheld because redaction made it invalid is an output the writer could not
+            # write (spec sections 3.4, 5.3): it forces 4 exactly as a sink failure does.
+            if self.sink_failed or self._output_refused:
                 s = 4
             at = self._next()
             rec = self._envelope(self._scrub_payload({"event": "end", "status": s, "receipt": self.receipt_path, "redacted": self._redacted_any}, [], True), SCHEMA_IDS["end"], at)
@@ -1424,8 +2046,22 @@ def main(tool: Tool, argv: Sequence[str], handler: Callable[[Run, List[str]], An
         run: Optional[Run] = state["run"]
         try:
             if run is not None and not run.ended:
-                run.error("uncaught.writer_failure", f"the writer itself failed: {type(e).__name__}: {str(e) or '(no message)'}", receipt_extra={"detail": {"traceback": traceback.format_exc()}}, remedy="this is a defect in parley_emit; report it with the receipt")
-                return run.end()
+                # A run that reached the bootstrap line closes with `end` whatever happens (spec
+                # section 3.3). The line is writer-built, so no declared secret can have it
+                # withheld (flyingrobots/parley#161). When the failure was in reporting the
+                # tool's own failure, or this line cannot be written either, the run failed and
+                # the error that says why could not be written: that is protocol output that
+                # could not be written, status 4, not the 2 of a failure that was reported
+                # (spec section 3.4).
+                unreported = bool(state.get("reporting"))
+                try:
+                    run.writer_error("uncaught.writer_failure", f"the writer itself failed: {_describe(e)}", receipt_extra={"detail": {"traceback": traceback.format_exc()}}, remedy="this is a defect in parley_emit; report it with the receipt")
+                except BaseException:
+                    unreported = True
+                try:
+                    return run.end(4 if unreported else None)
+                except BaseException:
+                    return 4
             if run is not None:
                 return 4
             location = state["location"]
@@ -1444,6 +2080,26 @@ def main(tool: Tool, argv: Sequence[str], handler: Callable[[Run, List[str]], An
         finally:
             if capture is not None:
                 capture.release()
+
+
+def _describe(e: BaseException) -> str:
+    """An exception in a few words, for the writer's own failure line. Never raises: an exception
+    that cannot be described is said to be that."""
+    try:
+        return f"{type(e).__name__}: {str(e) or '(no message)'}"
+    except BaseException:
+        return f"{type(e).__name__}: (it could not be described)"
+
+
+def _report_uncaught(run: "Run", state: Dict[str, Any], code: str, problem: Callable[[], str], remedy: str, receipt_extra: Optional[Record] = None) -> None:
+    """The tool's failure as the writer's own error line (spec section 6): writer-built, so no
+    declared secret can rename its fields or have it withheld, while the exception's name, message
+    and traceback are scrubbed like any other text of the tool's (flyingrobots/parley#161).
+    `problem` is built here, inside the marked region, because describing an exception can itself
+    raise; `main` reads the mark to tell a failure that went unreported."""
+    state["reporting"] = True
+    run.writer_error(code, problem(), receipt_extra=receipt_extra, remedy=remedy)
+    state["reporting"] = False
 
 
 def _main(tool: Tool, argv: List[str], handler: Callable[[Run, List[str]], Any], cwd_opt: Optional[str], env: Dict[str, str],
@@ -1547,7 +2203,9 @@ def _main(tool: Tool, argv: List[str], handler: Callable[[Run, List[str]], Any],
     resolved_v = scrub(resolved_raw, secret_values, "", resolved_pointers)
     argv_redacted, argv_indexes = redact_argv(argv, secret_values, all_names["flags"])
     input_pointers: List[str] = []
-    descriptors = scrub([{"path": d["path"], **({"role": d["role"]} if d.get("role") else {})} for d in decls], secret_values, "", input_pointers)
+    # `path` and `role` are the writer's field names here and are never renamed; their values are
+    # the tool's and are scrubbed.
+    descriptors = scrub([{"path": d["path"], **({"role": d["role"]} if d.get("role") else {})} for d in decls], secret_values, "", input_pointers, rename_keys=False)
     input_indexes = sorted({int(p.split("/")[1]) for p in input_pointers})
     redacted: Record = {}
     if argv_indexes:
@@ -1556,17 +2214,20 @@ def _main(tool: Tool, argv: List[str], handler: Callable[[Run, List[str]], Any],
         redacted["resolved"] = resolved_pointers
     if input_indexes:
         redacted["inputs"] = input_indexes
+    # The head writes `redacted` as built here (Run._head), so the two lists of names are scrubbed
+    # here, as the head's scrub used to scrub them; the indexes and pointers above need none.
     if present_env:
-        redacted["env"] = present_env
+        redacted["env"] = scrub(present_env, secret_values)
     if present_sources:
-        redacted["sources"] = present_sources
+        redacted["sources"] = scrub(present_sources, secret_values)
     head_redacted = bool(redacted)
     inv = compute_inv(tool.name, tool.version, command_name, resolved_v, []) if (not decls and command) else None
 
     run = Run(tool=tool.name, v=tool.version, id=run_id, session=session, dry_run=dry_run, stdout=stdout, stderr=stderr,
               receipt_fd=location.fd, receipt_path=location.receipt_path, receipt_dir=location.receipt_dir,
               secret_values=secret_values, now=now, cwd=cwd, command=command_name or discovery or "", resolved=resolved_v,
-              inputs=decls, head_redacted=head_redacted, human=(tool.human or (lambda _l: None)) if human else None)
+              inputs=decls, head_redacted=head_redacted, human=(tool.human or (lambda _l: None)) if human else None,
+              schemas=_declared_schemas(tool))
     state["run"] = run
 
     run._bootstrap(inv)
@@ -1598,13 +2259,13 @@ def _main(tool: Tool, argv: List[str], handler: Callable[[Run, List[str]], Any],
     if discovery:
         try:
             _discover(run, tool, discovery, command_name, bookkeeping)
-        except ParleyClosed:
-            pass
+        except (ParleyClosed, ParleyRedactionConflict):
+            pass  # a conflict was already reported by the writer; the run closes with 4
         except Exception as e:
             if not run.ended:
-                run.error("uncaught.exception", f"uncaught {type(e).__name__} during discovery: {str(e) or '(no message)'}",
-                          receipt_extra={"detail": {"traceback": traceback.format_exc()}},
-                          remedy=f"this is a defect in the tool's declaration; report it with the receipt at {run.receipt_path}")
+                _report_uncaught(run, state, "uncaught.exception", lambda: f"uncaught {type(e).__name__} during discovery: {str(e) or '(no message)'}",
+                                 f"this is a defect in the tool's declaration; report it with the receipt at {run.receipt_path}",
+                                 {"detail": {"traceback": traceback.format_exc()}})
         capture.release()
         return (run.status if run.status is not None else 4) if run.ended else run.end()
 
@@ -1615,18 +2276,36 @@ def _main(tool: Tool, argv: List[str], handler: Callable[[Run, List[str]], Any],
         if run.ended:
             return run.status if run.status is not None else 4
         if code not in (None, 0):
-            run.error("uncaught.exit", f"the tool called sys.exit({code!r}) inside its handler instead of returning or calling run.end",
-                      remedy="end the run with run.end(status) and return; the writer owns the exit status (spec section 3.4)")
+            _report_uncaught(run, state, "uncaught.exit", lambda: f"the tool called sys.exit({code!r}) inside its handler instead of returning or calling run.end",
+                             "end the run with run.end(status) and return; the writer owns the exit status (spec section 3.4)")
+    except ParleyRedactionConflict:
+        # Already reported by the writer, under its own code and without the value (spec section
+        # 5.3, flyingrobots/parley#131); an uncaught.exception beside it would say the same thing
+        # twice. The run closes with 4.
+        if run.ended:
+            return run.status if run.status is not None else 4
     except BaseException as e:  # KeyboardInterrupt included: it still closes a complete failed receipt
         if run.ended:
             capture.release()
             return 4
-        run.error("uncaught.exception", f"uncaught {type(e).__name__}: {str(e) or '(no message)'}",
-                  receipt_extra={"detail": {"traceback": traceback.format_exc()}},
-                  remedy=f"this is a defect in the tool; report it with the receipt at {run.receipt_path}")
+        _report_uncaught(run, state, "uncaught.exception", lambda: f"uncaught {type(e).__name__}: {str(e) or '(no message)'}",
+                         f"this is a defect in the tool; report it with the receipt at {run.receipt_path}",
+                         {"detail": {"traceback": traceback.format_exc()}})
     finally:
         capture.release()
     return (run.status if run.status is not None else 4) if run.ended else run.end()
+
+
+def _declared_schemas(tool: Tool) -> Dict[Tuple[str, str], Any]:
+    """Every schema document this writer can validate a record against, by `(id, version)`: the
+    embedded ones and those the tool declared on its emitted and error types (spec section 4.2).
+    A pair outside this map cannot be checked."""
+    out: Dict[Tuple[str, str], Any] = {(s["id"], s["version"]): s["schema"] for s in SCHEMAS}
+    for c in tool.commands.values():
+        for t in list(c.get("emits", [])) + list(c.get("errors") or []):
+            if t.get("schema") is not None:
+                out[(t["id"], t["version"])] = t["schema"]
+    return out
 
 
 def _discover(run: Run, tool: Tool, discovery: str, command_name: Optional[str], bookkeeping: List[Record]) -> None:
@@ -1654,7 +2333,8 @@ def _discover(run: Run, tool: Tool, discovery: str, command_name: Optional[str],
     for (sid, ver), t in types.items():
         doc = t.get("schema") or schema_for((sid, ver))
         if doc is None:
-            run.warning("schema.unavailable", f"no schema document for {sid}@{ver}", remedy="declare the schema on the emitted type")
+            # The writer's own warning, so writer-built: its code and field names are not scrubbed.
+            run.writer_warning("schema.unavailable", f"no schema document for {sid}@{ver}", remedy="declare the schema on the emitted type")
             continue
         run._describe({"event": "schema", "id": sid, "version": ver, "schema": doc}, SCHEMA_IDS["schema"], verbatim="schema")
     run.end(0)
@@ -1728,10 +2408,10 @@ def _retain(run: Run, tool_name: str, receipt_dir: str, count: int, dry_run: boo
             victims.append((name, seen))
     total = len(mine)
     if not victims:
-        run.step("retention: nothing to delete", f"{total} receipts of {tool_name} exceed its retention count of {count}, but every excess receipt is still in flight (no end line yet); only completed bundles, or incomplete ones older than a day, are deleted (spec section 5.1)")
+        run.writer_step("retention: nothing to delete", f"{total} receipts of {tool_name} exceed its retention count of {count}, but every excess receipt is still in flight (no end line yet); only completed bundles, or incomplete ones older than a day, are deleted (spec section 5.1)")
         return
     if dry_run:
-        run.step(f"retention: would delete {len(victims)} receipt bundle(s)", f"{total} receipts of {tool_name} exceed its retention count of {count}; a dry run performs no retention deletion (spec section 4.3)", {"receipts": [n for n, _ in victims]})
+        run.writer_step(f"retention: would delete {len(victims)} receipt bundle(s)", f"{total} receipts of {tool_name} exceed its retention count of {count}; a dry run performs no retention deletion (spec section 4.3)", {"receipts": [n for n, _ in victims]})
         return
     deleted: List[str] = []
     for name, seen in victims:
@@ -1753,7 +2433,7 @@ def _retain(run: Run, tool_name: str, receipt_dir: str, count: int, dry_run: boo
             continue  # a bundle another run is deleting
         if ours:
             deleted.append(name)
-    run.step(f"retention: deleted {len(deleted)} receipt bundle(s)", f"{total} receipts of {tool_name} exceeded its retention count of {count}; the oldest completed bundles of this tool are deleted with their sidecars, and no other tool's receipts are counted or touched (spec section 5.1)", {"receipts": deleted})
+    run.writer_step(f"retention: deleted {len(deleted)} receipt bundle(s)", f"{total} receipts of {tool_name} exceeded its retention count of {count}; the oldest completed bundles of this tool are deleted with their sidecars, and no other tool's receipts are counted or touched (spec section 5.1)", {"receipts": deleted})
 
 
 def _observe(p: str) -> Optional[Tuple[int, int]]:

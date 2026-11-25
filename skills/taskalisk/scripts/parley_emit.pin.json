@@ -1,12 +1,12 @@
 {
   "file": "parley_emit.py",
   "source": "flyingrobots/parley packages/parley-emit-py/parley_emit.py",
-  "parley_commit": "cdc225496978ec68190fbd44c154902dc537e0c5",
-  "sha256": "ed6852c18d8262a7b3234060be0bd00a31be45e0502d3bae62bf1a377f666dda",
-  "bytes": 150278,
-  "version": "0.1.1",
-  "spec": "0.2.0",
-  "schemas_commit": "58c42ad4afed81a04662bd0bada901b405bdc961",
+  "parley_commit": "3b9981ab922036577aca27e2c3407331eeb88394",
+  "sha256": "3c6339dc2c61f7f00fb5f20b25297a558e6b806f5e6814829f059f1689e4aaee",
+  "bytes": 193875,
+  "version": "0.3.0",
+  "spec": "0.2.1",
+  "schemas_commit": "a2e902472f588416624717afcb4ef1e93b9857fd",
   "license": "Apache-2.0; see parley_emit.LICENSE and parley_emit.NOTICE beside it",
-  "release": "parley-emit-py-v0.1.1"
+  "release": "parley-emit-py-v0.3.0"
 }
