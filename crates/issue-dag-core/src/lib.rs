@@ -9,7 +9,7 @@
 //! A body becomes findings with stable codes ([`findings`]); the codes
 //! are tabled on [`code`]. A task body also gets Taskalisk's own body
 //! warnings ([`body_warnings`]).
-//! The crate performs no I/O and has no dependencies.
+//! The crate performs no I/O and depends only on `pulldown-cmark`.
 mod admission;
 mod batch;
 mod body;

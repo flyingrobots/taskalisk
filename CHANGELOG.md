@@ -167,6 +167,8 @@ schema version under `Unreleased` is a draft and may change in place.
   every family of findings registers there. The body is read as CommonMark renders it, parsed by
   `pulldown-cmark` (no default features, no extensions): headings may be ATX or setext, and
   code spans, code blocks and HTML, and real paragraph boundaries, are the parser's.
+  `issue-dag-core` thus gains its first dependency: it still does no I/O, and depends only on
+  `pulldown-cmark`, which supersedes "no dependencies" in the #27 entry above.
 
 - **A provenance check for the vendored Parley writer** (flyingrobots/taskalisk#77).
   `scripts/check_vendored_writer.py` fetches the writer from flyingrobots/parley at the pinned

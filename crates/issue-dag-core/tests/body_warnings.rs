@@ -563,3 +563,78 @@ fn a_fenced_block_between_prose_lines_separates_two_paragraphs() {
     );
     assert_eq!(warning_codes(&blank, None), warning_codes(&body, None));
 }
+
+#[test]
+fn a_heading_inside_a_block_quote_or_list_is_no_section() {
+    for marker in ["> ", "- "] {
+        let body = good().replace("## Outcome\n", &format!("{marker}## Outcome\n"));
+        assert_eq!(
+            warning_codes(&body, None),
+            ["taskalisk.outcome-missing"],
+            "{marker:?}"
+        );
+    }
+}
+
+#[test]
+fn a_level_one_heading_ends_the_outcome_section() {
+    // The prose after `# Next` lies outside the Outcome, so its two
+    // sentences are not the Outcome's.
+    let body = task(
+        Some("The parser reads ZQXMARK.\n\n# Next\n\nOne. Two."),
+        Some(SCOPE),
+        Some(ACCEPTANCE),
+    );
+    assert_eq!(warning_codes(&body, None), Vec::<&str>::new());
+}
+
+#[test]
+fn a_level_one_heading_names_no_section() {
+    // A setext level-1 `Acceptance` is not the `## Acceptance` section.
+    let body = task(Some(OUTCOME), Some(SCOPE), None).replace(
+        "## 1. Background Context",
+        "Acceptance\n==========\n- [ ] ZQXMARK passes.\n\n## 1. Background Context",
+    );
+    assert_eq!(warning_codes(&body, None), ["taskalisk.acceptance-missing"]);
+    let body = task(Some(OUTCOME), None, Some(ACCEPTANCE))
+        .replace("## Out of scope", "# Scope\nZQXMARK.\n\n## Out of scope");
+    assert_eq!(warning_codes(&body, None), ["taskalisk.scope-missing"]);
+}
+
+#[test]
+fn only_the_first_outcome_section_is_judged() {
+    let bad = "One ZQXMARK. Two.\n\n- a\n- b";
+    let second = |first: &str, then: &str| {
+        task(Some(first), Some(SCOPE), Some(ACCEPTANCE))
+            .replace("## Scope", &format!("## Outcome\n{then}\n\n## Scope"))
+    };
+    assert_eq!(
+        warning_codes(&second(OUTCOME, bad), None),
+        Vec::<&str>::new()
+    );
+    assert_eq!(
+        warning_codes(&second(bad, OUTCOME), None),
+        ["taskalisk.outcome-items", "taskalisk.outcome-sentences"]
+    );
+}
+
+#[test]
+fn nested_list_items_count_as_items() {
+    let body = task(Some("- a\n  - b"), Some(SCOPE), Some(ACCEPTANCE));
+    assert_eq!(warning_codes(&body, None), ["taskalisk.outcome-items"]);
+}
+
+#[test]
+fn code_block_text_adds_no_sentences() {
+    for outcome in [
+        "The parser reads ZQXMARK.\n\n```\nOne. Two.\n```",
+        "- The parser reads ZQXMARK.\n\n  ```\n  One. Two.\n  ```",
+    ] {
+        let body = task(Some(outcome), Some(SCOPE), Some(ACCEPTANCE));
+        assert_eq!(
+            warning_codes(&body, None),
+            Vec::<&str>::new(),
+            "{outcome:?}"
+        );
+    }
+}
