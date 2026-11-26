@@ -28,6 +28,8 @@ pub enum Label {
     P3,
     /// V1: an absent or malformed `.dag`.
     V1,
+    /// V10: the advisory on `.size_hours` above 8. A warning, never a violation.
+    V10,
     /// V2: an unknown format key.
     V2,
     /// V3: an absent `.id`, or one that is not a string.
@@ -42,8 +44,6 @@ pub enum Label {
     V7,
     /// V8: an optional key.
     V8,
-    /// V10: the advisory on `.size_hours` above 8. A warning, never a violation.
-    V10,
     /// X1: a `.id` that is not the address of the issue (profile rule X1).
     X1,
 }
