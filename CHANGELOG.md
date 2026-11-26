@@ -147,7 +147,8 @@ schema version under `Unreleased` is a draft and may change in place.
   `.blocked_by` order, from `Graph.not_planned_order`, two tasks naming them in opposite orders
   included; strangers' pull requests listed out of order, from
   `Graph.untrusted_pull_request_order`; and a run with both an unknown prerequisite and a cycle,
-  which is `unresolved` as in 1.x, which checks prerequisites first), every line equals the
+  which is `unresolved` as in 1.x, which checks prerequisites first; the core still reports its G4
+  findings, and the output README records the omission as the renderer's intended difference), every line equals the
   Python's (`tests/capture_render_parity.py`), `artifact_hash` in 82 of the 166, once these gaps are
   removed, and the suite checks the list is exact: the trust gate's reasons in `issue.untrusted`
   and `pull_request.untrusted` (#46), and the discovery findings of a run whose graph is not

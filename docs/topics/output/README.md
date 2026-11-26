@@ -225,6 +225,12 @@ example, a task that names the same not-planned prerequisite twice gives one `pa
 finding in Rust and one per mention in 1.x (difference 10, a compatibility exception; corpus
 `graph/g3-duplicate-not-planned-prerequisite`).
 
+One difference is the renderer's own, not the specification's: when a run has both an unknown
+prerequisite (X3) and a cycle (G4), the core reports every finding of both (F4, F5), but the 1.x
+document, like the Python, which checks prerequisites before cycles, is `unresolved` with
+`graph.unresolved_prerequisites` and names no cyclic node. Read the core's findings, not the
+1.x document, for the cycle in such a run.
+
 ## `--since-last`
 
 With `--since-last`, a plan compares its frontier with the most recent other completed receipt

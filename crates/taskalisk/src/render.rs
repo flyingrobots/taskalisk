@@ -276,8 +276,9 @@ impl<'a> Report<'a> {
         }
         // 1.x checks unknown prerequisites before it looks for a cycle, so
         // a run with both is `unresolved` and names no cyclic node. The
-        // profile ranks neither above the other: both make the run invalid
-        // (F1), so the renderer keeps the 1.x precedence.
+        // core still reports every G4 finding (F4, F5); this is the 1.x
+        // document leaving them out, an intended difference of the
+        // renderer recorded in docs/topics/output/README.md.
         if !report.unknown.is_empty() {
             report.cyclic.clear();
         }
