@@ -172,7 +172,7 @@ An error from a `gh` or `git` call carries `detail: {source, error, phase}`, whe
 | 2 | it failed and reported one or more `parley.error` lines |
 | 3 | a usage error before the run began, or a schema file of the declaration that cannot be read (`startup.declaration_unreadable`): one `parley.startup.failed` line on stderr, nothing on stdout, no receipt |
 | 4 | an output or receipt sink failed |
-| 1 | only when `scripts/parley_emit.py` is missing: Python cannot import the writer and prints its own error (see What is not guaranteed) |
+| 1 | the Python: only when `scripts/parley_emit.py` is missing: Python cannot import the writer and prints its own error (see What is not guaranteed). The Rust binary: only from `doctor`, for an error finding, or a warning under `--strict` (see *`doctor`*) |
 
 1.x used 1 for "the graph or frontmatter is invalid" and 2 for "GitHub could not be read". Both are
 now 2, because Parley reserves 2 for a reported error; the error code's namespace (`gh.`, `git.`
