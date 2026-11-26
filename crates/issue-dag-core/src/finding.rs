@@ -518,6 +518,7 @@ impl fmt::Display for Rule {
 /// | `taskalisk.title-joins` | a title joining two things with "and" or `;` | warning |
 /// | `taskalisk.isolated-task` | an open task with no edge in or out | warning |
 /// | `taskalisk.redundant-edge` | an edge the reduction removes (G5) | warning |
+/// | `taskalisk.small-container` | a container with fewer than two children | warning |
 #[must_use]
 pub const fn code(label: Label) -> &'static str {
     match label {

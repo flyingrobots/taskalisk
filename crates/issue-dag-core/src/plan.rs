@@ -103,6 +103,8 @@ pub struct Graph {
     pub nodes: BTreeMap<IssueRef, Node>,
     /// The containers, with their children in written order (rules D9, W1).
     pub containers: BTreeMap<IssueRef, Vec<IssueRef>>,
+    /// The containers whose issue is closed, as the closure observed it.
+    pub closed_containers: BTreeSet<IssueRef>,
     /// The unmodeled issues (rule D7).
     pub unmodeled: BTreeSet<IssueRef>,
     /// Every issue that is not admitted (rules D6, W1).
@@ -628,6 +630,9 @@ impl<'c> Assembly<'c> {
             self.graph
                 .containers
                 .insert(reference.clone(), reading.children.clone());
+            if document.issue.state == IssueState::Closed {
+                self.graph.closed_containers.insert(reference.clone());
+            }
             return;
         }
         self.graph.nodes.insert(

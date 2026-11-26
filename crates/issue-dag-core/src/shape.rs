@@ -64,6 +64,9 @@ shape_warnings! {
     /// An edge the transitive reduction removes (profile rule G5).
     RedundantEdge => "taskalisk.redundant-edge",
         "the .blocked_by edge is implied by a path of other edges; the reduction removes it",
+    /// A container that groups fewer than two issues.
+    SmallContainer => "taskalisk.small-container",
+        "the container's .children names fewer than two issues: it groups nothing",
 }
 
 /// What a shape warning measured, beyond its finding.
@@ -97,6 +100,9 @@ pub struct ShapeFinding {
 ///   the subject is the dependent, whose `.blocked_by` declares the edge,
 ///   the finding concerns the prerequisite, and the detail is the node the
 ///   edge is implied via ([`Detail::ImpliedVia`]).
+/// - `taskalisk.small-container`, for each open container of the graph whose
+///   `.children` names fewer than two distinct issues (a reference to the
+///   container itself is not a child). It has no detail.
 #[must_use]
 pub fn shape_warnings(graph: &Graph) -> Vec<ShapeFinding> {
     let mut found = Vec::new();
@@ -108,6 +114,7 @@ pub fn shape_warnings(graph: &Graph) -> Vec<ShapeFinding> {
         });
     }
     isolated(graph, &mut found);
+    small_containers(graph, &mut found);
     found.sort_by(|a, b| a.finding.cmp(&b.finding));
     found
 }
@@ -130,6 +137,21 @@ fn isolated(graph: &Graph, found: &mut Vec<ShapeFinding>) {
             finding: finding(ShapeWarning::IsolatedTask, id, None),
             detail: None,
         });
+    }
+}
+
+/// `taskalisk.small-container`: each open container of fewer than two
+/// distinct children.
+fn small_containers(graph: &Graph, found: &mut Vec<ShapeFinding>) {
+    for (id, children) in &graph.containers {
+        if !graph.closed_containers.contains(id)
+            && children.iter().collect::<BTreeSet<_>>().len() < 2
+        {
+            found.push(ShapeFinding {
+                finding: finding(ShapeWarning::SmallContainer, id, None),
+                detail: None,
+            });
+        }
     }
 }
 

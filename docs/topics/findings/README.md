@@ -708,3 +708,20 @@ receives `taskalisk.redundant-edge` concerning `o/r#1`, implied via `o/r#2`.
 
 To fix: nothing is required; the plan already ignores the edge. Keep it as
 evidence, or remove `o/r#1` from `o/r#3`'s `.blocked_by` if it adds nothing.
+
+### `taskalisk.small-container`
+
+**Severity:** warning. **Rule:** [Containers](../../../skills/taskalisk/SKILL.md#core-doctrine), Core Doctrine 2 of the skill.
+
+An open container's `.children` names fewer than two distinct issues: none, or
+one.
+A container exists to group the tasks a split produced, so with one child or
+none it groups nothing. A reference to the container itself is not counted,
+and a child named twice counts once. A closed container, read because an
+open document names it, draws no warning: its grouping is finished.
+
+In a plan where `o/r#9` is a container with `.children: [o/r#1]`, `o/r#9`
+receives `taskalisk.small-container`.
+
+To fix: add the missing children to `.children`, or, if the container groups
+only one task, drop the container and keep the task.

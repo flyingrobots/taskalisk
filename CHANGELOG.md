@@ -272,6 +272,10 @@ schema version under `Unreleased` is a draft and may change in place.
   `taskalisk.isolated-task`, given once per open node with no edge in or out, when the plan has at
   least two open nodes; a plan of a single task draws none. Edges are those between open nodes, as
   for the Python compiler's `isolated_open_nodes` metric. `ShapeFinding::detail` becomes an
+- **A warning for a container with one child or none** (flyingrobots/taskalisk#63).
+  `shape_warnings` gains `taskalisk.small-container`, given once per open container whose
+  `.children` names fewer than two distinct issues. `Graph` gains `closed_containers`, the
+  containers whose issue the run observed closed. `ShapeFinding::detail` becomes an
   `Option<Detail>`: `None` for a warning that measures nothing beyond its finding.
 
 - **Why a reference could not be read, in part** (flyingrobots/taskalisk#45). The test
