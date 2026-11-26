@@ -43,6 +43,15 @@ fn graph(bodies: &[(u32, String)]) -> Graph {
 /// As [`graph`], with the issues numbered in `closed` closed: they are not
 /// seeds, and are read only when a document names them.
 fn graph_closing(bodies: &[(u32, String)], closed: &[u32]) -> Graph {
+    match run(bodies, closed) {
+        Outcome::Planned { graph, .. } => graph,
+        other => panic!("expected a plan, got {other:?}"),
+    }
+}
+
+/// The outcome of a run over `bodies`, as for [`graph_closing`], whatever it
+/// is.
+fn run(bodies: &[(u32, String)], closed: &[u32]) -> Outcome {
     let owner = Actor {
         login: "o".to_owned(),
         actor_type: "User".to_owned(),
@@ -97,10 +106,7 @@ fn graph_closing(bodies: &[(u32, String)], closed: &[u32]) -> Graph {
         },
         capacities: BTreeMap::new(),
     };
-    match plan(&parameters, &RecordedForge::new(&observations)) {
-        Ok(Outcome::Planned { graph, .. }) => graph,
-        other => panic!("expected a plan, got {other:?}"),
-    }
+    plan(&parameters, &RecordedForge::new(&observations)).expect("every observation is recorded")
 }
 
 /// The warnings of `warning`'s code among `found`.
@@ -310,4 +316,23 @@ fn a_closed_container_gives_no_warning() {
         of(&found, ShapeWarning::SmallContainer).is_empty(),
         "{found:?}"
     );
+}
+
+/// #63: a reference to the container itself is not a child. Container
+/// o/r#8 writes `.children: [o/r#8, o/r#1]`: the self reference makes it
+/// invalid (V7), but the run still reports its graph, where o/r#8 groups
+/// one issue and gets the warning.
+#[test]
+fn a_container_s_reference_to_itself_is_not_a_child() {
+    let outcome = run(&[(1, task(1, &[], "")), (8, container(8, &[8, 1]))], &[]);
+    let Outcome::Invalid {
+        graph: Some(graph), ..
+    } = outcome
+    else {
+        panic!("expected an invalid run with its graph, got {outcome:?}");
+    };
+    let found = shape_warnings(&graph);
+    let small = of(&found, ShapeWarning::SmallContainer);
+    let subjects: Vec<&IssueRef> = small.iter().map(|f| &f.finding.subject).collect();
+    assert_eq!(subjects, [&reference("o/r#8")]);
 }
