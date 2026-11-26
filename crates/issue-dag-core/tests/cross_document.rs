@@ -141,11 +141,15 @@ fn identities(outcome: &Outcome) -> BTreeSet<(String, &'static str, Option<Strin
         .collect()
 }
 
-fn finding(subject: &str, label: &'static str, concerns: Option<&str>) -> (String, &'static str, Option<String>) {
+fn finding(
+    subject: &str,
+    label: &'static str,
+    concerns: Option<&str>,
+) -> (String, &'static str, Option<String>) {
     (subject.to_owned(), label, concerns.map(str::to_owned))
 }
 
-fn is_planned(outcome: &Outcome) -> bool {
+const fn is_planned(outcome: &Outcome) -> bool {
     matches!(outcome, Outcome::Planned { .. })
 }
 
@@ -165,7 +169,10 @@ fn x1_a_document_copied_from_another_issue_is_a_violation() {
     let mut o = observations();
     owned(&mut o, "o/r#1", &task("o/r#7", &[]));
     let outcome = run(&["o/r#1"], &o);
-    assert!(matches!(outcome, Outcome::Invalid { .. }), "got {outcome:?}");
+    assert!(
+        matches!(outcome, Outcome::Invalid { .. }),
+        "got {outcome:?}"
+    );
     assert_eq!(
         identities(&outcome),
         BTreeSet::from([finding("o/r#1", "X1", None)])

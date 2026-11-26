@@ -160,19 +160,20 @@ fn display_of(python: &[Value]) -> Display {
 /// Whether the case's 1.x document holds an intended difference or a gap:
 /// then the Rust `artifact_hash` digests the Rust document, and is not the
 /// Python's (`docs/topics/output/README.md`). Only its form is asserted.
+/// A plan that did not compile is no exception: its document lists what
+/// discovery read (decision D13).
 fn hash_differs(python: &[Value]) -> bool {
-    python[0]["outcome"] != "compiled"
-        || python.iter().any(|l| {
-            matches!(
-                l["code"].as_str(),
-                Some(
-                    "frontmatter.violation"
-                        | "frontmatter.warning"
-                        | "issue.untrusted"
-                        | "pull_request.untrusted"
-                )
+    python.iter().any(|l| {
+        matches!(
+            l["code"].as_str(),
+            Some(
+                "frontmatter.violation"
+                    | "frontmatter.warning"
+                    | "issue.untrusted"
+                    | "pull_request.untrusted"
             )
-        })
+        )
+    })
 }
 
 /// The fields of a Python line the renderer does not write, given a
@@ -409,14 +410,16 @@ fn every_agreed_case_renders_as_the_python_does() {
         names.len(),
         failures.join("\n")
     );
-    // 76 corpus cases, the one planned again with hostile titles, and the
+    // 79 corpus cases (graph-cycle, g4-cycle and g4-downstream-of-a-cycle
+    // among them), the one planned again with hostile titles, and the
     // variants d9-container--opaque-child, --opaque-children-in-order-read,
-    // --traversal-order, --not-planned-in-blocked-by-order and
-    // --not-planned-per-task-order (the pull request and untrusted variants
-    // hold untrusted issues or pulls; the unknown-and-cycle one compiles
-    // nothing).
+    // --traversal-order, --not-planned-in-blocked-by-order,
+    // --not-planned-per-task-order and --traversal-order-and-cycle, and
+    // discovery-unmodeled-home-issue--three-issue-cycle. The other variants
+    // hold untrusted issues or pulls, or a frontmatter finding, as every run
+    // with an unknown prerequisite does.
     assert_eq!(
-        equal_hashes, 82,
+        equal_hashes, 87,
         "the cases whose artifact_hash is the Python's"
     );
 }
