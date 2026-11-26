@@ -20,6 +20,25 @@ schema version under `Unreleased` is a draft and may change in place.
   document's only violation, as C4 and P3 stop judging; an invalid document reports no warnings. CI
   runs the job "Rust workspace": `cargo fmt`, `clippy -D warnings` and `cargo test`, all locked.
 
+- **The Rust graph core** (flyingrobots/taskalisk#28). `issue-dag-core` now plans over recorded
+  observations, still with no I/O: the run parameters and observation slots as domain values, the
+  `Forge` and `LocalRepository` ports with a `RecordedForge` that answers from them, the admission
+  policy `taskalisk/threat-model` (AD1 to AD10, CODEOWNERS parsed as AD7 states), and `plan`:
+  rejection (I2, the policy name included), discovery and closure (D1 to D10), opaque, untrusted
+  and unmodeled issues, the cross-document rules (X1 to X3), the graph (G1 to G5), status (S1,
+  S2), readiness (Q1, Q2) and the outcome classes (F1 to F5) with findings labelled as F5 states.
+  An unavailable observation makes the run incomplete, never empty; a slot that was never recorded
+  is an error, not an outcome. A new crate, `issue-dag-bundle`, reads an
+  `issue-dag-observations/1` bundle into the core and rejects one that breaks OB1 to OB13. All 179
+  graph cases of the vendored corpus pass; for each `--python` twin the crate matches the
+  normative case. Ranking and batch selection are not yet ported (flyingrobots/taskalisk#29), so
+  the corpus test compares the ready set as a set and leaves scores, waves, the critical path and
+  the batch uncompared. Choices the specification leaves open: an admitted pull request's draft
+  flag is required whether or not the issue it closes becomes a node; an invalid run reports its
+  graph unless a prerequisite is unknown (X3) or the edges form a cycle (G4); an invalid
+  document's fields are read where they have one value of the right form; a bundle with an
+  `observations` member the bundle rules do not define is rejected.
+
 - **A provenance check for the vendored Parley writer** (flyingrobots/taskalisk#77).
   `scripts/check_vendored_writer.py` fetches the writer from flyingrobots/parley at the pinned
   commit and requires it to equal the pin and the copy; CI runs it. The offline pin test proves
