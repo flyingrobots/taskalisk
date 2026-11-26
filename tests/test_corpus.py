@@ -489,3 +489,18 @@ class CodexFindings(unittest.TestCase):
         cases = {"census-shape-01": json.loads((case / "case.json").read_text())}
         problems = check.check_case("document", tmp / "census-shape-01", labels, diffs, cases)
         self.assertTrue(any("expected.json" in p for p in problems), problems)
+
+
+class TwinInputs(unittest.TestCase):
+    """Codex on PR #100: a characterisation twin replays exactly its normative case's input."""
+
+    def test_a_twin_with_another_input_is_a_problem(self):
+        tmp = pathlib.Path(tempfile.mkdtemp(prefix="corpus-twin-"))
+        self.addCleanup(shutil.rmtree, tmp, True)
+        shutil.copytree(SPEC_COPY, tmp / "spec")
+        twin = tmp / "spec" / "corpus" / "cases" / "document" / "c1-nbsp-before-fence--python" / "input.json"
+        given = json.loads(twin.read_text())
+        given["body"] = "plain text, no block\n"
+        twin.write_text(json.dumps(given, indent=2) + "\n")
+        problems = check.check(tmp / "spec")
+        self.assertTrue(any("c1-nbsp-before-fence--python" in p and "input" in p and "twin" in p for p in problems), problems)
