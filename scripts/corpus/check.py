@@ -99,6 +99,8 @@ def check_case(level: str, where: pathlib.Path, labels: dict[str, str], diffs: d
 
     expected = _load(where / "expected.json", p, name)
     if not isinstance(expected, dict):
+        if expected is not None or not any("expected.json" in q for q in p):
+            p.append(f"{name}: expected.json must be an object (CC5)")
         return p
     for label in _labels_in(expected):
         if label not in labels:

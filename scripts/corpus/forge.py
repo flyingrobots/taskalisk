@@ -171,9 +171,24 @@ def compile_bundle(bundle: dict[str, Any]) -> Any:
     trust = {"owners": scope["owners"], "repos": scope["repositories"], "logins": params["trust"]["logins"],
              "codeowners": params["trust"]["codeowners"]}
     out = tk.Outcome()
-    with _answering(tk, bundle):
-        tk.compile_github(out, "<bundle>", list(params["roots"]), tk.DEFAULT_MIN_CONFIDENCE, dict(params["capacities"]) or None,
-                          False, trust, [], None)
+    exact_owners = {o.lower() for o in scope["owners"]}
+
+    class RecordedScope(tk.TrustPolicy):
+        """The compiler's policy, with exactly the bundle's read scope: the compiler always adds the home
+        owner, but a bundle may record a narrower scope (the profile requires only the home repository)."""
+
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
+            super().__init__(*args, **kwargs)
+            self.owners = set(exact_owners)
+
+    real_policy = tk.TrustPolicy
+    tk.TrustPolicy = RecordedScope
+    try:
+        with _answering(tk, bundle):
+            tk.compile_github(out, "<bundle>", list(params["roots"]), tk.DEFAULT_MIN_CONFIDENCE, dict(params["capacities"]) or None,
+                              False, trust, [], None)
+    finally:
+        tk.TrustPolicy = real_policy
     return out
 
 
