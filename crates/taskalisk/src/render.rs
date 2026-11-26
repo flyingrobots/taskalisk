@@ -56,6 +56,23 @@ const WEIGHTS: [(&str, u64); 5] = [
     ("out_degree", 1),
 ];
 
+/// What the adapters read beside the plan, for display (stub).
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Display {
+    /// Issue titles.
+    pub titles: BTreeMap<IssueRef, String>,
+    /// Issue URLs.
+    pub urls: BTreeMap<IssueRef, String>,
+    /// Pull request URLs.
+    pub pull_request_urls: BTreeMap<u64, String>,
+    /// Recoverable branches.
+    pub recoverable_branches: BTreeMap<IssueRef, Vec<String>>,
+    /// CODEOWNERS persons.
+    pub codeowners: BTreeMap<String, Vec<String>>,
+    /// CODEOWNERS teams.
+    pub codeowners_teams_not_expanded: BTreeMap<String, Vec<String>>,
+}
+
 /// Why a run has no result lines.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum NotRendered {
@@ -75,7 +92,11 @@ pub enum NotRendered {
 /// # Errors
 ///
 /// [`NotRendered`] when the run has no plan to render.
-pub fn render(parameters: &Parameters, outcome: &Outcome) -> Result<String, NotRendered> {
+pub fn render(
+    parameters: &Parameters,
+    outcome: &Outcome,
+    _display: Option<&Display>,
+) -> Result<String, NotRendered> {
     let mut text = String::new();
     for line in lines(parameters, outcome)? {
         text.push_str(&line.to_string());

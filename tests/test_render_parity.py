@@ -6,7 +6,7 @@
 - `tests/fixtures/render/rust/` is the Rust rendering of the same cases, which the Rust test
   holds byte for byte. Each of its lines must validate against the exact schema its `_schema`
   names, once the writer's envelope (`t`, `seq`, `run`) is added, except that a field the Rust
-  renderer does not write yet (RUST_GAPS, flyingrobots/taskalisk#58) may be missing.
+  renderer does not write yet (RUST_GAPS, flyingrobots/taskalisk#58) may be missing (the trust gate's reasons, #46, and an `artifact_hash` the core cannot compute).
 """
 import json
 import re
@@ -18,16 +18,14 @@ from parley_emit import validate_line
 
 RUST = capture.FIXTURES / "rust"
 
-NODE_GAPS = {"title", "url", "type", "workstream", "size_hours", "linked_open_prs", "recoverable_branches"}
-
-# {schema id: the paths that may be missing}; `*` is any list index. A finding's gaps depend on its code.
+# {schema id: the errors allowed}; `*` is any list index. A finding's depend on its code. The Rust
+# rendering here is given a display input, so only what the core cannot know yet is missing:
+# `artifact_hash` where the 1.x document holds the Python's frontmatter messages or trust reasons
+# (flyingrobots/taskalisk#46) or a cycle's discovery findings (flyingrobots/taskalisk#44).
 RUST_GAPS = {
-    "taskalisk.plan": {"/ is missing artifact_hash", "/source/trust is missing codeowners",
-                       "/source/trust is missing codeowners_teams_not_expanded"},
-    "taskalisk.frontier_node": {f"/ is missing {f}" for f in NODE_GAPS},
-    "taskalisk.node": {f"/ is missing {f}" for f in NODE_GAPS},
-    "taskalisk.batch": {f"/members/* is missing {f}" for f in ("title", "url", "workstream")},
+    "taskalisk.plan": {"/ is missing artifact_hash"},
 }
+# The trust gate's reasons: flyingrobots/taskalisk#46.
 FINDING_GAPS = {
     "issue.untrusted": {"/ is missing message"} | {f"/detail is missing {f}" for f in ("url", "state", "author", "reasons", "referenced_by")},
     "pull_request.untrusted": {"/ is missing message"},
