@@ -25,6 +25,7 @@ mod rank;
 mod record;
 mod reference;
 mod rewrite;
+mod shape;
 mod validate;
 
 use std::collections::BTreeSet;
@@ -47,6 +48,7 @@ pub use rank::{Ranking, rank};
 pub use record::{Kind, MeterClaim, Record, Status, TaskType, VERSION};
 pub use reference::{IssueRef, MAX_NUMBER, is_name};
 pub use rewrite::{EdgeEdit, Refusal, Rewrite, rewrite_blocked_by};
+pub use shape::{Detail, SHAPE_WARNINGS, ShapeFinding, ShapeWarning, shape_warnings};
 pub use validate::{Validation, validate};
 
 /// The judgement of one body.

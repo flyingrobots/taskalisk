@@ -4,7 +4,7 @@ Reference for every code that `issue-dag-core` gives a finding: every code of
 its public catalogue `CODES`. A finding is one violation or warning. It
 carries a code, a severity, the issue that receives it as its subject, for
 some codes the reference it concerns, and a fixed message that names keys and
-rules but never a value or a line of the body. Three families of findings
+rules but never a value or a line of the body. Four families of findings
 and the plan warnings share the catalogue:
 
 - **document findings** (function `findings`): the frontmatter document in an
@@ -13,6 +13,9 @@ and the plan warnings share the catalogue:
   discovery and the graph apply to a whole run;
 - **body warnings** (function `body_warnings`): Taskalisk's own writing
   convention for a task body, not a rule of any specification.
+- **shape warnings** (function `shape_warnings`): Taskalisk's own advisories
+  on the shape of a plan's graph, from the skill's doctrine on graph health,
+  not a rule of any specification.
 - **plan warnings** (function `plan_warnings`): Taskalisk's own advisories on
   a plan as a whole, from the skill's doctrine on graph health. A plan warning
   is not a finding: it concerns no single issue, so it has no subject, and it
@@ -32,7 +35,7 @@ V12 assigns it; the prefix names the specification that states the rule:
 | `format.` | the format [`issue-dag/2`](../../../tests/fixtures/issue-dag/formats/issue-dag-2.md): carrier rules C, value rules L, validity rules V |
 | `version.` | the [version policy](../../../tests/fixtures/issue-dag/versions.md) |
 | `profile.` | the planning profile [`issue-dag-planning/2`](../../../tests/fixtures/issue-dag/profiles/issue-dag-planning-2.md) |
-| `taskalisk.` | Taskalisk's convention, [Writing a task](../../../skills/taskalisk/WRITING-TASKS.md) for a body warning, or its doctrine, [Core Doctrine](../../../skills/taskalisk/SKILL.md#core-doctrine), for a plan warning; the suffix is a name, not a label |
+| `taskalisk.` | Taskalisk's convention, [Writing a task](../../../skills/taskalisk/WRITING-TASKS.md) for a body warning, or its doctrine, [Core Doctrine](../../../skills/taskalisk/SKILL.md#core-doctrine), for a shape or plan warning; the suffix is a name, not a label |
 
 The links go to the copy of the specification vendored in this repository
 under `tests/fixtures/issue-dag/`. A code never changes meaning; a rule that
@@ -41,10 +44,11 @@ once, in the catalogue:
 
 - **error**: a violation. The document is invalid, or for a run finding the
   run is.
-- **warning**: the V10 advisory, a body warning or a plan warning. The document
-  stays valid, and a plan warning never makes a run invalid.
-  A V10 warning is reported only for a document with no violations, and body
-  warnings only for a valid task document.
+- **warning**: the V10 advisory, a body warning, a shape warning or a plan
+  warning. The document stays valid, and a shape or plan warning never makes a
+  run invalid. A V10 warning is reported only for a document with no
+  violations, body warnings only for a valid task document, and shape and plan
+  warnings only for the graph of a run.
 
 A body with no frontmatter block (rules C1 to C3) is not a document and has
 no findings. A document gets one finding per rule it breaks, however many of
@@ -58,11 +62,34 @@ judged with the address `o/r#1`; the crate's corpus test runs every case. A
 run finding's example names a case under `corpus/cases/graph/`, whose issues
 are `o/r#1`, `o/r#2` and so on.
 
+## A reference that cannot be read
+
+A run reports why a reference does not resolve to an issue it can read when
+the observations say why. Three causes have a finding of their own:
+
+| Cause | Code | Receives it |
+| --- | --- | --- |
+| outside the read scope | `profile.D3` | each document that writes it, concerning the reference |
+| a pull request | `profile.D4` | the pull request; each open task that writes it in `.blocked_by` also receives `profile.X3` concerning it |
+| transferred | `profile.D5` | each document that writes it, concerning the old reference |
+
+A reference in the read scope that resolves to no issue the planner can see
+has no finding: rule
+[D10](../../../tests/fixtures/issue-dag/profiles/issue-dag-planning-2.md#3-discovery)
+makes the run incomplete, and the run reports the reason recorded for it. The
+bundle records that reason as free text
+([OB8](../../../tests/fixtures/issue-dag/corpus/bundle.md#2-observations)), so
+the crate does not tell an owner, a repository or an issue number that was not
+found apart; that needs a change to the specification first, which is
+flyingrobots/taskalisk#126 (decision D17). The test
+`crates/issue-dag-core/tests/unreadable_references.rs` pins all four cases.
+
 ## Entries
 
 The entries are in the catalogue's order (`CODES`): the document codes in the
 order of the labels' text, so `V10` comes before `V2`; then the planning
-profile's codes; then the body warnings; then the plan warnings. The test
+profile's codes; then the body warnings; then the shape warnings; then the
+plan warnings. The test
 `crates/issue-dag-core/tests/finding_reference.rs` fails when a code has no
 entry here, an entry names no code, or a link or anchor here does not
 resolve.
@@ -647,6 +674,26 @@ observation bundle records none.
 
 To fix: if the title names two outcomes, split the task. If `and` is part of
 one name, rephrase the title or put the name in a code span.
+
+### `taskalisk.redundant-edge`
+
+**Severity:** warning. **Rule:** [Transitive reduction](../../../skills/taskalisk/SKILL.md#core-doctrine), Core Doctrine 4 of the skill.
+
+An edge of the plan's graph is redundant: the transitive reduction (profile
+rule [G5](../../../tests/fixtures/issue-dag/profiles/issue-dag-planning-2.md#5-the-graph))
+removes it, because a longer path of `.blocked_by` edges between open nodes
+already orders the two issues. The warning's subject is the dependent, whose
+`.blocked_by` declares the edge; it concerns the prerequisite. Its detail is
+the node the edge is implied via: the first child of the prerequisite, in the
+text order of references (so `o/r#10` comes before `o/r#2`), other than the
+dependent, from which the dependent is reachable. The Python compiler reports
+the same edge as `edge.redundant`, with the same `implied_via`.
+
+In a plan where `o/r#2` is blocked by `o/r#1` and `o/r#3` by both, `o/r#3`
+receives `taskalisk.redundant-edge` concerning `o/r#1`, implied via `o/r#2`.
+
+To fix: nothing is required; the plan already ignores the edge. Keep it as
+evidence, or remove `o/r#1` from `o/r#3`'s `.blocked_by` if it adds nothing.
 
 ### `taskalisk.edge-density`
 

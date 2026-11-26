@@ -219,15 +219,35 @@ schema version under `Unreleased` is a draft and may change in place.
   `Finding::code()` and `Finding::severity()` and cannot be assigned, so a finding's severity
   always matches its code. A caller that read `finding.code` as a string uses
   `finding.code().as_str()`, and one that read `finding.severity` uses `finding.severity()`.
+- **A warning for a redundant edge** (flyingrobots/taskalisk#62). `issue-dag-core` gains a family
+  of plan-shape warnings, `shape_warnings`, read from a plan's `Graph` and registered in `CODES`
+  after the body warnings: Taskalisk's advisories from the skill's doctrine on graph health, which
+  never make a run invalid. Its first code, `taskalisk.redundant-edge`, is given once per edge the
+  transitive reduction removes (G5): the subject is the dependent, the finding concerns the
+  prerequisite, and its detail is the node the edge is implied via: the first child of the
+  prerequisite, in reference text order, that reaches the dependent, the Python compiler's
+  `implied_via` for the same edge, `edge.redundant`. The descendant sets are built once, so the
+  4,998 redundant edges of a 5,000-task chain whose every task is also blocked by its first take
+  well under a second; a `perf_` test guards it, and the CI perf guard now expects 7.
 - **A warning when edge density is outside its band** (flyingrobots/taskalisk#61).
   `issue-dag-core` gains plan warnings, `plan_warnings`, read from a plan's `Graph`: advisories
   on a plan as a whole, from the skill's doctrine on graph health. A `PlanWarning` is not a
   `Finding`, since it concerns no single issue: it has a catalogued `Code` (registered in `CODES`
-  after the body warnings, listed in `PLAN_WARNINGS`), its code's severity, a fixed message and a
+  after the shape warnings, listed in `PLAN_WARNINGS`), its code's severity, a fixed message and a
   `PlanDetail`. Its first code, `taskalisk.edge-density`, is given once when the plan has more than
   one open node and its density, reduced edges over `n(n-1)/2` rounded to four places, is outside
   `DENSITY_BAND`, `0.01` to `0.50` inclusive; the detail gives the reduced edges, the open nodes,
   the density and the band. The Python compiler's `edge_density` and band are the same.
+
+- **Why a reference could not be read, in part** (flyingrobots/taskalisk#45). The test
+  `unreadable_references` pins the three causes today's observations tell apart: outside the read
+  scope (`profile.D3`), a pull request (`profile.D4`, with `profile.X3` to each open task that
+  writes it) and transferred (`profile.D5`). Each gives one finding with its code, and a D3 or D5
+  reference written by two documents gives each one. The finding reference gains a section on
+  them. Owner, repository and issue number not found are not told apart and get no code: bundle
+  rule OB8 records a reference that resolves to no issue as one unavailable slot with a free-text
+  reason, and profile rule D10 makes the run incomplete, with no findings. Telling them apart needs
+  a change to the issue-dag specification first, which is flyingrobots/taskalisk#126.
 
 - **A provenance check for the vendored Parley writer** (flyingrobots/taskalisk#77).
   `scripts/check_vendored_writer.py` fetches the writer from flyingrobots/parley at the pinned

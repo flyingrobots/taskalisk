@@ -1,0 +1,186 @@
+//! Plan-shape warnings (flyingrobots/taskalisk#42).
+//!
+//! Taskalisk's own advisories about the shape of a plan's graph, from the
+//! skill's doctrine on graph health (`skills/taskalisk/SKILL.md`, Core
+//! Doctrine 4). They are not rules of the `issue-dag/2` format or of the
+//! planning profile, so the codes carry the prefix `taskalisk.`, and the
+//! warnings never make a run invalid. [`shape_warnings`] reads them from a
+//! [`Graph`] that [`crate::plan`] returned.
+
+use std::collections::BTreeMap;
+
+use crate::finding::{Code, Finding, Severity};
+use crate::plan::{Edge, Graph, Indexed};
+use crate::reference::IssueRef;
+
+/// Declares [`ShapeWarning`], its code and message, its list
+/// [`SHAPE_WARNINGS`] and the count from one list, so a variant cannot exist
+/// without its code. The list is written in the order of the codes' text,
+/// which is the derived [`Ord`].
+macro_rules! shape_warnings {
+    ($($(#[doc = $doc:literal])* $name:ident => $code:literal, $message:literal,)+) => {
+        /// A sign that a plan's graph departs from the shape the skill
+        /// advises. Each is a warning; none affects validity.
+        #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+        pub enum ShapeWarning {
+            $($(#[doc = $doc])* $name,)+
+        }
+
+        impl ShapeWarning {
+            /// The stable code, such as `"taskalisk.redundant-edge"`
+            /// (tabled on [`crate::code`]).
+            #[must_use]
+            pub const fn code(self) -> &'static str {
+                match self {
+                    $(Self::$name => $code,)+
+                }
+            }
+
+            /// Fixed text naming the sign, never issue text.
+            const fn message(self) -> &'static str {
+                match self {
+                    $(Self::$name => $message,)+
+                }
+            }
+        }
+
+        /// The number of shape warnings.
+        const COUNT: usize = [$($code),+].len();
+
+        /// Every shape warning, once each, in the order of its code's text.
+        pub const SHAPE_WARNINGS: [ShapeWarning; COUNT] = [$(ShapeWarning::$name),+];
+
+        /// The codes of [`SHAPE_WARNINGS`] with their severity, in its order:
+        /// this family's entry in [`crate::CODES`].
+        pub const SHAPE_CODES: [(&str, Severity); COUNT] =
+            [$(($code, Severity::Warning)),+];
+    };
+}
+
+shape_warnings! {
+    /// An edge the transitive reduction removes (profile rule G5).
+    RedundantEdge => "taskalisk.redundant-edge",
+        "the .blocked_by edge is implied by a path of other edges; the reduction removes it",
+}
+
+/// What a shape warning measured, beyond its finding.
+#[derive(Clone, Debug, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum Detail {
+    /// The node a redundant edge is implied via: the first child of its
+    /// prerequisite, in the text order of references, other than its
+    /// dependent, from which the dependent is reachable. The Python
+    /// compiler's `implied_via`.
+    ImpliedVia(IssueRef),
+}
+
+/// One shape warning: its finding, and what it measured.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ShapeFinding {
+    /// The finding: its subject, code, the reference it concerns, message.
+    pub finding: Finding,
+    /// What it measured.
+    pub detail: Detail,
+}
+
+/// The shape warnings of a plan's graph, sorted by their findings.
+///
+/// - `taskalisk.redundant-edge`, for each edge the reduction removes (G5):
+///   the subject is the dependent, whose `.blocked_by` declares the edge,
+///   the finding concerns the prerequisite, and the detail is the node the
+///   edge is implied via ([`Detail::ImpliedVia`]).
+#[must_use]
+pub fn shape_warnings(graph: &Graph) -> Vec<ShapeFinding> {
+    let mut found = Vec::new();
+    let mut via = Via::of(graph);
+    for edge in &graph.redundant {
+        found.push(ShapeFinding {
+            finding: finding(ShapeWarning::RedundantEdge, &edge.to, Some(&edge.from)),
+            detail: Detail::ImpliedVia(via.of_edge(edge)),
+        });
+    }
+    found.sort_by(|a, b| a.finding.cmp(&b.finding));
+    found
+}
+
+/// The finding of `warning` for `subject`, about `concerns`.
+fn finding(warning: ShapeWarning, subject: &IssueRef, concerns: Option<&IssueRef>) -> Finding {
+    Finding::coded(
+        subject.clone(),
+        Code::of(warning.code()),
+        concerns.cloned(),
+        warning.message(),
+    )
+}
+
+/// What each open node reaches, built once for a graph, and the children of
+/// each prerequisite in the text order of their references, built when
+/// first asked for: enough to name the node each redundant edge is implied
+/// via without a search per edge.
+struct Via {
+    indexed: Indexed,
+    position: BTreeMap<IssueRef, usize>,
+    /// For each open node, by position, a bit set of the nodes it reaches.
+    descendants: Vec<Vec<u64>>,
+    /// The children of a node, by position, in reference text order.
+    sorted: BTreeMap<usize, Vec<usize>>,
+}
+
+impl Via {
+    /// The descendant sets of `graph`'s open nodes, over all its edges, in
+    /// reverse topological order. Empty when nothing is redundant, which
+    /// includes a graph with a cycle (G5 reduces only an acyclic one).
+    fn of(graph: &Graph) -> Self {
+        let indexed = Indexed::of(graph);
+        let mut descendants = Vec::new();
+        if !graph.redundant.is_empty() {
+            let (order, _) = indexed.kahn();
+            let words = indexed.ids.len().div_ceil(64);
+            descendants = vec![vec![0_u64; words]; indexed.ids.len()];
+            for &u in order.iter().rev() {
+                let mut set = vec![0_u64; words];
+                for &c in &indexed.children[u] {
+                    set[c / 64] |= 1 << (c % 64);
+                    for (word, child_word) in set.iter_mut().zip(&descendants[c]) {
+                        *word |= child_word;
+                    }
+                }
+                descendants[u] = set;
+            }
+        }
+        let position = indexed
+            .ids
+            .iter()
+            .enumerate()
+            .map(|(i, id)| (id.clone(), i))
+            .collect();
+        Self {
+            indexed,
+            position,
+            descendants,
+            sorted: BTreeMap::new(),
+        }
+    }
+
+    /// The node the redundant `edge` is implied via: the first child of its
+    /// prerequisite, in the text order of references, other than its
+    /// dependent, that reaches its dependent. The Python compiler picks its
+    /// `implied_via` so. A redundant edge always has one; if it had none,
+    /// the prerequisite itself is named.
+    fn of_edge(&mut self, edge: &Edge) -> IssueRef {
+        let (Some(&u), Some(&v)) = (self.position.get(&edge.from), self.position.get(&edge.to))
+        else {
+            return edge.from.clone();
+        };
+        let indexed = &self.indexed;
+        let children = self.sorted.entry(u).or_insert_with(|| {
+            let mut children = indexed.children[u].clone();
+            children.sort_by_cached_key(|&c| indexed.ids[c].to_string());
+            children
+        });
+        children
+            .iter()
+            .find(|&&w| w != v && self.descendants[w][v / 64] & (1 << (v % 64)) != 0)
+            .map_or_else(|| edge.from.clone(), |&w| self.indexed.ids[w].clone())
+    }
+}
