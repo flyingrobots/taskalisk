@@ -1,6 +1,6 @@
 //! Reads an observation bundle, `issue-dag-observations/1`
 //! (`tests/fixtures/issue-dag/corpus/bundle.md`), into the domain values of
-//! `issue-dag-core`, and rejects a bundle that breaks rules OB1 to OB13.
+//! `issue-dag-core`, and rejects a bundle that breaks rules OB1 to OB15.
 //!
 //! This crate holds the JSON; the core stays free of it. A slot the bundle
 //! does not hold is left unrecorded, so that a run that needs it fails with

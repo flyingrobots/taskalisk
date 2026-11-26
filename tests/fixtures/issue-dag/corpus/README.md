@@ -103,7 +103,11 @@ hold:
 - `ready`: the ready set in rank order (rules Q1 and K6); `scores`, from node
   to score (K5); `waves` (K7); `critical_path` (K8);
 - `batch`, in order of selection; `skipped`, each `{"id", "reason"}` with
-  `semaphores` when the reason is `semaphore full`; `unknown_capacity` (B3).
+  `semaphores`, the names of the semaphores B5 found full, when the reason
+  is `semaphore full`; `unknown_capacity`, the names B3 reports. Each name
+  in `semaphores` and in `unknown_capacity` appears once, and the names are
+  in ascending order of their UTF-8 bytes, as labels are in CC5, so `Tpu`
+  sorts before `gpu`.
 
 An incomplete or rejected run has only `outcome` (rule F2).
 

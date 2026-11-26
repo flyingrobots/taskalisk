@@ -55,14 +55,18 @@ planner observes:
 **I4. Observations of the home repository.** When the run has no root
 references, the planner observes the complete list of `H`'s open issues. In
 every run it observes the complete list of `H`'s open pull requests, and for
-each pull request the issues it closes, whether it is a draft, and its
-admission decision (AD9).
+each pull request the issues it closes, its admission decision (AD9), and,
+when rule S2 reads it, whether it is a draft (I5).
 
 **I5. Completeness.** An observation is required when a rule of this profile,
 or a rule of the admission policy (I6), reads it. A required observation that
 the planner cannot make, or cannot show to be complete, is *unavailable*. A
 listing that may have been truncated is unavailable. A draft flag that is not
-a boolean is unavailable.
+a boolean is unavailable. The draft flag of a pull request is read only by
+S2, and so is required only when the pull request is a linked pull request
+(S1) of an open node: the draft flag of a pull request that is not admitted,
+or that closes no open node, is never required, and its absence or
+unavailability never makes the run incomplete.
 
 **I6. Admission.** Admission decisions are made under the [admission
 policy](admission.md), rules AD1 to AD10, from the run parameters and the
@@ -154,7 +158,10 @@ document. It is validated under its declared version and under X1, whether
 the issue is open or closed. The planner then adds to the closure every item
 of `.blocked_by`, when `.kind` is `task`, and of `.children`, when `.kind` is
 `container`, that is a reference and is not the issue's own address. It does
-so even when the document has violations.
+so even when the document has violations. A key that the document gives more
+than once (format rule C7) has no value here: it contributes no reference to
+the closure, so a reference that only such a key names is never read and
+cannot make the run incomplete.
 
 **D9. Containers.** A document whose `.kind` is `container`, valid or not, is
 a container and not a node. It is listed with its children. Discovery walks

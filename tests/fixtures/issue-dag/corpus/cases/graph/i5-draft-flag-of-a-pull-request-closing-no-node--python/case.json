@@ -1,0 +1,20 @@
+{
+  "cites": [
+    "I4",
+    "I5",
+    "S1",
+    "S2",
+    "AD9"
+  ],
+  "disagreement": {
+    "classification": "defect",
+    "difference": 23,
+    "note": "the compiler refuses the draft flag of every admitted pull request that closes an issue, and the run is incomplete"
+  },
+  "id": "graph/i5-draft-flag-of-a-pull-request-closing-no-node--python",
+  "kind": "characterisation",
+  "level": "graph",
+  "normative_case": "graph/i5-draft-flag-of-a-pull-request-closing-no-node",
+  "source": "the Python compiler, on the bundle of graph/i5-draft-flag-of-a-pull-request-closing-no-node",
+  "title": "What the compiler does: The draft flag of an admitted pull request that closes no node is not read"
+}

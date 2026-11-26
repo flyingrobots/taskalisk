@@ -54,15 +54,18 @@ repository is not, for that reason, trusted in another.
 
 **AD3. Identities.** An actor's *identity* is a pair: whether it is a bot,
 and its name in ASCII lower case. An actor is a bot when its `type` is
-`Bot`, when its login ends in `[bot]`, or when its login begins with `app/`;
-its name is then the login without that suffix or prefix. Every other actor
+`Bot`, when its login ends in `[bot]`, or when its login begins with `app/`,
+the suffix and the prefix each matched without regard to ASCII case (so
+`x[BOT]` and `App/x` are bots); its name is then the login without that
+suffix or prefix. Every other actor
 is a person, named by its login. Two actors are the same when their
 identities are equal: logins compare without regard to ASCII case, and a bot
 and a person never share an identity, even when their names are equal.
 
 **AD4. Allowlist entries.** An entry of `parameters.trust.logins` that ends
-in `[bot]` or begins with `app/` names the bot identity of the rest of the
-entry; any other entry names the person identity of the entry. Entries
+in `[bot]` or begins with `app/`, matched without regard to ASCII case as in
+AD3, names the bot identity of the rest of the entry; any other entry names
+the person identity of the entry. Entries
 compare as identities (AD3).
 
 > *Commentary.* `--trust x` trusts the person `x` and not the app `x`;

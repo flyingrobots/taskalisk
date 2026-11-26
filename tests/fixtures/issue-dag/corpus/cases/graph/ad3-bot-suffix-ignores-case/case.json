@@ -1,0 +1,12 @@
+{
+  "cites": [
+    "AD3",
+    "AD4",
+    "AD5"
+  ],
+  "id": "graph/ad3-bot-suffix-ignores-case",
+  "kind": "normative",
+  "level": "graph",
+  "source": "constructed from the rule text",
+  "title": "A login ending in `[BOT]` is the bot it names, trusted by a `[bot]` entry"
+}

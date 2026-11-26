@@ -1,0 +1,19 @@
+{
+  "cites": [
+    "D8",
+    "C7",
+    "F1",
+    "I5"
+  ],
+  "disagreement": {
+    "classification": "defect",
+    "difference": 24,
+    "note": "the compiler reads the first `.blocked_by` line, follows the unavailable issue, and the run is incomplete"
+  },
+  "id": "graph/d8-repeated-blocked-by-is-not-followed--python",
+  "kind": "characterisation",
+  "level": "graph",
+  "normative_case": "graph/d8-repeated-blocked-by-is-not-followed",
+  "source": "the Python compiler, on the bundle of graph/d8-repeated-blocked-by-is-not-followed",
+  "title": "What the compiler does: A repeated `.blocked_by` contributes no reference: an unavailable issue it names leaves the run invalid, not incomplete"
+}
