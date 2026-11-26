@@ -63,6 +63,7 @@ import argparse
 from collections import defaultdict, deque
 import hashlib
 import json
+import math
 import os
 from pathlib import Path
 import re
@@ -117,12 +118,32 @@ def sanitize_home(text: str) -> str:
 
 
 # `scheme://user:secret@host`: a credential embedded in a URL that git or gh echoes in an error.
-URL_CREDENTIALS_RE = re.compile(r"(?i)\b([a-z][a-z0-9+.-]*://)[^\s/@]+@")
+# A scheme is bounded (RFC 3986 names are short), so a long scheme-like word with no `://` after it,
+# such as `a.a.a.…`, is not rescanned from every word boundary: the match stays linear.
+URL_SCHEME = r"[a-z][a-z0-9+.-]{0,31}://"
+URL_CREDENTIALS_RE = re.compile(r"(?i)\b(" + URL_SCHEME + r")[^\s/@]+@")
+URL_RE = re.compile(r"(?i)\b" + URL_SCHEME + r"\S+")
+# A query or fragment parameter whose name says it carries a secret; its value is redacted. The
+# names are a heuristic: a secret in a parameter not named here is not found
+# (docs/topics/output/README.md). A value runs to the next `&`, the fragment or white space,
+# past any `;`, quote or bracket inside it, so no part of it leaks; only closing punctuation at
+# its very end, which belongs to the text around the URL, is given back (`_redact_value`).
+URL_SECRET_PARAM_RE = re.compile(r"(?i)([?&;#](?:access_token|token|key|secret|password|signature|sig|auth|code)=)([^&#\s]+)")
+AROUND_A_URL = ".,:!?'\")>]"
+
+
+def _redact_value(m: re.Match[str]) -> str:
+    value = m.group(2)
+    kept = value.rstrip(AROUND_A_URL)
+    return m.group(1) + "[redacted]" + (value[len(kept):] if kept else "")
 
 
 def sanitize_text(text: str) -> str:
-    """Command output that may reach a line: no home directory, no credential inside a URL."""
-    return sanitize_home(URL_CREDENTIALS_RE.sub(r"\1[redacted]@", text))
+    """Command output that may reach a line: no home directory, no credential inside a URL, either
+    as `user:secret@` or as the value of a secret-like query or fragment parameter."""
+    text = URL_CREDENTIALS_RE.sub(r"\1[redacted]@", text)
+    text = URL_RE.sub(lambda m: URL_SECRET_PARAM_RE.sub(_redact_value, m.group(0)), text)
+    return sanitize_home(text)
 
 
 # The run being written, so discovery can record each decision in the receipt as it is made.
@@ -1572,7 +1593,7 @@ def score_terms(node: dict[str, Any]) -> dict[str, Any]:
 REMEDIES = {
     "gh.command_failed": "check `gh auth status` and the network, then rerun; nothing was compiled from a partial read",
     "gh.list_limit_reached": "narrow the seeds with --root; a list that fills its limit may be truncated (threat model C15)",
-    "gh.response_invalid": "rerun; if it persists, report the gh version with the receipt",
+    "gh.response_invalid": "report the gh version with the receipt; a malformed answer is not fixed by running again",
     "gh.mutation_failed": "check the token can edit issues in that repository, then rerun",
     "git.command_failed": "run the command shown in detail.source inside --repo to see why",
     "root.invalid_reference": "name the root as owner/repo#N",
@@ -1585,31 +1606,55 @@ REMEDIES = {
     "edge.rewrite_impossible": "the child's frontmatter needs exactly one .blocked_by line",
 }
 
+# Whether a retry can help, for each code `classify` returns. docs/topics/output/README.md and
+# SKILL.md state the same flags; tests/test_parley_output.py holds the three together.
+RETRYABLE = {
+    "gh.command_failed": True,
+    "gh.list_limit_reached": False,
+    "gh.response_invalid": False,
+    "gh.mutation_failed": True,
+    "git.command_failed": True,
+    "root.invalid_reference": False,
+    "root.out_of_scope": False,
+    "edge.out_of_scope": False,
+    "edge.child_not_issue": False,
+    "edge.child_untrusted": False,
+    "edge.child_frontmatter_missing": False,
+    "edge.child_frontmatter_invalid": False,
+    "edge.rewrite_impossible": False,
+}
+
 
 def classify(err: dict[str, str]) -> tuple[str, bool]:
-    """A stable code, and whether a retry can help, for one failure the compiler records."""
+    """A stable code, and whether a retry can help (`RETRYABLE`), for one failure the compiler records."""
+    code = error_code(err)
+    return code, RETRYABLE[code]
+
+
+def error_code(err: dict[str, str]) -> str:
+    """The stable code for one failure the compiler records."""
     src, msg = err["source"], err["error"]
     if "possible truncation" in msg or "possibly truncated" in msg:
-        return "gh.list_limit_reached", False
+        return "gh.list_limit_reached"
     if src == "--root":
-        return ("root.out_of_scope" if "outside the trusted" in msg else "root.invalid_reference"), False
+        return "root.out_of_scope" if "outside the trusted" in msg else "root.invalid_reference"
     if src.startswith("edge "):
-        return ("edge.child_not_issue" if "pull request" in msg else "edge.out_of_scope"), False
+        return "edge.child_not_issue" if "pull request" in msg else "edge.out_of_scope"
     if src.startswith("frontmatter of "):
         if msg.startswith("child is untrusted"):
-            return "edge.child_untrusted", False
+            return "edge.child_untrusted"
         if msg.startswith("missing or unparseable"):
-            return "edge.child_frontmatter_missing", False
+            return "edge.child_frontmatter_missing"
         if msg.startswith("invalid task frontmatter"):
-            return "edge.child_frontmatter_invalid", False
-        return "edge.rewrite_impossible", False
+            return "edge.child_frontmatter_invalid"
+        return "edge.rewrite_impossible"
     if src.startswith("gh api PATCH"):
-        return "gh.mutation_failed", True
+        return "gh.mutation_failed"
     if any(k in msg for k in ("Unparseable JSON", "Expected a JSON", "GraphQL response has no", "no cursor", "isDraft", "repository_url")):
-        return "gh.response_invalid", False
+        return "gh.response_invalid"
     if src.startswith("git"):
-        return "git.command_failed", True
-    return "gh.command_failed", True
+        return "git.command_failed"
+    return "gh.command_failed"
 
 
 def one_sentence(text: str, limit: int = 600) -> str:
@@ -2076,6 +2121,17 @@ def run_plan(run: Any, ns: argparse.Namespace, command: str) -> None:
     emit_plan(run, outcome.result, "github", outcome.failures, since, ns.emit, outcome.rel_failed)
 
 
+def finite_number(value: Any) -> bool:
+    """A JSON number a float can hold: not a bool, a string, null, NaN, an infinity, or an integer
+    beyond the float range."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return False
+    try:
+        return math.isfinite(value)
+    except OverflowError:
+        return False
+
+
 def check_spec(data: Any) -> str | None:
     """Why a --verify-dag spec cannot be compiled, or None. Each line it yields must validate."""
     if not isinstance(data, dict) or not isinstance(data.get("nodes", {}), dict):
@@ -2105,6 +2161,13 @@ def check_spec(data: Any) -> str | None:
         deps = meta.get("depends_on", meta.get("prerequisites", []))
         if not isinstance(deps, list) or not all(isinstance(d, (str, dict)) for d in deps):
             return f"DAG spec node {nid!r}: depends_on must be a list of ids or edge objects"
+        for dep in deps:
+            if not isinstance(dep, dict):
+                continue
+            if "isHard" in dep and not isinstance(dep["isHard"], bool):
+                return f"DAG spec node {nid!r}: an edge's isHard must be true or false"
+            if not finite_number(dep.get("confidence", 1.0)):
+                return f"DAG spec node {nid!r}: an edge's confidence must be a finite number"
         branches = meta.get("recoverable_branches", [])
         if not isinstance(branches, list) or not all(isinstance(b, str) for b in branches):
             return f"DAG spec node {nid!r}: recoverable_branches must be a list of strings"
@@ -2122,7 +2185,7 @@ def run_verify(run: Any, ns: argparse.Namespace, command: str) -> None:
     try:
         raw = Path(ns.verify_dag).read_bytes()
         data = json.loads(raw.decode("utf-8"))
-    except (OSError, ValueError) as exc:
+    except (OSError, ValueError, RecursionError) as exc:  # RecursionError: JSON nested too deeply to parse
         # The receipt names the bytes this run saw: the ones read, or none. Never a later reading.
         if raw is None:
             run.input_unreadable(label, "dag_spec.unreadable")

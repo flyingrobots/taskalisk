@@ -133,6 +133,7 @@ a `frontmatter.violation` (the plan is not `ok`), and its line carries null; the
 | `gh.response_invalid` | a `gh` answer had the wrong shape (no `isDraft`, no edit-history connection, unparseable JSON) | false |
 | `gh.mutation_failed` | the `PATCH` of a child's body failed | true |
 | `git.command_failed` | a `git` call failed (inventory, branches) | true |
+| `root.invalid_reference` | never from the command line: there a `--root` that is not `owner/repo#N` is a startup failure (`startup.arguments_invalid`, exit 3, no `retryable`, no receipt). The code remains for discovery called without that check | false |
 | `root.out_of_scope` | a `--root` outside the trusted scope | false |
 | `edge.out_of_scope`, `edge.child_not_issue`, `edge.child_untrusted`, `edge.child_frontmatter_missing`, `edge.child_frontmatter_invalid`, `edge.rewrite_impossible` | an edit refused before any write | false |
 | `edge.rollback_failed` | an added edge could not be removed after the run failed | true |
@@ -234,9 +235,18 @@ type; `<command> --help` emits that command and the schemas of its results and e
 `GH_TOKEN`, `GITHUB_TOKEN`, `GH_ENTERPRISE_TOKEN` and `GITHUB_ENTERPRISE_TOKEN`, every token
 variable `gh help environment` names, are declared secrets: their values are
 replaced by `[redacted]` in every line and in the receipt, and the receipt head names which were
-set. A credential inside a URL (`scheme://user:secret@host`) in `gh` or `git` output is replaced
-before it is recorded. The home directory is shown as `~` in worktree paths and command output,
-as in 1.x. The bootstrap line's receipt path is absolute because the protocol requires it.
+set. A credential inside a URL in `gh` or `git` output is replaced by `[redacted]` before it is
+recorded: userinfo (`scheme://user:secret@host`), and the value of a query or fragment parameter
+named `token`, `access_token`, `key`, `secret`, `password`, `sig`, `signature`, `auth` or `code`,
+in any case and any position. A value runs to the next `&`, `#` or white space, past any `;`
+inside it, so a parameter that follows a `;` in the same value is redacted with it. Other
+parameters, and the quotes, brackets or full stop around a URL, are kept. The names are a
+heuristic: a secret in a parameter not on that list, under a percent-encoded name, or outside a
+URL, is not found; nor is a URL whose scheme is longer than 32 characters, a bound that keeps the
+scan linear. Closing punctuation (`. , : ! ? ' " ) > ]`) at the very end of a value is shown, as
+the text around the URL. The home directory is shown as `~` in worktree paths and command
+output, as in 1.x. The bootstrap line's receipt path is absolute because the protocol requires
+it.
 
 ## What is not guaranteed
 

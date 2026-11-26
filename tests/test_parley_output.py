@@ -360,6 +360,74 @@ class Secrets(Harness):
         self.assertTrue(out[-1]["redacted"])
 
 
+class QuerySecrets(unittest.TestCase):
+    """OUT-31 (F-18): a secret-like query parameter's value in gh or git text is redacted."""
+
+    @classmethod
+    def setUpClass(cls):
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("taskalisk_sanitize", SCRIPT)
+        cls.tk = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(cls.tk)
+
+    def test_secret_parameters_are_redacted(self):
+        cases = {
+            "gh: https://api.github.com/x?token=abc123secret failed":
+                "gh: https://api.github.com/x?token=[redacted] failed",
+            "https://h/p?page=2&token=abc123secret": "https://h/p?page=2&token=[redacted]",
+            "https://h/p?TOKEN=abc123secret&page=2": "https://h/p?TOKEN=[redacted]&page=2",
+            "https://h/p?Access_Token=abc123secret#frag": "https://h/p?Access_Token=[redacted]#frag",
+            "https://user:pw123secret@h/p?sig=abc123secret": "https://[redacted]@h/p?sig=[redacted]",
+            "a https://h/1?key=abc123secret b https://h/2?password=abc123secret c":
+                "a https://h/1?key=[redacted] b https://h/2?password=[redacted] c",
+            "https://h/p?secret=abc123secret;https://h/q?signature=abc123secret":
+                "https://h/p?secret=[redacted]",  # a value runs past ; so no part of a secret is left
+            "https://h/cb?code=abc123secret&state=s1&auth=abc123secret":
+                "https://h/cb?code=[redacted]&state=s1&auth=[redacted]",
+            # a secret that opens a fragment, as an OAuth implicit-flow callback puts it
+            "https://h/cb#access_token=abc123secret&state=s1": "https://h/cb#access_token=[redacted]&state=s1",
+            "https://h/cb#a=1&token=abc123secret": "https://h/cb#a=1&token=[redacted]",
+            "HTTPS://H/P?Token=abc123secret": "HTTPS://H/P?Token=[redacted]",
+            # the characters around a URL stay where they were
+            "'https://h/p?token=abc123secret'": "'https://h/p?token=[redacted]'",
+            '"https://h/p?token=abc123secret"': '"https://h/p?token=[redacted]"',
+            "(see https://h/p?token=abc123secret)": "(see https://h/p?token=[redacted])",
+            "<https://h/p?token=abc123secret>": "<https://h/p?token=[redacted]>",
+            "failed at https://h/p?token=abc123secret.": "failed at https://h/p?token=[redacted].",
+            "https://h/p?token=abc123secret, then": "https://h/p?token=[redacted], then",
+            "https://h/p?token=abc.123secret": "https://h/p?token=[redacted]",
+            "[https://h/p?token=abc123secret]": "[https://h/p?token=[redacted]]",
+            # a value made only of sentence punctuation is still a value
+            "https://h/p?token=...": "https://h/p?token=[redacted]",
+        }
+        for given, expected in cases.items():
+            with self.subTest(given):
+                self.assertEqual(self.tk.sanitize_text(given), expected)
+                self.assertNotIn("abc123secret", self.tk.sanitize_text(given))
+
+    def test_a_quote_or_bracket_inside_a_value_leaks_nothing(self):
+        for value in ("abc(def)TAILSECRET", "abc;TAILSECRET", "abc;cdTAILSECRET&page=2", "ab'cdTAILSECRET", 'ab"cdTAILSECRET', "ab<cd>TAILSECRET", "ab[cd]TAILSECRET", "ab)TAILSECRET"):
+            for wrap in ("{}", "'{}'", "({})", "<{}>"):
+                text = wrap.format(f"https://h/p?token={value}")
+                with self.subTest(text):
+                    self.assertNotIn("TAILSECRET", self.tk.sanitize_text(text))
+                    self.assertNotIn("cd", self.tk.sanitize_text(text).replace("[redacted]", ""))
+
+    def test_long_text_without_a_url_is_linear(self):
+        """A scheme-like word with no `://` after it must not rescan the rest of the text."""
+        for text in ("a." * 50_000, "a-" * 50_000, "a+" * 50_000, "x" * 100_000 + ":/"):
+            with self.subTest(text[:6]):
+                start = time.monotonic()
+                self.tk.sanitize_text(text)
+                self.assertLess(time.monotonic() - start, 1.0)
+
+    def test_other_parameters_and_text_are_untouched(self):
+        for text in ("https://h/p?page=2&per_page=100", "https://h/p?tokens_left=3", "https://h/p?monkey=1",
+                     "a token=abc outside any URL", "https://h/p", "https://h/p?", "https://h/p?token"):
+            with self.subTest(text):
+                self.assertEqual(self.tk.sanitize_text(text), text)
+
+
 MARKS = ("MARK_TITLE_SEED", "MARK_BODY_SEED", "MARK_TITLE_REF", "MARK_BODY_REF")
 
 
@@ -543,6 +611,75 @@ SKILL_MD = ROOT / "skills" / "taskalisk" / "SKILL.md"
 OUTPUT_README = ROOT / "docs" / "topics" / "output" / "README.md"
 THREAT_MODEL = ROOT / "docs" / "threat-model.md"
 INVENTORY_SCOPE = "Inventory applies no trust gate"
+
+
+def load_compiler():
+    """The compiler as a module, for the tests that read its tables."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("taskalisk_tables", SCRIPT)
+    tk = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(tk)
+    return tk
+
+
+def readme_retryable():
+    """Each error code in the reference's Errors table, with its documented `retryable`."""
+    rows = {}
+    section = OUTPUT_README.read_text().split("## Errors and exit status", 1)[1]
+    for line in section.splitlines():
+        cells = [c.strip() for c in line.strip().strip("|").split("|")]
+        if len(cells) != 3 or cells[2] not in ("true", "false"):
+            continue
+        for code in re.findall(r"`([a-z_]+\.[a-z_]+)`", cells[0]):
+            rows[code] = cells[2] == "true"
+    return rows
+
+
+class RetryableTable(unittest.TestCase):
+    """OUT-30 (F-21): the code, the reference and SKILL.md give one `retryable` for every gh. and git. code."""
+
+    def setUp(self):
+        self.tk = load_compiler()
+        self.documented = readme_retryable()
+        self.calls = {c: r for c, r in self.documented.items() if c.startswith(("gh.", "git."))}
+
+    def test_every_remedy_that_says_rerun_belongs_to_a_retryable_code(self):
+        for code, remedy in self.tk.REMEDIES.items():
+            with self.subTest(code):
+                self.assertIn(code, self.documented, "a code with a remedy has no row in the Errors table")
+                if re.search(r"(?i)\b(re-?run|retry|run (it )?again)\b", remedy):
+                    self.assertTrue(self.documented[code], f"{code} is not retryable, yet its remedy says rerun: {remedy!r}")
+
+    def test_every_code_error_code_returns_has_a_flag(self):
+        """A code `error_code` can return without a RETRYABLE entry would end the run in uncaught.exception."""
+        import ast
+        import inspect
+        def results(node):
+            """The strings an expression can evaluate to: a constant, or either arm of `a if c else b`."""
+            if isinstance(node, ast.Constant) and isinstance(node.value, str):
+                return {node.value}
+            if isinstance(node, ast.IfExp):
+                return results(node.body) | results(node.orelse)
+            self.fail(f"error_code returns an expression this test cannot read: {ast.dump(node)}")
+
+        tree = ast.parse(inspect.getsource(self.tk.error_code))
+        returned = set().union(*(results(r.value) for r in ast.walk(tree) if isinstance(r, ast.Return)))
+        self.assertTrue(returned)
+        self.assertEqual(returned - set(self.tk.RETRYABLE), set())
+        self.assertEqual(set(self.tk.REMEDIES), set(self.tk.RETRYABLE))
+
+    def test_the_code_and_the_reference_agree(self):
+        self.assertEqual({c: r for c, r in self.tk.RETRYABLE.items() if c.startswith(("gh.", "git."))}, self.calls)
+        for code, retryable in self.tk.RETRYABLE.items():
+            with self.subTest(code):
+                self.assertEqual(retryable, self.documented.get(code), f"{code} has no row, or a different flag, in the Errors table")
+
+    def test_skill_md_names_every_exception(self):
+        text = " ".join(SKILL_MD.read_text().split())
+        clause = re.search(r"\(`retryable: true` except ([^)]*)\)", text)
+        self.assertIsNotNone(clause, "SKILL.md no longer states the retryable rule")
+        named = set(re.findall(r"`([a-z_]+\.[a-z_]+)`", clause.group(1)))
+        self.assertEqual(named, {c for c, r in self.calls.items() if not r})
 
 
 class SecretsEveryTokenVariable(Harness):
@@ -827,6 +964,53 @@ class SchemaValidOnMalformedInput(Harness):
                 out, err = self.streams(p)  # every line validates
                 self.assertEqual(p.returncode, 2, p.stdout[-400:])
                 self.assertEqual([e["code"] for e in pl.of(err, "parley.error")], ["dag_spec.invalid"])
+
+    def test_a_bad_edge_confidence_or_is_hard_is_refused_before_any_plan_line(self):
+        """F-9 (flyingrobots/taskalisk#74): dag_spec.invalid, not uncaught.exception, and no plan line first."""
+        bad = {
+            "NaN on a soft edge": {"isHard": False, "confidence": float("nan")},
+            "NaN on a hard edge": {"isHard": True, "confidence": float("nan")},
+            "infinity": {"confidence": float("inf")},
+            "minus infinity": {"isHard": False, "confidence": float("-inf")},
+            "a string": {"confidence": "high"},
+            "a bool": {"confidence": True},
+            "null": {"confidence": None},
+            "isHard a string": {"isHard": "no"},
+            "isHard a number": {"isHard": 0},
+            "an integer too large for a float": {"confidence": 10 ** 400},
+            "a negative integer too large for a float": {"confidence": -(10 ** 400)},
+        }
+        for label, edge in bad.items():
+            with self.subTest(label):
+                spec = self.tmp / "dag.json"
+                spec.write_text(json.dumps({"nodes": {"A": {"title": "a"}, "B": {"title": "b", "depends_on": [dict({"from": "A"}, **edge)]}}}))
+                p = self.run_dag(plan_state(), "--verify-dag", str(spec))
+                out, err = self.streams(p)  # every line validates
+                self.assertEqual(p.returncode, 2, p.stdout[-400:] + p.stderr[-400:])
+                errors = pl.of(err, "parley.error")
+                self.assertEqual([e["code"] for e in errors], ["dag_spec.invalid"], label)
+                self.assertFalse(errors[0]["retryable"])
+                self.assertIn("'B'", errors[0]["problem"])
+                self.assertEqual(pl.of(out, "taskalisk.plan"), [], "a plan line was written before the refusal")
+
+    def test_a_spec_nested_too_deeply_to_parse_is_unreadable(self):
+        """No spec reachable through --verify-dag ends in uncaught.exception (flyingrobots/taskalisk#74)."""
+        spec = self.tmp / "dag.json"
+        spec.write_text("[" * 100_000 + "]" * 100_000)
+        p = self.run_dag(plan_state(), "--verify-dag", str(spec))
+        out, err = self.streams(p)  # every line validates
+        self.assertEqual(p.returncode, 2, p.stderr[-400:])
+        self.assertEqual([e["code"] for e in pl.of(err, "parley.error")], ["dag_spec.unreadable"])
+        self.assertEqual(pl.of(out, "taskalisk.plan"), [])
+
+    def test_a_good_edge_object_still_compiles(self):
+        for edge in ({"isHard": False, "confidence": 0.4}, {"isHard": True, "confidence": 1}, {"confidence": 0.9}, {}):
+            with self.subTest(edge):
+                spec = self.tmp / "dag.json"
+                spec.write_text(json.dumps({"nodes": {"A": {"title": "a"}, "B": {"title": "b", "depends_on": [dict({"from": "A"}, **edge)]}}}))
+                p = self.run_dag(plan_state(), "--verify-dag", str(spec))
+                self.assertEqual(p.returncode, 0, p.stderr[-400:])
+                self.assertTrue(pl.one(self.streams(p)[0], "taskalisk.plan")["ok"])
 
     def test_a_size_hours_typo_is_reported_and_every_line_validates(self):
         state = plan_state()

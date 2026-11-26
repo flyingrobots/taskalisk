@@ -15,6 +15,25 @@ schema version under `Unreleased` is a draft and may change in place.
   a bare URL, a `www.` address, an email address or a mention gets a zero-width space so it does
   not link. A title that needs none of this renders byte-for-byte as before.
 
+- **A secret in a URL query string or fragment is redacted** (flyingrobots/taskalisk#78). The
+  value of a query or fragment parameter named `token`, `access_token`, `key`, `secret`,
+  `password`, `sig`, `signature`, `auth` or `code`, in any case, is replaced by `[redacted]` in
+  `gh` and `git` text before it reaches a line or the receipt, as `user:secret@` already was.
+  Other parameters, and the quotes, brackets or full stop around a URL, are kept.
+
+- **A bad edge object in a `--verify-dag` spec is `dag_spec.invalid`** (flyingrobots/taskalisk#74).
+  A `confidence` that is not a finite number (a string, a bool, null, NaN, an infinity), or an
+  `isHard` that is not a boolean, is refused before any plan line. Before, it ended in
+  `uncaught.exception`, sometimes after a `plan` line with `ok: true`, or compiled as if valid. An
+  integer confidence beyond the float range is refused the same way, and a spec nested too deeply
+  to parse is `dag_spec.unreadable`.
+
+- **One `retryable` for every `gh.` and `git.` code** (flyingrobots/taskalisk#79). The
+  `gh.response_invalid` remedy no longer says to rerun, since the code is not retryable;
+  `SKILL.md` names both exceptions (`gh.list_limit_reached`, `gh.response_invalid`); the output
+  reference gains the missing `root.invalid_reference` row. No flag, code or schema changes; the
+  `gh.response_invalid` remedy text changed.
+
 ## 2.1.2 - 2026-11-24
 
 ### Changed
