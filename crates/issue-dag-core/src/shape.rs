@@ -91,7 +91,7 @@ pub struct ShapeFinding {
 #[must_use]
 pub fn shape_warnings(graph: &Graph) -> Vec<ShapeFinding> {
     let mut found = Vec::new();
-    for edge in graph.redundant.iter().take(0) {
+    for edge in &graph.redundant {
         found.push(ShapeFinding {
             finding: finding(ShapeWarning::RedundantEdge, &edge.to, Some(&edge.from)),
             detail: Detail::Path(implied_path(graph, edge)),
