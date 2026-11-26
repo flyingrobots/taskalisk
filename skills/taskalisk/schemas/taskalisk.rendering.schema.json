@@ -41,6 +41,10 @@
     "text": {
       "type": "string"
     },
+    "legend": {
+      "type": "string",
+      "description": "One Markdown line naming each node colour of a status-coloured Mermaid flowchart, to paste with it. Written by the Rust binary's --emit-mermaid only (flyingrobots/taskalisk#68)."
+    },
     "_schema": {
       "type": "object",
       "required": [

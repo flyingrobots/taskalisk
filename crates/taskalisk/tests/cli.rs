@@ -805,6 +805,15 @@ fn help_describes_the_plan_command_and_its_schemas() {
     ] {
         assert!(schemas.contains(&id), "{id} in {schemas:?}");
     }
+    // The legend a status-coloured diagram carries is a declared field.
+    let rendering = of(&out, "parley.schema")
+        .into_iter()
+        .find(|l| l["id"] == "taskalisk.rendering")
+        .expect("the rendering schema");
+    assert_eq!(
+        rendering["schema"]["properties"]["legend"]["type"], "string",
+        "{rendering}"
+    );
     assert_eq!(out.last().expect("end")["status"], 0);
 }
 
