@@ -92,7 +92,9 @@ fn every_graph_case_replays_byte_for_byte() {
         // bundle again writes the same record.
         let reread = EvaluationRecord::read(&text).map(|r| r.to_json());
         if reread.as_deref() != Ok(text.as_str()) {
-            failures.push(format!("{name}: the record does not read back to its bytes"));
+            failures.push(format!(
+                "{name}: the record does not read back to its bytes"
+            ));
         }
         let again = evaluate(&bundle, &evaluator()).map(|r| r.to_json());
         if again.as_deref() != Ok(text.as_str()) {
@@ -229,7 +231,7 @@ fn a_record_of_another_profile_is_not_replayed_by_this_evaluator() {
 fn a_changed_result_is_reported_as_differing_never_reproduced() {
     let mut record = record_of(&example());
     let original = serde_json::to_string(&record["result"]).expect("a result");
-    record["result"]["batch"] = json!([]);
+    record["result"]["ready"] = json!([]);
     match replay_value(&record) {
         Replay::Differs {
             recorded,
@@ -245,7 +247,10 @@ fn a_changed_result_is_reported_as_differing_never_reproduced() {
 #[test]
 fn a_record_that_contradicts_its_bundle_is_refused() {
     for (member, value) in [
-        ("discovery", json!({"home": "o/x", "roots": [], "read_scope": {"owners": ["o"], "repositories": []}, "trust_policy": "taskalisk/threat-model"})),
+        (
+            "discovery",
+            json!({"home": "o/x", "roots": [], "read_scope": {"owners": ["o"], "repositories": []}, "trust_policy": "taskalisk/threat-model"}),
+        ),
         ("not_observed", json!({"value": []})),
         ("formats", json!(["issue-dag/3"])),
     ] {
@@ -293,15 +298,16 @@ fn a_run_that_kept_no_bundle_records_that_replay_is_unavailable() {
         &RecordedForge::new(&bundle.observations),
     )
     .expect("a run");
-    let record = unretained(
-        &bundle.parameters,
-        &outcome,
-        &evaluator(),
-        "capture is off",
-    );
+    let record = unretained(&bundle.parameters, &outcome, &evaluator(), "capture is off");
     let value: Value = serde_json::from_str(&record.to_json()).expect("JSON");
-    assert_eq!(value["observations"], json!({"unavailable": "capture is off"}));
-    assert_eq!(value["not_observed"], json!({"unavailable": "capture is off"}));
+    assert_eq!(
+        value["observations"],
+        json!({"unavailable": "capture is off"})
+    );
+    assert_eq!(
+        value["not_observed"],
+        json!({"unavailable": "capture is off"})
+    );
     assert_eq!(value["result"], record_of(&example())["result"]);
     assert!(matches!(
         replay(&record.to_json()),
