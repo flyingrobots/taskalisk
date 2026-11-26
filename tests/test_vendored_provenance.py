@@ -98,7 +98,7 @@ class UpstreamProvenanceTest(unittest.TestCase):
     @unittest.skipUnless(os.environ.get("TASKALISK_UPSTREAM_CHECK") == "1",
                          "upstream provenance not checked: set TASKALISK_UPSTREAM_CHECK=1 (needs network; CI sets it)")
     def test_the_vendored_writer_is_upstream_at_its_pinned_commit(self):
-        self.assertEqual(check.problems(self.pin, self.copy, check.fetch), [])
+        self.assertEqual(check.problems(self.pin, self.copy, lambda url: check.fetch(url, limit=self.pin["bytes"])), [])
 
 
 if __name__ == "__main__":

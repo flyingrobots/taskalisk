@@ -19,7 +19,9 @@ unmodified from flyingrobots/parley's release `parley-emit-py-v0.3.0` (version 0
 - **Provenance** (needs the network; CI runs it): `python3 scripts/check_vendored_writer.py` fetches
   `packages/parley-emit-py/parley_emit.py` from flyingrobots/parley at the pinned commit and
   requires its digest and size to equal the pin's and the copy's. A failed fetch is a failure. In
-  the offline suite its test (`TASKALISK_UPSTREAM_CHECK=1` to run it) is reported as skipped.
+  the offline suite its test (`TASKALISK_UPSTREAM_CHECK=1` to run it) is reported as skipped;
+  `-v` shows why. The pin must name a full 40-character commit: a short SHA or a branch is a
+  moving target, and is refused before anything is fetched.
 
 `python3 parley_emit.py --vendor-info` prints the digest and a `shasum -c` command. The writer is
 Apache-2.0; its `LICENSE` and `NOTICE` sit beside it.

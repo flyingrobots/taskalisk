@@ -25,9 +25,10 @@ def upstream_url(pin):
     return UPSTREAM.format(commit=pin["parley_commit"])
 
 
-def fetch(url):
+def fetch(url, limit=None):
+    """The bytes at url; with a limit, at most one byte past it, enough to see a longer file."""
     with urllib.request.urlopen(url, timeout=TIMEOUT_SECONDS) as response:
-        return response.read()
+        return response.read(limit + 1) if limit is not None else response.read()
 
 
 def problems(pin, copy, get):
@@ -52,7 +53,7 @@ def problems(pin, copy, get):
 
 def main():
     pin = json.loads((SCRIPTS / "parley_emit.pin.json").read_text())
-    found = problems(pin, (SCRIPTS / "parley_emit.py").read_bytes(), fetch)
+    found = problems(pin, (SCRIPTS / "parley_emit.py").read_bytes(), lambda url: fetch(url, limit=pin.get("bytes")))
     for line in found:
         print(f"check_vendored_writer: {line}", file=sys.stderr)
     if not found:
