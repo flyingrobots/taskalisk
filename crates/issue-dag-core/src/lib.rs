@@ -6,6 +6,7 @@
 //! A body becomes findings with stable codes ([`findings`]); the codes
 //! are tabled on [`code`].
 //! The crate performs no I/O and has no dependencies.
+mod body;
 mod carrier;
 mod finding;
 mod label;
@@ -16,6 +17,7 @@ mod validate;
 
 use std::collections::BTreeSet;
 
+pub use body::{BODY_WARNINGS, BodyWarning, body_warnings};
 pub use carrier::{Block, Entry, Integer, Parse, Slot, Value, parse, trim};
 pub use finding::{Finding, LABELS, Severity, code, findings};
 pub use label::Label;

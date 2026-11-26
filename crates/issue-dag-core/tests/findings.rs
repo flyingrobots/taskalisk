@@ -8,7 +8,7 @@
 use std::fs;
 use std::path::Path;
 
-use issue_dag_core::{Finding, IssueRef, LABELS, Label, Severity, code, findings};
+use issue_dag_core::{BODY_WARNINGS, Finding, IssueRef, LABELS, Label, Severity, code, findings};
 
 /// Marker text placed in the values of every fixture.
 const MARK: &str = "ZQXMARK";
@@ -237,7 +237,8 @@ fn codes_are_stable_strings_one_per_label() {
 }
 
 /// The one table of codes in the crate docs lists exactly the codes, with
-/// their severities, in `LABELS` order.
+/// their severities: the document codes in `LABELS` order, then Taskalisk's
+/// body warnings in `BODY_WARNINGS` order (flyingrobots/taskalisk#48).
 #[test]
 fn the_documented_table_matches_the_codes() {
     let source = fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join("src/finding.rs"))
@@ -259,6 +260,11 @@ fn the_documented_table_matches_the_codes() {
             let severity = if *l == Label::V10 { "warning" } else { "error" };
             (code(*l).to_owned(), severity.to_owned())
         })
+        .chain(
+            BODY_WARNINGS
+                .iter()
+                .map(|w| (w.code().to_owned(), "warning".to_owned())),
+        )
         .collect();
     assert_eq!(rows, expected);
 }
