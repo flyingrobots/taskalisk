@@ -44,7 +44,7 @@ contract, with a receipt in `.parley/receipts/` of the working directory. It tak
 until the binary supports it. Where the Python writer would move a receipt to the state directory,
 the binary refuses to start (exit 3): when `.parley` cannot be written, when the working
 directory's path holds a token's value, or when a `.parley/.gitignore` you wrote would let
-`git add` stage a receipt (it has no line `*`, or has a `!` negation). Symlinks are followed, as
+`git add` stage a receipt (it has no line `*`, or a `!` negation that can re-include `receipts/`). Symlinks are followed, as
 the Python follows them: `.parley`, its `receipts/` and `--repo` may be links, and every file the
 binary writes is created new, never written through an existing one. Its other differences from
 the Python are listed under *The Rust binary* in `docs/topics/output/README.md`.

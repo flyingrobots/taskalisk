@@ -149,6 +149,7 @@ a `frontmatter.violation` (the plan is not `ok`), and its line carries null; the
 | `edge.out_of_scope`, `edge.child_not_issue`, `edge.child_untrusted`, `edge.child_frontmatter_missing`, `edge.child_frontmatter_invalid`, `edge.rewrite_impossible` | an edit refused before any write | false |
 | `edge.rollback_failed` | an added edge could not be removed after the run failed | true |
 | `frontmatter.invalid` | an issue in the closure has invalid frontmatter | false |
+| `issue.not_found` | Rust binary only: a reference resolves to nothing, for the cause the core recorded; `detail.rule` is `D11`, `D12` or `D13` | false |
 | `graph.cycle`, `graph.unresolved_prerequisites` | the graph could not be ranked | false |
 | `dag_spec.unreadable`, `dag_spec.invalid` | the `--verify-dag` file cannot be read or has the wrong shape | false |
 | `uncaught.exception` | a defect: the traceback is in the receipt only, never on stderr | (writer) |
@@ -345,18 +346,24 @@ It differs from the Python in these ways, each tested in `crates/taskalisk/tests
   a startup failure, exit 3, with no receipt. A `.parley` that cannot be written is
   `startup.receipt_unwritable`. A receipt path that would carry a declared secret's value (the
   working directory's path holds it) is `startup.secret_in_path`. A `.parley/.gitignore` that
-  would let `git add` stage a receipt is `startup.receipt_stageable`: one with no line `*`, or with
-  any negation (`!`), which the binary does not evaluate and so counts as one that can re-include
-  `receipts/`. The file is the user's and is left alone; the binary creates it, holding `*`, only
-  when it is absent.
+  would let `git add` stage a receipt is `startup.receipt_stageable`: one with no line `*`, or a
+  line the writer's rule cannot rule out, a negation that can match `receipts` or a line holding
+  a NUL byte (the Python writer's `_negation_reaches_receipts`, ported rule for rule, so
+  `!.gitignore` is accepted). The file is the user's and is left alone; the binary creates it,
+  holding `*`, only when it is absent, written to a temporary name and linked into place so a
+  concurrent first run never reads it empty. A run id that carries a declared secret is drawn
+  again up to 16 times, then the run is `startup.secret_in_path`.
 - **Redaction.** A declared secret's value is replaced by `[redacted]` in every string of every
   line, `resolved` included: the head records the argument indexes, the JSON Pointers into
   `resolved` and the variable names in `redacted`, and `inv` is computed over the redacted
   `resolved`, as the Python writer does. A secret inside an object key is not redacted.
 - **A reference that resolves to nothing.** When the core records why a read found nothing
-  (bundle rule OB17), the run's `parley.error` has that cause's catalogued code,
-  `profile.D11` (no such owner), `profile.D12` (no such repository) or `profile.D13` (no such
-  number), with `detail.not_found`; exit 2. Without a recorded cause it is `gh.response_invalid`.
+  (bundle rule OB17), the run's `parley.error` is `issue.not_found`, with `detail.rule` the
+  profile rule (`D11` no such owner, `D12` no such repository, `D13` no such number),
+  `detail.not_found` the cause (`owner`, `repository` or `number`) and `detail.reference` the
+  reference read, when the reason names one; exit 2. The core's catalogued codes (`profile.D11`
+  and the rest) are not used as error codes, because a `parley.error` code is lower case. Without
+  a recorded cause it is `gh.response_invalid`.
 - **Symlinks are followed**, as the Python writer follows them: `.parley`, `receipts/` and `--repo`
   may be links. Every file the binary writes is created new (`O_EXCL`), so it never overwrites a
   file a link points at.

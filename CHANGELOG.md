@@ -346,9 +346,9 @@ schema version under `Unreleased` is a draft and may change in place.
   before the head and `inv`, with its pointers in `redacted.resolved`. Where the Python writer
   relocates a receipt, the binary refuses to start (exit 3): `startup.secret_in_path` when the
   working directory's path holds a token's value, `startup.receipt_stageable` when a user's
-  `.parley/.gitignore` has no line `*` or has a negation. An incomplete run whose not-found cause
-  the core records (#133) reports that cause's code, `profile.D11`, `D12` or `D13`, in its
-  `parley.error`. A plan the core makes while the gh
+  `.parley/.gitignore` has no line `*` or a negation that can re-include `receipts/`. An incomplete run whose not-found cause
+  the core records (#133) reports `issue.not_found`, with the rule (`D11`, `D12` or `D13`), the
+  cause and the reference in its `detail`. A plan the core makes while the gh
   adapter recorded a failed read exits 2 with the failures and no plan. Against
   `tests/fake_gh.py` its result lines equal the Python's on the same backlog but for one gap: an
   untrusted issue's or pull request's finding lacks the trust gate's reasons (#46), so those lines

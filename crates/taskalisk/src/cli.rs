@@ -871,13 +871,26 @@ fn conclude(
             cause: Some(cause),
         } => {
             // A reference that resolves to nothing, for the recorded reason
-            // (profile rules D11 to D13): the catalogued code says which part.
+            // (profile rules D11 to D13). The catalogued code `profile.D11`
+            // has an upper-case letter, which a parley.error code may not, so
+            // the code is `issue.not_found` and the rule is in the detail.
+            let reference = unavailable
+                .split_whitespace()
+                .find_map(IssueRef::parse)
+                .map(|r| r.to_string());
             run.error(
-                cause.code().as_str(),
+                "issue.not_found",
                 &one_sentence(unavailable),
                 Some("fix the reference: its owner, repository or number names nothing gh can see"),
                 Some(false),
-                Some(json!({"source": "gh", "error": unavailable, "not_found": cause.as_str(), "phase": "discovery"})),
+                Some(json!({
+                    "rule": cause.label(),
+                    "not_found": cause.as_str(),
+                    "reference": reference,
+                    "source": "gh",
+                    "error": unavailable,
+                    "phase": "discovery",
+                })),
             );
             for failure in failures {
                 Failure::gh(failure).report(run);

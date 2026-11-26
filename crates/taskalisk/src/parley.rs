@@ -325,8 +325,9 @@ impl<'w> Run<'w> {
                 remedy: "run from a directory whose path does not contain the secret".to_owned(),
             });
         }
+        let id = choose_id(&start.secrets, || ulid(now_ms()))?;
         fs::create_dir_all(&parley).map_err(|e| unwritable(&e))?;
-        if let Some(why) = hygiene(&parley).map_err(|e| unwritable(&e))? {
+        if let Some(why) = hygiene(&parley, &id).map_err(|e| unwritable(&e))? {
             return Err(StartupFailure {
                 code: "startup.receipt_stageable",
                 problem: format!("{why}; git add would stage a receipt"),
@@ -339,13 +340,6 @@ impl<'w> Run<'w> {
         let mut resolved = start.resolved;
         let mut resolved_found = Vec::new();
         scrub(&mut resolved, &start.secrets, "", &mut resolved_found);
-        let mut id = ulid(now_ms());
-        for _ in 0..16 {
-            if !start.secrets.iter().any(|s| id.contains(s.as_str())) {
-                break;
-            }
-            id = ulid(now_ms());
-        }
         let receipt_path = receipt_dir.join(format!("{id}.jsonl"));
         let receipt = OpenOptions::new()
             .append(true)
@@ -838,35 +832,195 @@ fn write(sink: &mut dyn Write, text: &str) -> bool {
 }
 
 /// `.parley/.gitignore` holding `*`, created when absent and never
-/// overwritten (spec 5.2).
+/// overwritten (spec 5.2), as the Python writer's `_hygiene` does it.
 ///
-/// `Some(why)` when the file is a user's that would let git stage a
-/// receipt: it has no line `*`, or it has a negation (`!`), which this
-/// writer does not evaluate and so counts as one that can re-include
-/// `receipts/`. The file is then left alone and the run refused, where the
-/// Python writer relocates the receipt to the state directory.
-fn hygiene(parley: &Path) -> std::io::Result<Option<String>> {
+/// It is written whole to `.gitignore.<nonce>.tmp` and hard-linked into
+/// place, so a concurrent run never reads it empty. `Some(why)` when the
+/// file is a user's that would let git stage a receipt: it has no line `*`,
+/// or a line [`negation_reaches_receipts`] cannot rule out. The file is
+/// then left alone and the run refused, where the Python writer relocates
+/// the receipt to the state directory.
+fn hygiene(parley: &Path, nonce: &str) -> std::io::Result<Option<String>> {
     let path = parley.join(".gitignore");
-    match OpenOptions::new().write(true).create_new(true).open(&path) {
-        Ok(mut file) => return file.write_all(b"*\n").map(|()| None),
-        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
-        Err(e) => return Err(e),
+    if !path.exists() {
+        let tmp = parley.join(format!(".gitignore.{nonce}.tmp"));
+        let written = OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&tmp)
+            .and_then(|mut file| file.write_all(b"*\n"));
+        let linked = written.and_then(|()| match fs::hard_link(&tmp, &path) {
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => Ok(()),
+            other => other,
+        });
+        let _ = fs::remove_file(&tmp);
+        linked?;
     }
-    let text = fs::read_to_string(&path)?;
-    let lines: Vec<&str> = text.lines().map(|l| l.trim_end_matches('\r')).collect();
-    Ok(if lines.contains(&"*") {
-        lines.iter().find(|l| l.starts_with('!')).map(|negation| {
-            format!(
-                "{} has a negation, {negation}, that can re-include receipts/",
-                path.display()
-            )
-        })
-    } else {
-        Some(format!(
+    let bytes = fs::read(&path)?;
+    let text = String::from_utf8_lossy(&bytes);
+    // Lines as Python's `re.split(r"\r?\n", ...)` gives them.
+    let lines: Vec<&str> = text
+        .split('\n')
+        .map(|l| l.strip_suffix('\r').unwrap_or(l))
+        .collect();
+    if !lines.contains(&"*") {
+        return Ok(Some(format!(
             "{} exists without a line consisting of *",
             path.display()
-        ))
-    })
+        )));
+    }
+    Ok(lines
+        .iter()
+        .find(|l| negation_reaches_receipts(l))
+        .map(|line| {
+            if line.starts_with('!') {
+                format!(
+                    "{} has a line consisting of *, but its negation {line} can re-include receipts/, or cannot be evaluated by this writer and so counts as one that can",
+                    path.display()
+                )
+            } else {
+                format!(
+                    "{} has a line consisting of *, but also a line holding a NUL byte, which this writer cannot rule out as a negation that re-includes receipts/",
+                    path.display()
+                )
+            }
+        }))
+}
+
+/// Whether a `.gitignore` line is a negation that can match the directory
+/// `receipts` beside it, or a line this writer cannot evaluate exactly,
+/// which counts as one that does (spec 5.2). A port of the Python writer's
+/// `_negation_reaches_receipts`, rule for rule.
+fn negation_reaches_receipts(line: &str) -> bool {
+    if line.contains('\0') {
+        return true;
+    }
+    let Some(pattern) = line.strip_prefix('!') else {
+        return false;
+    };
+    let mut pattern = pattern.trim_end_matches(' ');
+    pattern = pattern.strip_suffix('/').unwrap_or(pattern);
+    pattern = pattern.strip_prefix('/').unwrap_or(pattern);
+    while let Some(rest) = pattern.strip_prefix("**/") {
+        pattern = rest;
+    }
+    if pattern.contains(['/', '\\']) || !pattern.bytes().all(|b| (0x20..=0x7e).contains(&b)) {
+        return true;
+    }
+    parse_glob(pattern.as_bytes()).is_none_or(|glob| glob_matches(&glob, b"receipts"))
+}
+
+/// One token of a glob: any run, any one character, or a set of inclusive
+/// byte ranges, negated or not.
+#[derive(PartialEq, Eq)]
+enum Token {
+    Any,
+    One,
+    Set(bool, Vec<(u8, u8)>),
+}
+
+/// The Python writer's `_parse_glob`: `None` for a bracket expression it
+/// does not evaluate (unterminated, or holding `[:`, `[=` or `[.`).
+fn parse_glob(pat: &[u8]) -> Option<Vec<Token>> {
+    let special =
+        |j: usize| pat.get(j) == Some(&b'[') && matches!(pat.get(j + 1), Some(b':' | b'=' | b'.'));
+    let mut out = Vec::new();
+    let mut i = 0;
+    while i < pat.len() {
+        match pat[i] {
+            b'*' => {
+                if out.last() != Some(&Token::Any) {
+                    out.push(Token::Any);
+                }
+            }
+            b'?' => out.push(Token::One),
+            b'[' => {
+                let mut j = i + 1;
+                let negated = matches!(pat.get(j), Some(b'!' | b'^'));
+                if negated {
+                    j += 1;
+                }
+                let mut ranges = Vec::new();
+                let mut prev: Option<u8> = None;
+                let mut first = true;
+                loop {
+                    let &m = pat.get(j)?;
+                    if m == b']' && !first {
+                        break;
+                    }
+                    if special(j) {
+                        return None;
+                    }
+                    if m == b'-' && prev.is_some() && j + 1 < pat.len() && pat[j + 1] != b']' {
+                        if special(j + 1) {
+                            return None;
+                        }
+                        ranges.push((prev.unwrap_or(m), pat[j + 1]));
+                        prev = None;
+                        j += 2;
+                    } else {
+                        ranges.push((m, m));
+                        prev = Some(m);
+                        j += 1;
+                    }
+                    first = false;
+                }
+                out.push(Token::Set(negated, ranges));
+                i = j;
+            }
+            c => out.push(Token::Set(false, vec![(c, c)])),
+        }
+        i += 1;
+    }
+    Some(out)
+}
+
+/// The Python writer's `_glob_matches`: whether `glob` matches all of
+/// `text` (lower case), ignoring case.
+fn glob_matches(glob: &[Token], text: &[u8]) -> bool {
+    let Some((token, rest)) = glob.split_first() else {
+        return text.is_empty();
+    };
+    match token {
+        Token::Any => (0..=text.len()).any(|k| glob_matches(rest, &text[k..])),
+        _ if text.is_empty() => false,
+        Token::One => glob_matches(rest, &text[1..]),
+        Token::Set(negated, ranges) => {
+            let (c, up) = (text[0], text[0].to_ascii_uppercase());
+            let inside = ranges
+                .iter()
+                .any(|&(lo, hi)| (lo..=hi).contains(&c) || (lo..=hi).contains(&up));
+            inside != *negated && glob_matches(rest, &text[1..])
+        }
+    }
+}
+
+/// A run id free of every declared secret: the first `next()` and up to 16
+/// more, as the Python writer tries (spec 5.3).
+///
+/// # Errors
+///
+/// `startup.secret_in_path` when every id tried carries a secret.
+fn choose_id(
+    secrets: &[String],
+    mut next: impl FnMut() -> String,
+) -> Result<String, StartupFailure> {
+    let carries = |id: &str| secrets.iter().any(|s| id.contains(s.as_str()));
+    let mut id = next();
+    for _ in 0..16 {
+        if !carries(&id) {
+            break;
+        }
+        id = next();
+    }
+    if carries(&id) {
+        return Err(StartupFailure {
+            code: "startup.secret_in_path",
+            problem: "no run id free of a declared secret value could be chosen".to_owned(),
+            remedy: "do not pass a value this short as a declared secret".to_owned(),
+        });
+    }
+    Ok(id)
 }
 
 fn first_line(path: &Path) -> Option<String> {
