@@ -267,7 +267,7 @@ impl<'a> Report<'a> {
             warnings: Vec::new(),
         };
         for f in findings {
-            match (f.severity, f.label()) {
+            match (f.severity(), f.label()) {
                 (Severity::Warning, _) => report.warnings.push(f),
                 (Severity::Error, "G4") => report.cyclic.push(f),
                 (Severity::Error, "X3") => report.unknown.push(f),
