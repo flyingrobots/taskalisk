@@ -71,6 +71,40 @@ schema version under `Unreleased` is a draft and may change in place.
   overrides; text the server returns is left out of an error's reason. Unlike the Python, a pull
   request's head repository is not observed.
 
+- **The git adapter** (flyingrobots/taskalisk#57). A new crate, `issue-dag-git`, implements the
+  core's `LocalRepository` port by running `git` with argument lists, never a shell:
+  `for-each-ref` with NUL-separated fields for local and remote-tracking branches (tip and
+  subject, a subject that is not UTF-8 read leniently; `origin/HEAD` and other symbolic refs left
+  out), `worktree list --porcelain -z` for
+  worktrees (path, head, branch or detached or bare, locked, prunable, whether the directory
+  exists), `status --porcelain -z` in each worktree for its dirty state, and `rev-list
+  --left-right --count --end-of-options` for ahead/behind (an empty revision or base, or one
+  holding `..`, is refused as `InvalidRevision` instead of being read as `HEAD` or a range). The
+  port gains `branches`, `worktrees` and `ahead_behind`, with the value types `Branch`,
+  `BranchScope`, `Worktree`, `Checkout` and `AheadBehind`, because the inventory reports them and
+  the port held only local branch names.
+  `GitRepository::open` takes the top level of a work tree (main or linked) and records its git
+  directory and work tree (`rev-parse --absolute-git-dir --show-toplevel`); a subdirectory, a
+  `.git` directory and a bare repository are refused. Every read runs against the recorded
+  `--git-dir` and `--work-tree` and never discovers again, so a repository whose `.git` is gone
+  fails instead of reading the repository above it; each worktree's `status` names that
+  worktree's own `.git` the same way, after checking that it belongs to the opened repository (a
+  worktree directory replaced by another repository fails as `ForeignWorktree`, and a linked
+  worktree whose `.git` is another worktree's, as after two directories are swapped, fails as
+  `MisplacedWorktree`; a locked worktree whose directory holds no `.git`, such as an unmounted
+  volume, has `dirty` unknown); a submodule's or
+  `--separate-git-dir` repository's main worktree, which git lists at its git directory, is read
+  through the recorded work tree. It fails closed: each `read_*` method returns a `GitError`
+  when `git` fails or answers in a shape it cannot read (an empty worktree listing included), for
+  a caller that needs the kind of failure, and the port answers `Unavailable` with the error's
+  text, never an empty list. It only reads: every call passes `--no-optional-locks` and turns off
+  `core.fsmonitor` and `core.untrackedCache`, so `status` neither rewrites the index nor runs a
+  configured monitor command (a clean filter the user configured can still run, with the trust of
+  the user's own `git status`), and removes every inherited `GIT_*` variable (`GIT_DIR`,
+  `GIT_CONFIG_*`, `GIT_CEILING_DIRECTORIES`, `GIT_NO_REPLACE_OBJECTS` and the rest), so a run
+  inside a hook reads the repository it was given. A missing worktree directory is reported
+  (`path_exists` false, `dirty` unknown), not dropped.
+
 - **Ranking and batch selection in the Rust core** (flyingrobots/taskalisk#29). `issue-dag-core`
   gains `rank`, which scores every open node of a reported graph (K1 to K5: in-flight and parked
   terms from the S2 status, a trusted linked pull request included; descendants by bit set; depth;
@@ -121,6 +155,14 @@ schema version under `Unreleased` is a draft and may change in place.
   `scripts/check_vendored_writer.py` fetches the writer from flyingrobots/parley at the pinned
   commit and requires it to equal the pin and the copy; CI runs it. The offline pin test proves
   only that copy and pin agree, and the output reference now says which check proves what.
+
+### Changed
+
+- **One crate per port adapter** (flyingrobots/taskalisk#57). Decision 0001, section 2, is amended:
+  the git adapter is `issue-dag-git` (#57); the `gh` adapter is to be its own crate, `issue-dag-gh`
+  (#56); the renderers and the command line go in the binary crate (#31); the in-memory
+  `RecordedForge` is in the core. Section 8, item 4, now names the issue of each adapter (#56,
+  #57) and of the command line and renderers (#31, #58).
 
 ### Fixed
 
