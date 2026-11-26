@@ -11,6 +11,10 @@
 //! - A characterisation case without a normative twin is one where the
 //!   Python and the specification agree; the crate must equal it exactly.
 //!
+//! A bundle that lacks a slot the run reads is `unusable`, with the slot
+//! reported as `missing`; an incomplete run reports its `unavailable` reason
+//! (OB16), which only a normative case states (CC6).
+//!
 //! `findings` compare as a set (CC6), and in a normative planned case every
 //! member of the expected batch must be dispatchable (Q2). Every other
 //! member compares exactly: `ready` in rank order (K6), `scores` (K5),
@@ -63,12 +67,26 @@ type Dispatchable = BTreeSet<String>;
 fn result_json(bundle_text: &str) -> Result<(Map<String, Value>, Option<Dispatchable>), String> {
     let bundle = load(bundle_text).map_err(|e| format!("bundle rejected: {e}"))?;
     let forge = RecordedForge::new(&bundle.observations);
-    let outcome = plan(&bundle.parameters, &forge).map_err(|e| e.to_string())?;
-    let out = outcome_json(&outcome, &bundle.parameters.capacities);
+    let outcome = match plan(&bundle.parameters, &forge) {
+        Ok(outcome) => outcome,
+        Err(missing) => {
+            // OB5: the bundle is unusable; `missing` is the slot reported (OB16).
+            let mut out = Map::new();
+            out.insert("outcome".into(), json!("unusable"));
+            out.insert("missing".into(), json!(missing.path));
+            return Ok((out, None));
+        }
+    };
+    let mut out = outcome_json(&outcome, &bundle.parameters.capacities);
     let graph = match &outcome {
         Outcome::Invalid { graph, .. } => graph.as_ref(),
         Outcome::Planned { graph, .. } => Some(graph),
-        Outcome::Rejected(_) | Outcome::Incomplete { .. } => None,
+        Outcome::Incomplete { unavailable } => {
+            // OB16: the reason reported, which a normative case may state.
+            out.insert("unavailable".into(), json!(unavailable));
+            None
+        }
+        Outcome::Rejected(_) => None,
     };
     let dispatchable = graph.map(|g| g.dispatchable().iter().map(ToString::to_string).collect());
     Ok((out, dispatchable))
@@ -214,6 +232,10 @@ fn every_graph_case_of_the_corpus() {
                 normative_mismatch(expected.as_object().expect("object"), &actual)
             }
             (Some("characterisation"), None) => {
+                // CC6: only a normative case states the unavailable slot
+                // reported; the Python reports none.
+                let mut actual = actual;
+                actual.remove("unavailable");
                 let expected = read_json(&dir.join("expected.json"));
                 exact_mismatch(expected.as_object().expect("object"), &actual)
             }

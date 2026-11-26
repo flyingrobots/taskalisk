@@ -1,0 +1,18 @@
+{
+  "cites": [
+    "OB16",
+    "OB5",
+    "AD10"
+  ],
+  "disagreement": {
+    "classification": "compatibility-exception",
+    "difference": 25,
+    "note": "the compiler stops at the first lookup it cannot make: it reads the home pull requests first and reports them"
+  },
+  "id": "graph/ob16-missing-codeowners-before-missing-pull-requests-roots-reversed--python",
+  "kind": "characterisation",
+  "level": "graph",
+  "normative_case": "graph/ob16-missing-codeowners-before-missing-pull-requests-roots-reversed",
+  "source": "the Python compiler, on the bundle of graph/ob16-missing-codeowners-before-missing-pull-requests-roots-reversed",
+  "title": "Where graph/ob16-missing-codeowners-before-missing-pull-requests-roots-reversed differs: the compiler stops at the first lookup it cannot make: it reads the home pull requests first and reports them"
+}

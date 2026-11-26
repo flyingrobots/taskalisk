@@ -79,7 +79,8 @@ def write_cases(corpus: pathlib.Path) -> dict[str, int]:
             twin = _meta("characterisation", graph, normative_case=f"graph/{graph.name}")
             twin["title"] = f"Where graph/{graph.name} differs: {graph.disagreement['note']}"
             twin["source"] = f"the Python compiler, on the bundle of graph/{graph.name}"
-            _write_case(base, "graph", f"{graph.name}--python", twin, inputs, forge.run_graph(graph.bundle))
+            # A twin may record an unusable bundle (corpus rule CC6); a scenario below may not.
+            _write_case(base, "graph", f"{graph.name}--python", twin, inputs, forge.replay(graph.bundle))
             counts["graph characterisation"] += 1
     for graph in cases.SCENARIOS:
         _write_case(base, "graph", graph.name, _meta("characterisation", graph), {"bundle.json": graph.bundle}, forge.run_graph(graph.bundle))

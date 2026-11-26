@@ -70,10 +70,28 @@ pub enum Observed<T> {
 
 /// A slot the run needs and the observations do not hold (bundle rule
 /// OB5). It is neither empty nor unavailable: the evidence is unusable.
+///
+/// Missing slots are ordered by `path` first (bundle rule OB16): member
+/// name by member name, each by its UTF-8 bytes, a prefix first. The
+/// order of the fields is that order; do not move them.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Missing {
-    /// The observation that was not recorded.
+    /// The member names that lead to the slot from `observations`, as
+    /// corpus rule CC6 writes it, such as `["issues", "o/r#2"]`.
+    pub path: Vec<String>,
+    /// The observation that was not recorded, in words.
     pub what: String,
+}
+
+impl Missing {
+    /// The slot at `path` from `observations`, described as `what`.
+    #[must_use]
+    pub fn at(path: &[&str], what: String) -> Self {
+        Self {
+            path: path.iter().map(|&name| name.to_owned()).collect(),
+            what,
+        }
+    }
 }
 
 impl fmt::Display for Missing {

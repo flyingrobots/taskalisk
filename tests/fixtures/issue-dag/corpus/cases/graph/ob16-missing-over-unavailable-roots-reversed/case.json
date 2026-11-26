@@ -1,0 +1,17 @@
+{
+  "cites": [
+    "OB16",
+    "OB5",
+    "F1"
+  ],
+  "disagreement": {
+    "classification": "compatibility-exception",
+    "difference": 25,
+    "note": "the compiler stops at the first lookup it cannot make: it reads the unavailable o/r#2 first and reports an incomplete run"
+  },
+  "id": "graph/ob16-missing-over-unavailable-roots-reversed",
+  "kind": "normative",
+  "level": "graph",
+  "source": "constructed from the rule text",
+  "title": "A missing slot is reported, not an unavailable one, with the roots in the other order"
+}
