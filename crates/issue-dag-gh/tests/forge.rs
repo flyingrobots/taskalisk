@@ -63,8 +63,8 @@ fn state() -> Value {
     })
 }
 
-/// What the state above observes, recorded by hand.
-fn recorded() -> Observations {
+/// The issues the state above resolves, recorded by hand.
+fn recorded_issues() -> BTreeMap<IssueRef, Observed<Issue>> {
     let open = |address: &str, author: Option<Actor>, association: &str, body: Observed<Body>| {
         Observed::Value(Issue {
             address: reference(address),
@@ -117,9 +117,7 @@ fn recorded() -> Observations {
             state_reason: None,
             author: Some(actor("owner", "User")),
             author_association: Some("OWNER".to_owned()),
-            body: Observed::Unavailable(
-                "o/r#3 is a pull request; its body is not read".to_owned(),
-            ),
+            body: Observed::Unavailable("o/r#3 is a pull request; its body is not read".to_owned()),
         }),
     );
     issues.insert(
@@ -149,6 +147,11 @@ fn recorded() -> Observations {
         reference("o/r#404"),
         Observed::Unavailable("o/r#404 resolves to no issue gh can see (HTTP 404)".to_owned()),
     );
+    issues
+}
+
+/// What the state above observes, recorded by hand.
+fn recorded() -> Observations {
     let pull = |number, cross, author, draft, closes: &[&str]| PullRequest {
         number,
         repository: repo("o/r"),
@@ -188,7 +191,7 @@ fn recorded() -> Observations {
             ),
             pull(12, None, None, Observed::Value(true), &["o/r#2"]),
         ])),
-        issues,
+        issues: recorded_issues(),
         permissions,
         codeowners: Some(BTreeMap::from([
             (
@@ -250,7 +253,10 @@ fn each_slot_is_one_lookup_whatever_the_number_of_reads() {
     let first = forge.issue(&reference("o/r#2"));
     let calls = fake.calls().len();
     assert_eq!(forge.issue(&reference("o/r#2")), first);
-    assert_eq!(forge.permission(&repo("o/r"), "dev"), forge.permission(&repo("o/r"), "dev"));
+    assert_eq!(
+        forge.permission(&repo("o/r"), "dev"),
+        forge.permission(&repo("o/r"), "dev")
+    );
     assert_eq!(fake.calls().len(), calls + 1);
 }
 
@@ -261,13 +267,30 @@ fn the_gh_invocations_are_argument_vectors_with_the_python_limits() {
     assert_fixture(&forge);
     let calls = fake.calls();
     let has = |want: &[&str]| calls.iter().any(|c| c == want);
-    assert!(has(&["api", "--paginate", "repos/o/r/issues?state=open&per_page=100"]));
     assert!(has(&[
-        "pr", "list", "--repo", "o/r", "--state", "open", "--limit", "500", "--json",
+        "api",
+        "--paginate",
+        "repos/o/r/issues?state=open&per_page=100"
+    ]));
+    assert!(has(&[
+        "pr",
+        "list",
+        "--repo",
+        "o/r",
+        "--state",
+        "open",
+        "--limit",
+        "500",
+        "--json",
         "number,isDraft,closingIssuesReferences,author,isCrossRepository",
     ]));
     assert!(has(&["api", "repos/o/r/issues/2"]));
-    assert!(has(&["api", "repos/o/r/collaborators/dev/permission", "--jq", ".permission"]));
+    assert!(has(&[
+        "api",
+        "repos/o/r/collaborators/dev/permission",
+        "--jq",
+        ".permission"
+    ]));
     for path in [".github/CODEOWNERS", "CODEOWNERS"] {
         assert!(has(&[
             "api",
@@ -375,7 +398,9 @@ fn a_listing_below_its_limit_is_complete() {
 
 #[test]
 fn a_failed_listing_is_unavailable_never_empty() {
-    let fake = Fake::new(&with(&json!({"issues_list_fail_message": "gh: Bad Gateway (HTTP 502)"})));
+    let fake = Fake::new(&with(
+        &json!({"issues_list_fail_message": "gh: Bad Gateway (HTTP 502)"}),
+    ));
     let forge = fake.forge("o/r");
     let slot = forge.home_open_issues().expect("never missing");
     let error = failed(&forge, &slot);
@@ -392,7 +417,11 @@ fn a_listing_of_the_wrong_shape_is_unavailable() {
         let fake = Fake::new(&with(&change));
         let forge = fake.forge("o/r");
         let slot = forge.home_open_issues().expect("never missing");
-        assert_eq!(failed(&forge, &slot).code(), "gh.response_invalid", "{change}");
+        assert_eq!(
+            failed(&forge, &slot).code(),
+            "gh.response_invalid",
+            "{change}"
+        );
     }
 }
 
@@ -435,7 +464,10 @@ fn a_failed_edit_history_leaves_the_body_unavailable() {
         (json!({"fail_graphql": true}), "gh.command_failed"),
         (json!({"graphql_null_edits": true}), "gh.response_invalid"),
         (json!({"graphql_no_cursor": true}), "gh.response_invalid"),
-        (json!({"graphql_repeat_cursor": true}), "gh.response_invalid"),
+        (
+            json!({"graphql_repeat_cursor": true}),
+            "gh.response_invalid",
+        ),
     ] {
         let fake = Fake::new(&with(&change));
         let forge = fake.forge("o/r");
@@ -465,7 +497,9 @@ fn an_edit_history_past_its_page_bound_is_refused() {
 fn a_permission_lookup_that_fails_other_than_404_is_unavailable_not_none() {
     let fake = Fake::new(&with(&json!({"collaborators_forbidden": true})));
     let forge = fake.forge("o/r");
-    let slot = forge.permission(&repo("o/r"), "stranger").expect("never missing");
+    let slot = forge
+        .permission(&repo("o/r"), "stranger")
+        .expect("never missing");
     let error = failed(&forge, &slot);
     assert_eq!(error.code(), "gh.command_failed");
     assert!(error.to_string().contains("HTTP 403"), "{error}");
@@ -475,9 +509,11 @@ fn a_permission_lookup_that_fails_other_than_404_is_unavailable_not_none() {
 fn a_login_that_is_not_a_github_login_is_never_put_in_a_path() {
     let fake = Fake::new(&state());
     let forge = fake.forge("o/r");
-    let slot = forge.permission(&repo("o/r"), "../../x").expect("never missing");
+    let slot = forge
+        .permission(&repo("o/r"), "../../x")
+        .expect("never missing");
     assert_eq!(failed(&forge, &slot).code(), "gh.response_invalid");
-    assert!(fake.calls().is_empty());
+    assert_eq!(fake.calls(), Vec::<Vec<String>>::new());
 }
 
 #[test]
@@ -514,7 +550,9 @@ fn a_token_in_gh_output_never_reaches_a_reason() {
 
 #[test]
 fn a_failure_ends_the_run_incomplete_which_exits_2() {
-    let fake = Fake::new(&with(&json!({"issues_list_fail_message": "gh: boom (HTTP 500)"})));
+    let fake = Fake::new(&with(
+        &json!({"issues_list_fail_message": "gh: boom (HTTP 500)"}),
+    ));
     let forge = fake.forge("o/r");
     let parameters = Parameters {
         home: repo("o/r"),

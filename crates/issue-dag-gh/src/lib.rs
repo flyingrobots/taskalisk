@@ -1,100 +1,218 @@
-//! A `Forge` that reads GitHub through the `gh` command line (stub).
+//! A [`Forge`] that reads GitHub through the `gh` command line (decision
+//! 0001, section 2).
+//!
+//! Every read runs `gh` with an argument vector, never a shell string; the
+//! program defaults to `gh` on `PATH`. The reads are the Python compiler's:
+//! the REST issue list and issue, the edit-history GraphQL query with its
+//! pagination guards, `gh pr list` with closing references, the
+//! collaborator permission and the CODEOWNERS file, with the same limits.
+//!
+//! The forge fails closed. A read that fails, answers in the wrong shape, or
+//! fills its list limit is a [`GhError`], never an empty answer: the slot is
+//! answered unavailable with the error as its reason, so a run that needs it
+//! is incomplete (profile rule F1, exit 2), and the error is kept for the
+//! run's report ([`GhForge::failures`]). HTTP 404 means "none" only where the
+//! Python compiler reads it so: a collaborator permission (not a
+//! collaborator), a CODEOWNERS path (try the next), and an issue (it
+//! resolves to nothing the planner can see, profile rule D10).
+//!
+//! Each slot is read once: a second lookup answers what the first observed,
+//! and [`GhForge::observations`] is the recording of every slot read, which
+//! the core's [`issue_dag_core::RecordedForge`] replays.
 
-use std::ffi::OsStr;
+mod error;
+mod read;
+mod run;
+
+use std::cell::RefCell;
+use std::ffi::{OsStr, OsString};
 
 use issue_dag_core::{
-    CodeownersFile, Forge, Issue, IssueRef, Lookup, Missing, Observations, PullRequest, Repo,
+    CodeownersFile, Forge, Issue, IssueRef, Lookup, Observations, Observed, PullRequest, Repo,
 };
 
-/// The edit-history query.
-pub const EDIT_HISTORY_QUERY: &str = "";
+pub use error::GhError;
+pub use read::{CODEOWNERS_PATHS, EDIT_HISTORY_QUERY};
+use run::Runner;
 
-/// List and page limits.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+/// The bounds a read refuses to pass. A list that fills its limit may be
+/// truncated, and is an error (threat model C15).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Limits {
-    /// Issues.
+    /// The open issues of the home repository, pull requests excluded.
     pub issues: usize,
-    /// Pull requests.
+    /// The open pull requests of the home repository (`gh pr list --limit`).
     pub pull_requests: usize,
-    /// Edit-history pages.
+    /// The pages of 100 edits of one body's edit history.
     pub edit_history_pages: usize,
 }
 
-/// A failed read.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct GhError;
-
-impl GhError {
-    /// Exit status.
-    pub const EXIT_STATUS: i32 = 0;
-    /// Code.
-    #[must_use]
-    pub const fn code(&self) -> &'static str {
-        ""
+impl Default for Limits {
+    /// The Python compiler's: `GH_ISSUE_LIST_LIMIT`, `GH_PR_LIST_LIMIT` and
+    /// `EDIT_HISTORY_MAX_PAGES`.
+    fn default() -> Self {
+        Self {
+            issues: 1000,
+            pull_requests: 500,
+            edit_history_pages: 1000,
+        }
     }
 }
 
-impl std::fmt::Display for GhError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str("")
-    }
-}
-
-/// The forge.
+/// The forge of a home repository, read through `gh`.
 #[derive(Debug)]
-pub struct GhForge;
+pub struct GhForge {
+    home: Repo,
+    runner: Runner,
+    limits: Limits,
+    read: RefCell<Observations>,
+    failures: RefCell<Vec<GhError>>,
+}
 
 impl GhForge {
-    /// New.
+    /// A forge for the home repository `home`, running `gh` from `PATH`
+    /// with the default [`Limits`].
     #[must_use]
-    pub fn new(_home: Repo) -> Self {
-        Self
+    pub fn new(home: Repo) -> Self {
+        Self {
+            home,
+            runner: Runner {
+                program: OsString::from("gh"),
+                env: Vec::new(),
+            },
+            limits: Limits::default(),
+            read: RefCell::new(Observations::default()),
+            failures: RefCell::new(Vec::new()),
+        }
     }
-    /// Program.
+
+    /// Runs `program` in place of `gh`: a name looked up on `PATH`, or a path.
     #[must_use]
-    pub fn program(self, _p: impl AsRef<OsStr>) -> Self {
+    pub fn program(mut self, program: impl AsRef<OsStr>) -> Self {
+        program.as_ref().clone_into(&mut self.runner.program);
         self
     }
-    /// Env.
+
+    /// Gives `gh` the variable `key` with `value`, on top of this process's
+    /// environment. A `PATH` given here is also where `gh` is looked up.
     #[must_use]
-    pub fn env(self, _k: impl AsRef<OsStr>, _v: impl AsRef<OsStr>) -> Self {
+    pub fn env(mut self, key: impl AsRef<OsStr>, value: impl AsRef<OsStr>) -> Self {
+        self.runner
+            .env
+            .push((key.as_ref().to_owned(), value.as_ref().to_owned()));
         self
     }
-    /// Limits.
+
+    /// Reads with `limits` in place of the defaults.
     #[must_use]
-    pub const fn limits(self, _l: Limits) -> Self {
+    pub const fn limits(mut self, limits: Limits) -> Self {
+        self.limits = limits;
         self
     }
-    /// Failures.
+
+    /// Every read that failed, in order. Not empty means the run that read
+    /// through this forge exits with [`GhError::EXIT_STATUS`].
     #[must_use]
-    pub const fn failures(&self) -> Vec<GhError> {
-        Vec::new()
+    pub fn failures(&self) -> Vec<GhError> {
+        self.failures.borrow().clone()
     }
-    /// Observations.
+
+    /// Every slot read so far, as recorded observations (bundle section 2).
     #[must_use]
     pub fn observations(&self) -> Observations {
-        Observations::default()
+        self.read.borrow().clone()
     }
-}
 
-fn missing<T>() -> Lookup<T> {
-    Err(Missing { what: "stub".to_owned() })
+    /// The slot of a read: its value, or unavailable with the failure kept.
+    fn settle<T>(&self, result: Result<T, GhError>) -> Observed<T> {
+        match result {
+            Ok(value) => Observed::Value(value),
+            Err(error) => {
+                let why = error.to_string();
+                self.failures.borrow_mut().push(error);
+                Observed::Unavailable(why)
+            }
+        }
+    }
 }
 
 impl Forge for GhForge {
     fn home_open_issues(&self) -> Lookup<Vec<IssueRef>> {
-        missing()
+        let cached = self.read.borrow().home_open_issues.clone();
+        let slot = cached.unwrap_or_else(|| {
+            self.settle(read::home_open_issues(
+                &self.runner,
+                &self.home,
+                self.limits,
+            ))
+        });
+        self.read.borrow_mut().home_open_issues = Some(slot.clone());
+        Ok(slot)
     }
+
     fn home_open_pull_requests(&self) -> Lookup<Vec<PullRequest>> {
-        missing()
+        let cached = self.read.borrow().home_open_pull_requests.clone();
+        let slot = cached.unwrap_or_else(|| {
+            self.settle(read::home_open_pull_requests(
+                &self.runner,
+                &self.home,
+                self.limits,
+            ))
+        });
+        self.read.borrow_mut().home_open_pull_requests = Some(slot.clone());
+        Ok(slot)
     }
-    fn issue(&self, _r: &IssueRef) -> Lookup<Issue> {
-        missing()
+
+    fn issue(&self, reference: &IssueRef) -> Lookup<Issue> {
+        let cached = self.read.borrow().issues.get(reference).cloned();
+        let slot =
+            cached.unwrap_or_else(|| match read::issue(&self.runner, reference, self.limits) {
+                Ok((slot, body_failure)) => {
+                    self.failures.borrow_mut().extend(body_failure);
+                    slot
+                }
+                Err(error) => self.settle(Err(error)),
+            });
+        self.read
+            .borrow_mut()
+            .issues
+            .insert(reference.clone(), slot.clone());
+        Ok(slot)
     }
-    fn permission(&self, _repo: &Repo, _login: &str) -> Lookup<Option<String>> {
-        missing()
+
+    fn permission(&self, repo: &Repo, login: &str) -> Lookup<Option<String>> {
+        let cached = self
+            .read
+            .borrow()
+            .permissions
+            .get(repo)
+            .and_then(|table| table.get(login))
+            .cloned();
+        let slot =
+            cached.unwrap_or_else(|| self.settle(read::permission(&self.runner, repo, login)));
+        self.read
+            .borrow_mut()
+            .permissions
+            .entry(repo.clone())
+            .or_default()
+            .insert(login.to_owned(), slot.clone());
+        Ok(slot)
     }
-    fn codeowners(&self, _repo: &Repo) -> Lookup<Option<CodeownersFile>> {
-        missing()
+
+    fn codeowners(&self, repo: &Repo) -> Lookup<Option<CodeownersFile>> {
+        let cached = self
+            .read
+            .borrow()
+            .codeowners
+            .as_ref()
+            .and_then(|files| files.get(repo))
+            .cloned();
+        let slot = cached.unwrap_or_else(|| self.settle(read::codeowners(&self.runner, repo)));
+        self.read
+            .borrow_mut()
+            .codeowners
+            .get_or_insert_default()
+            .insert(repo.clone(), slot.clone());
+        Ok(slot)
     }
 }
