@@ -7,10 +7,8 @@
 //! warnings never make a run invalid. [`shape_warnings`] reads them from a
 //! [`Graph`] that [`crate::plan`] returned.
 
-use std::collections::{BTreeMap, BTreeSet, VecDeque};
-
 use crate::finding::{Code, Finding, Severity};
-use crate::plan::{Edge, Graph};
+use crate::plan::Graph;
 use crate::reference::IssueRef;
 
 /// Declares [`ShapeWarning`], its code and message, its list
@@ -65,12 +63,13 @@ shape_warnings! {
 
 /// What a shape warning measured, beyond its finding.
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum Detail {
-    /// Nothing: the finding says it all.
-    None,
-    /// The path through the reduced graph that implies a redundant edge,
-    /// from its prerequisite to its dependent, both included.
-    Path(Vec<IssueRef>),
+    /// The node a redundant edge is implied via: the first child of its
+    /// prerequisite, in the text order of references, other than its
+    /// dependent, from which the dependent is reachable. The Python
+    /// compiler's `implied_via`.
+    ImpliedVia(IssueRef),
 }
 
 /// One shape warning: its finding, and what it measured.
@@ -94,7 +93,7 @@ pub fn shape_warnings(graph: &Graph) -> Vec<ShapeFinding> {
     for edge in &graph.redundant {
         found.push(ShapeFinding {
             finding: finding(ShapeWarning::RedundantEdge, &edge.to, Some(&edge.from)),
-            detail: Detail::Path(implied_path(graph, edge)),
+            detail: Detail::ImpliedVia(edge.from.clone()),
         });
     }
     found.sort_by(|a, b| a.finding.cmp(&b.finding));
@@ -109,37 +108,4 @@ fn finding(warning: ShapeWarning, subject: &IssueRef, concerns: Option<&IssueRef
         concerns.cloned(),
         warning.message(),
     )
-}
-
-/// The shortest path from `edge.from` to `edge.to` over the reduced edges
-/// (the graph's edges less the redundant ones), both ends included; among
-/// paths of one length, the first in reference order. The reduction keeps
-/// every path, so a redundant edge always has one.
-fn implied_path(graph: &Graph, edge: &Edge) -> Vec<IssueRef> {
-    let mut next: BTreeMap<&IssueRef, Vec<&IssueRef>> = BTreeMap::new();
-    for e in graph.edges.difference(&graph.redundant) {
-        next.entry(&e.from).or_default().push(&e.to);
-    }
-    let mut came_from: BTreeMap<&IssueRef, &IssueRef> = BTreeMap::new();
-    let mut seen = BTreeSet::from([&edge.from]);
-    let mut queue = VecDeque::from([&edge.from]);
-    while let Some(u) = queue.pop_front() {
-        if u == &edge.to {
-            break;
-        }
-        for &v in next.get(u).into_iter().flatten() {
-            if seen.insert(v) {
-                came_from.insert(v, u);
-                queue.push_back(v);
-            }
-        }
-    }
-    let mut path = vec![edge.to.clone()];
-    let mut at = &edge.to;
-    while let Some(&u) = came_from.get(at) {
-        path.push(u.clone());
-        at = u;
-    }
-    path.reverse();
-    path
 }
