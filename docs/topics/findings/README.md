@@ -670,6 +670,22 @@ observation bundle records none.
 To fix: if the title names two outcomes, split the task. If `and` is part of
 one name, rephrase the title or put the name in a code span.
 
+### `taskalisk.estimate-missing`
+
+**Severity:** warning. **Rule:** [Frontmatter at a glance](../../../skills/taskalisk/SKILL.md#frontmatter-at-a-glance), `.size_hours`, of the skill; see [Report the plan at its true size](../../../skills/taskalisk/WRITING-TASKS.md#report-the-plan-at-its-true-size).
+
+An open task of the plan's graph has no `.size_hours`, so the plan's total
+of estimates leaves it out. Only a task with a document is checked: an
+opaque node has no frontmatter to hold the key, and a closed task or a
+container draws no warning. A `.size_hours` that is not a valid size (rule
+`format.L4`) counts as absent, as the graph records no size for it.
+
+In a plan where `o/r#2` is open and its frontmatter has no `.size_hours`,
+`o/r#2` receives `taskalisk.estimate-missing`.
+
+To fix: estimate the task after splitting it ([Size](../../../skills/taskalisk/WRITING-TASKS.md#size))
+and add `.size_hours`, a whole number of hours.
+
 ### `taskalisk.redundant-edge`
 
 **Severity:** warning. **Rule:** [Transitive reduction](../../../skills/taskalisk/SKILL.md#core-doctrine), Core Doctrine 4 of the skill.

@@ -268,6 +268,11 @@ schema version under `Unreleased` is a draft and may change in place.
   `implied_via` for the same edge, `edge.redundant`. The descendant sets are built once, so the
   4,998 redundant edges of a 5,000-task chain whose every task is also blocked by its first take
   well under a second; a `perf_` test guards it, and the CI perf guard now expects 7.
+- **A warning for an open task with no estimate** (flyingrobots/taskalisk#64). `shape_warnings`
+  gains `taskalisk.estimate-missing`, given once per open task with a document whose
+  `Node::size_hours` is absent; closed tasks, opaque nodes and containers draw none.
+  `ShapeFinding::detail` becomes an `Option<Detail>`: `None` for a warning that measures nothing
+  beyond its finding.
 
 - **Why a reference could not be read, in part** (flyingrobots/taskalisk#45). The test
   `unreadable_references` pins the three causes today's observations tell apart: outside the read

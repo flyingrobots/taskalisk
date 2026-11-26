@@ -114,7 +114,7 @@ pub fn shape_warnings(graph: &Graph) -> Vec<ShapeFinding> {
 /// `.size_hours`.
 fn estimates_missing(graph: &Graph, found: &mut Vec<ShapeFinding>) {
     for (id, node) in &graph.nodes {
-        if !node.complete && !node.opaque && node.size_hours.is_none() && id.number() == 0 {
+        if !node.complete && !node.opaque && node.size_hours.is_none() {
             found.push(ShapeFinding {
                 finding: finding(ShapeWarning::EstimateMissing, id, None),
                 detail: None,
