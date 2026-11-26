@@ -238,8 +238,9 @@ replaced by `[redacted]` in every line and in the receipt, and the receipt head 
 set. A credential inside a URL in `gh` or `git` output is replaced by `[redacted]` before it is
 recorded: userinfo (`scheme://user:secret@host`), and the value of a query or fragment parameter
 named `token`, `access_token`, `key`, `secret`, `password`, `sig`, `signature`, `auth` or `code`,
-in any case and any position. Other parameters, and the quotes, brackets or full stop around a
-URL, are kept. The names are a heuristic: a secret in a parameter not on that list, under a
+in any case and any position. A value runs to the next `&`, `#` or white space, past any `;`
+inside it, so a parameter that follows a `;` in the same value is redacted with it. Other
+parameters, and the quotes, brackets or full stop around a URL, are kept. The names are a heuristic: a secret in a parameter not on that list, under a
 percent-encoded name, or outside a URL, is not found; nor is a URL whose scheme is longer than 32
 characters, a bound that keeps the scan linear. Closing punctuation (`. , : ! ? ' " ) > ]`) at the
 very end of a value is shown, as the text around the URL. The home directory is shown as `~` in

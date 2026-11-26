@@ -124,10 +124,10 @@ URL_CREDENTIALS_RE = re.compile(r"(?i)\b(" + URL_SCHEME + r")[^\s/@]+@")
 URL_RE = re.compile(r"(?i)\b" + URL_SCHEME + r"\S+")
 # A query or fragment parameter whose name says it carries a secret; its value is redacted. The
 # names are a heuristic: a secret in a parameter not named here is not found
-# (docs/topics/output/README.md). A value runs to the next parameter, the fragment or white space,
-# so a quote or bracket inside it leaks nothing; only closing punctuation at its very end, which
-# belongs to the text around the URL, is given back (`_redact_value`).
-URL_SECRET_PARAM_RE = re.compile(r"(?i)([?&;#](?:access_token|token|key|secret|password|signature|sig|auth|code)=)([^&;#\s]+)")
+# (docs/topics/output/README.md). A value runs to the next `&`, the fragment or white space,
+# past any `;`, quote or bracket inside it, so no part of it leaks; only closing punctuation at
+# its very end, which belongs to the text around the URL, is given back (`_redact_value`).
+URL_SECRET_PARAM_RE = re.compile(r"(?i)([?&;#](?:access_token|token|key|secret|password|signature|sig|auth|code)=)([^&#\s]+)")
 AROUND_A_URL = ".,:!?'\")>]"
 
 
