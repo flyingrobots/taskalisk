@@ -86,10 +86,10 @@ jobs:
           rustup show active-toolchain
       - name: Wall-clock bounds of large graphs
         shell: bash
-        # A filter that matches no test passes, so the step also counts the perf_
-        # tests that ran: a rename must not silently drop a bound.
+        # A filter that matches no test passes, so the step checks that every perf_
+        # test that exists passed (#120). The list includes tests that lost their
+        # #[ignore]: those no longer run here, so the check fails on them too.
         run: |
+          cargo test --workspace --locked --release -- --list perf_ > perf-listed.log 2>&1
           cargo test --workspace --locked --release -- --ignored perf_ 2>&1 | tee perf.log
-          ran="$(grep -c '^test .*perf_.* \.\.\. ok$' perf.log)"
-          echo "perf_ tests passed: $ran"
-          test "$ran" -ge 6
+          python3 scripts/check_perf_tests.py perf-listed.log perf.log
