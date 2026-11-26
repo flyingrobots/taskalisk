@@ -2,26 +2,16 @@
 //!
 //! A hand-written reader for the `issue-dag/2` format: the carrier
 //! ([`parse`]), validity ([`validate`]), the decoded record ([`admit`]), and
-<<<<<<< HEAD
 //! the `.blocked_by` rewrite of the edge-edit contract ([`rewrite_blocked_by`]),
 //! and a planning run under `issue-dag-planning/2` ([`plan`]) over the
 //! observations a [`Forge`] answers with, admission included.
-||||||| 6c7974d
-//! the `.blocked_by` rewrite of the edge-edit contract ([`rewrite_blocked_by`]).
-=======
-//! the `.blocked_by` rewrite of the edge-edit contract ([`rewrite_blocked_by`]).
 //! A body becomes findings with stable codes ([`findings`]); the codes
 //! are tabled on [`code`].
->>>>>>> origin/main
 //! The crate performs no I/O and has no dependencies.
 mod admission;
 mod carrier;
-<<<<<<< HEAD
-mod forge;
-||||||| 6c7974d
-=======
 mod finding;
->>>>>>> origin/main
+mod forge;
 mod label;
 mod observation;
 mod plan;
@@ -34,18 +24,14 @@ use std::collections::BTreeSet;
 
 pub use admission::{Admission, Identity, Undecided, codeowners_persons};
 pub use carrier::{Block, Entry, Integer, Parse, Slot, Value, parse, trim};
-<<<<<<< HEAD
+pub use finding::{Finding, LABELS, PROFILE_RULES, Rule, Severity, code, findings};
 pub use forge::{Bundle, Forge, LocalRepository, NoLocalRepository, Observations, RecordedForge};
-||||||| 6c7974d
-=======
-pub use finding::{Finding, LABELS, Severity, code, findings};
->>>>>>> origin/main
 pub use label::Label;
 pub use observation::{
     Actor, Body, CodeownersFile, Issue, IssueState, Lookup, Missing, Observed, Parameters,
     PullRequest, ReadScope, Repo, TRUST_POLICY, TrustParameters,
 };
-pub use plan::{Edge, Finding, Graph, Node, NodeStatus, Outcome, Rejection, Rule, plan};
+pub use plan::{Edge, Graph, Node, NodeStatus, Outcome, Rejection, plan};
 pub use record::{Kind, MeterClaim, Record, Status, TaskType, VERSION};
 pub use reference::{IssueRef, MAX_NUMBER};
 pub use rewrite::{EdgeEdit, Refusal, Rewrite, rewrite_blocked_by};

@@ -155,8 +155,7 @@ fn result_json(bundle_text: &str) -> Result<(Map<String, Value>, Option<Dispatch
         let findings = findings
             .iter()
             .map(|f| {
-                let mut finding =
-                    json!({"subject": f.subject.to_string(), "rule": f.rule.as_str()});
+                let mut finding = json!({"subject": f.subject.to_string(), "rule": f.label()});
                 if let Some(concerns) = &f.concerns {
                     finding["concerns"] = json!(concerns.to_string());
                 }

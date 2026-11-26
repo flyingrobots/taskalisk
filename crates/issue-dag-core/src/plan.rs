@@ -3,78 +3,17 @@
 //! the graph (G1 to G5), status (S1, S2), readiness (Q1, Q2) and the outcome
 //! (F1 to F5). Ranking and batch selection (K and B rules) are not here.
 
-use core::fmt;
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 use crate::admission::{Admission, Undecided};
 use crate::carrier::{Parse, Slot, Value, parse};
+use crate::finding::{Finding, Rule, Severity};
 use crate::forge::Forge;
 use crate::label::Label;
 use crate::observation::{Issue, IssueState, Missing, Observed, Parameters, Repo, TRUST_POLICY};
 use crate::record::{Kind, MeterClaim, Status};
 use crate::reference::IssueRef;
 use crate::{Judgement, admit};
-
-/// The label of a finding (profile rule F5).
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum Rule {
-    /// A document's violation or warning, labelled as format rule V12 states
-    /// (X1 included).
-    Document(Label),
-    /// A reference outside the read scope.
-    D3,
-    /// A reference to a pull request.
-    D4,
-    /// A transferred reference.
-    D5,
-    /// A prerequisite that is a container.
-    X2,
-    /// An unknown prerequisite.
-    X3,
-    /// A node of a cycle, or downstream of one.
-    G4,
-}
-
-impl Rule {
-    /// The label as the specification writes it.
-    #[must_use]
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::Document(label) => label.as_str(),
-            Self::D3 => "D3",
-            Self::D4 => "D4",
-            Self::D5 => "D5",
-            Self::X2 => "X2",
-            Self::X3 => "X3",
-            Self::G4 => "G4",
-        }
-    }
-
-    /// Whether a finding with this label makes the run invalid. Only a
-    /// warning (V10) does not.
-    #[must_use]
-    pub const fn is_violation(self) -> bool {
-        !matches!(self, Self::Document(Label::V10))
-    }
-}
-
-impl fmt::Display for Rule {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(self.as_str())
-    }
-}
-
-/// A finding (profile rule F5): the issue that receives it, its label, and
-/// for D3, D5, X2 and X3 the reference it concerns.
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct Finding {
-    /// The issue that receives it.
-    pub subject: IssueRef,
-    /// The label of the rule.
-    pub rule: Rule,
-    /// The reference it concerns.
-    pub concerns: Option<IssueRef>,
-}
 
 /// The status of an open node (rule S2).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -548,11 +487,8 @@ impl<'c> Assembly<'c> {
     }
 
     fn finding(&mut self, subject: &IssueRef, rule: Rule, concerns: Option<&IssueRef>) {
-        self.findings.insert(Finding {
-            subject: subject.clone(),
-            rule,
-            concerns: concerns.cloned(),
-        });
+        self.findings
+            .insert(Finding::new(subject.clone(), rule, concerns.cloned()));
     }
 
     /// A D3 or D5 finding about `reference`, to each issue F5 names.
@@ -699,7 +635,7 @@ impl<'c> Assembly<'c> {
         let unresolved = self
             .findings
             .iter()
-            .any(|f| matches!(f.rule, Rule::X3 | Rule::G4));
+            .any(|f| f.code == Rule::X3.code() || f.code == Rule::G4.code());
         let redundant = if cyclic.is_empty() {
             indexed.redundant(&order)
         } else {
@@ -715,7 +651,7 @@ impl<'c> Assembly<'c> {
             .map(|(id, _)| id.clone())
             .collect();
         let findings = self.findings;
-        if findings.iter().any(|f| f.rule.is_violation()) {
+        if findings.iter().any(|f| f.severity == Severity::Error) {
             Outcome::Invalid {
                 findings,
                 graph: (!unresolved).then_some(graph),
@@ -1007,7 +943,7 @@ mod tests {
         assert!(graph.is_none());
         let cyclic: BTreeSet<u32> = findings
             .iter()
-            .filter(|f| f.rule == super::Rule::G4)
+            .filter(|f| f.code == super::Rule::G4.code())
             .map(|f| f.subject.number())
             .collect();
         assert_eq!(cyclic, (1..=n + 1).collect());

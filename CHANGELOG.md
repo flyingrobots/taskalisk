@@ -28,7 +28,12 @@ schema version under `Unreleased` is a draft and may change in place.
   and unmodeled issues, the cross-document rules (X1 to X3), the graph (G1 to G5), status (S1,
   S2), readiness (Q1, Q2) and the outcome classes (F1 to F5) with findings labelled as F5 states.
   An unavailable observation makes the run incomplete, never empty; a slot that was never recorded
-  is an error, not an outcome. A new crate, `issue-dag-bundle`, reads an
+  is an error, not an outcome. A run's findings are the crate's one `Finding` type (#43's), which
+  gains `concerns`, the reference a D3, D5, X2 or X3 finding is about; the rules of a run have
+  stable codes in the same table (`profile.D3`, `profile.D4`, `profile.D5`, `profile.X2`,
+  `profile.X3`, `profile.G4`, declared with `Rule` and `PROFILE_RULES`), all errors. Admission,
+  input and outcome rules give no finding: they make a run incomplete or rejected. A new crate,
+  `issue-dag-bundle`, reads an
   `issue-dag-observations/1` bundle into the core and rejects one that breaks OB1 to OB13, or that
   gives a JSON member twice. Cycles (G4) use Kahn's algorithm and the reduction (G5) descendant
   bit sets, so a 5,000-task chain or wide graph plans in under a second in a debug build. All 179
