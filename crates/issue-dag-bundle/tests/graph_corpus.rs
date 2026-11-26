@@ -11,11 +11,12 @@
 //! - A characterisation case without a normative twin is one where the
 //!   Python and the specification agree; the crate must equal it exactly.
 //!
-//! `findings` compare as a set (CC6). Ranking and batch selection are
-//! `flyingrobots/taskalisk#29`, not this crate yet, so the members `scores`,
-//! `waves`, `critical_path`, `batch`, `skipped` and `unknown_capacity` are
-//! not compared, and `ready` is compared as a set: its order is the rank
-//! order of rule K6.
+//! `findings` compare as a set (CC6), and in a normative planned case every
+//! member of the expected batch must be dispatchable (Q2). Ranking and
+//! batch selection are `flyingrobots/taskalisk#29`, not this crate yet, so
+//! the members `scores`, `waves`, `critical_path`, `batch`, `skipped` and
+//! `unknown_capacity` are not compared, and `ready` is compared as a set:
+//! its order is the rank order of rule K6.
 
 use std::collections::BTreeSet;
 use std::fs;
@@ -133,8 +134,12 @@ fn graph_json(graph: &Graph, out: &mut Map<String, Value>) {
     out.insert("ready".into(), refs(&graph.ready));
 }
 
-/// The crate's result in the form of corpus rule CC6.
-fn result_json(bundle_text: &str) -> Result<Map<String, Value>, String> {
+/// The dispatchable subset of a ready set (Q2), as references.
+type Dispatchable = BTreeSet<String>;
+
+/// The crate's result in the form of corpus rule CC6, and the dispatchable
+/// subset of its ready set when it reports a graph.
+fn result_json(bundle_text: &str) -> Result<(Map<String, Value>, Option<Dispatchable>), String> {
     let bundle = load(bundle_text).map_err(|e| format!("bundle rejected: {e}"))?;
     let forge = RecordedForge::new(&bundle.observations);
     let outcome = plan(&bundle.parameters, &forge).map_err(|e| e.to_string())?;
@@ -163,7 +168,29 @@ fn result_json(bundle_text: &str) -> Result<Map<String, Value>, String> {
     if let Some(graph) = graph {
         graph_json(graph, &mut out);
     }
-    Ok(out)
+    let dispatchable = graph.map(|g| g.dispatchable().iter().map(ToString::to_string).collect());
+    Ok((out, dispatchable))
+}
+
+/// Q2: in a normative planned case, every member of the expected batch is
+/// dispatchable: ready, not opaque, not blocked. The batch itself is chosen
+/// by rule B5, which is flyingrobots/taskalisk#29.
+fn batch_not_dispatchable(
+    expected: &Map<String, Value>,
+    dispatchable: Option<&Dispatchable>,
+) -> Vec<String> {
+    if expected.get("outcome") != Some(&json!("planned")) {
+        return Vec::new();
+    }
+    let Some(batch) = expected.get("batch").and_then(Value::as_array) else {
+        return Vec::new();
+    };
+    batch
+        .iter()
+        .filter_map(Value::as_str)
+        .filter(|id| !dispatchable.is_some_and(|d| d.contains(*id)))
+        .map(|id| format!("batch: {id} is not dispatchable (Q2)"))
+        .collect()
 }
 
 /// Brings a member of an expected result into the form it is compared in:
@@ -264,8 +291,8 @@ fn every_graph_case_of_the_corpus() {
             (Some("characterisation"), false) => census += 1,
             _ => {}
         }
-        let actual = match result_json(&bundle_text) {
-            Ok(actual) => actual,
+        let (actual, dispatchable) = match result_json(&bundle_text) {
+            Ok(result) => result,
             Err(why) => {
                 failures.push(format!("{name}: {why}"));
                 continue;
@@ -274,7 +301,10 @@ fn every_graph_case_of_the_corpus() {
         let problems = match (case["kind"].as_str(), case["normative_case"].as_str()) {
             (Some("normative"), _) => {
                 let expected = read_json(&dir.join("expected.json"));
-                normative_mismatch(expected.as_object().expect("object"), &actual)
+                let expected = expected.as_object().expect("object");
+                let mut problems = normative_mismatch(expected, &actual);
+                problems.extend(batch_not_dispatchable(expected, dispatchable.as_ref()));
+                problems
             }
             (Some("characterisation"), Some(twin)) => {
                 let twin_name = twin.strip_prefix("graph/").expect("a graph case");
