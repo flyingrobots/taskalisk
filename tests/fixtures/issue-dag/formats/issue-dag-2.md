@@ -94,16 +94,15 @@ trimmed. A line that has another form makes the document invalid.
 invalid. This applies to free keys as well as `.` keys. Such a key is
 *repeated*. A repeated key is present, but it has no value, and no rule of
 sections 3 to 5 judges it, its values or a requirement that depends on its
-value: it receives no label from those sections, whatever its lines hold and
-in whatever order they come. So a repeated format key outside M2 is labelled
-C7, not V2; a repeated key that a rule requires is present, so it is not
-absent under that rule; a repeated key that a rule forbids, such as
-`.children` on a task, is labelled C7, not V5 or V6; a repeated `.kind`
-leaves the kind unknown, so V5 and V6 are not applied; and a repeated `.id` leaves the identity unknown,
-so V3, V7 and X1 are not applied. Where C7 and a rule of sections 3 to 5
-would both judge a repeated key, C7 governs. Each line of a repeated key is
-still a line of the block, and is still labelled under C6 and C8 when it
-fails them.
+value: it receives no label from those sections, whatever its lines hold and in
+whatever order they come. So a repeated format key outside M2 is labelled C7,
+not V2; a repeated key that a rule requires is present, so it is not absent
+under that rule; a repeated key that a rule forbids, such as `.children` on a
+task, is labelled C7, not V5 or V6; a repeated `.kind` leaves the kind unknown,
+so V5 and V6 are not applied; and a repeated `.id` leaves the identity unknown,
+so V3, V7 and X1 are not applied. Where C7 and a rule of sections 3 to 5 would
+both judge a repeated key, C7 governs. Each line of a repeated key is still a
+line of the block, and is still labelled under C6 and C8 when it fails them.
 
 A repeated `.dag` leaves the document's version unknown, so no format
 applies to it: C7 is the document's only violation, and no other rule,
