@@ -15,7 +15,7 @@
 //! reported as `missing`; an incomplete run reports its `unavailable` reason
 //! (OB16), which only a normative case states (CC6).
 //!
-//! `findings` compare as a set (CC6), and in a normative planned case every
+//! `findings` compare as sorted lists with repeats (CC8), and in a normative planned case every
 //! member of the expected batch must be dispatchable (Q2). Every other
 //! member compares exactly: `ready` in rank order (K6), `scores` (K5),
 //! `waves` (K7), `critical_path` (K8), `batch` in order of selection,
@@ -117,7 +117,7 @@ fn batch_not_dispatchable(
 }
 
 /// Brings a member of an expected result into the form it is compared in:
-/// `findings` as a set.
+/// `findings` as a sorted list with repeats (CC8).
 fn comparable(member: &str, value: &Value) -> Value {
     match (member, value) {
         ("findings", Value::Array(items)) => in_result_order(items.clone()),

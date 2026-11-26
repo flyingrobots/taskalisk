@@ -45,6 +45,10 @@ pub trait Forge {
     /// rule OB17, profile rules D11 to D13); `None` otherwise. A forge that
     /// records no cause, such as one whose lookups cannot tell the parts
     /// apart, answers `None`: the run is incomplete just the same (D10).
+    ///
+    /// A forge that wraps another must forward this method as well as
+    /// [`Forge::issue`]: the default answers `None`, so a wrapper that
+    /// forwards only `issue` silently drops the cause.
     fn not_found(&self, reference: &IssueRef) -> Option<NotFound> {
         let _ = reference;
         None
