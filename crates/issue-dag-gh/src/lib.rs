@@ -19,6 +19,15 @@
 //! collaborator), a CODEOWNERS path (try the next), and an issue (it
 //! resolves to nothing the planner can see, profile rule D10).
 //!
+//! After an issue answers 404, and only then, the forge looks up its owner
+//! (`users/<owner>`), then its repository (`repos/<owner>/<repo>`), and
+//! records the part not found beside the slot (bundle rule OB17, profile
+//! rules D11 to D13): `owner`, `repository`, or else `number`. GitHub
+//! answers a private repository the token cannot see as one that does not
+//! exist, so it is recorded as `repository`. Each owner and repository is
+//! looked up once per run. A follow-up that fails other than with 404
+//! records no cause and is a [`GhError`] like any other failed read.
+//!
 //! Each slot is read once: a second lookup answers what the first observed,
 //! and [`GhForge::observations`] is the recording of every slot read, which
 //! the core's [`issue_dag_core::RecordedForge`] replays.
@@ -33,7 +42,8 @@ use std::ffi::{OsStr, OsString};
 use std::path::{Path, PathBuf};
 
 use issue_dag_core::{
-    Body, CodeownersFile, Forge, Issue, IssueRef, Lookup, Observations, Observed, PullRequest, Repo,
+    Body, CodeownersFile, Forge, Issue, IssueRef, Lookup, NotFound, Observations, Observed,
+    PullRequest, Repo,
 };
 
 pub use error::GhError;
@@ -123,6 +133,11 @@ pub struct GhForge {
     read: RefCell<Observations>,
     failures: RefCell<Vec<GhError>>,
     shown: RefCell<Shown>,
+    /// Whether each owner, by login, was found: looked up once per run,
+    /// `None` when the lookup failed.
+    owners: RefCell<BTreeMap<String, Option<bool>>>,
+    /// Whether each repository was found, as [`GhForge::owners`].
+    repositories: RefCell<BTreeMap<Repo, Option<bool>>>,
 }
 
 impl GhForge {
@@ -141,6 +156,8 @@ impl GhForge {
             read: RefCell::new(Observations::default()),
             failures: RefCell::new(Vec::new()),
             shown: RefCell::new(Shown::default()),
+            owners: RefCell::new(BTreeMap::new()),
+            repositories: RefCell::new(BTreeMap::new()),
         }
     }
 
@@ -224,6 +241,50 @@ impl GhForge {
             }
         }
     }
+
+    /// Which part of `reference` was not found, after its issue lookup
+    /// answered HTTP 404 (profile rules D11 to D13): the owner
+    /// (`users/<owner>`), else the repository (`repos/<owner>/<repo>`), else
+    /// the number. `None` when a lookup it needed failed: the failure is
+    /// recorded and no part is guessed (fail closed).
+    fn part_not_found(&self, reference: &IssueRef) -> Option<NotFound> {
+        let owner = reference.owner();
+        if !self.found(&self.owners, owner.to_owned(), || {
+            read::owner_found(&self.runner, owner)
+        })? {
+            return Some(NotFound::Owner);
+        }
+        let repo = Repo::of(reference);
+        if !self.found(&self.repositories, repo.clone(), || {
+            read::repository_found(&self.runner, &repo)
+        })? {
+            return Some(NotFound::Repository);
+        }
+        Some(NotFound::Number)
+    }
+
+    /// Whether `key` was found, read once per run and cached, a failed
+    /// lookup included: `None` when it failed, which is recorded once.
+    fn found<K: Ord>(
+        &self,
+        cache: &RefCell<BTreeMap<K, Option<bool>>>,
+        key: K,
+        lookup: impl FnOnce() -> Result<bool, GhError>,
+    ) -> Option<bool> {
+        let cached = cache.borrow().get(&key).copied();
+        if let Some(found) = cached {
+            return found;
+        }
+        let found = match lookup() {
+            Ok(found) => Some(found),
+            Err(error) => {
+                self.failures.borrow_mut().push(error);
+                None
+            }
+        };
+        cache.borrow_mut().insert(key, found);
+        found
+    }
 }
 
 impl Forge for GhForge {
@@ -285,7 +346,17 @@ impl Forge for GhForge {
                     self.shown.borrow_mut().keep(reference, label);
                     Observed::Value(issue)
                 }
-                Ok(Observed::Unavailable(why)) => Observed::Unavailable(why),
+                // HTTP 404: record which part was not found, when the
+                // follow-up lookups tell (OB17).
+                Ok(Observed::Unavailable(why)) => {
+                    if let Some(cause) = self.part_not_found(reference) {
+                        self.read
+                            .borrow_mut()
+                            .not_found
+                            .insert(reference.clone(), cause);
+                    }
+                    Observed::Unavailable(why)
+                }
                 Err(error) => self.settle(Err(error)),
             };
             self.read
@@ -295,6 +366,12 @@ impl Forge for GhForge {
             slot
         });
         Ok(slot)
+    }
+
+    /// The cause [`Forge::issue`] recorded beside an unavailable slot (OB17);
+    /// makes no query.
+    fn not_found(&self, reference: &IssueRef) -> Option<NotFound> {
+        self.read.borrow().not_found.get(reference).copied()
     }
 
     /// The edit-history query, run only when the body is asked for, once;

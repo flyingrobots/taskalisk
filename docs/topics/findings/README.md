@@ -86,7 +86,8 @@ Beside that free-text reason, the bundle may record which part of the
 reference the lookup did not find
 ([OB17](../../../tests/fixtures/issue-dag/corpus/bundle.md#2-observations)).
 The run then reports that cause too, with a code of its own, as
-`Outcome::Incomplete`'s `cause`:
+`Outcome::Incomplete`'s `cause` (a `Cause`: the `not_found` part and the
+`reference` whose lookup recorded it):
 
 | Cause | `not_found` | Code |
 | --- | --- | --- |
@@ -103,9 +104,15 @@ what does not exist: a private repository looks the same as a missing one.
 A slot that records no cause gives no cause, and the crate never reads one
 out of the reason. When several lookups fail, the run reports the least
 reason, and of the slots with that reason the least cause, a slot with no
-cause first ([OB16](../../../tests/fixtures/issue-dag/corpus/bundle.md#3-what-a-run-reports)).
-The `gh` adapter does not record a cause yet (flyingrobots/taskalisk#51). The
-test `crates/issue-dag-core/tests/unreadable_references.rs` pins every case.
+cause first ([OB16](../../../tests/fixtures/issue-dag/corpus/bundle.md#3-what-a-run-reports)),
+and of those with that cause the least reference.
+The `gh` adapter records the cause (flyingrobots/taskalisk#51): after an issue
+lookup answers HTTP 404, and only then, it looks up the owner
+(`users/<owner>`), then the repository (`repos/<owner>/<repo>`), once each per
+run. A follow-up lookup that fails other than with 404 records no cause and a
+`gh.` failure. The test `crates/issue-dag-core/tests/unreadable_references.rs`
+pins every case in the core, and `crates/issue-dag-gh/tests/forge.rs` the
+adapter's lookups.
 
 ## Entries
 

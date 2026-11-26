@@ -342,6 +342,50 @@ pub fn issue(runner: &Runner, reference: &IssueRef) -> Result<Observed<(Issue, L
     rest_issue(&source, item).map(|issue| Observed::Value((issue, label(item))))
 }
 
+/// Whether the account `owner` exists (`gh api users/<owner>`): `false`
+/// when GitHub answers HTTP 404. A follow-up of an issue lookup that
+/// answered 404 (profile rule D11).
+pub fn owner_found(runner: &Runner, owner: &str) -> Result<bool, GhError> {
+    let path = format!("users/{owner}");
+    let source = format!("gh api {path}");
+    if !is_login(owner) {
+        return Err(GhError::invalid(
+            &source,
+            "the owner is not a GitHub login; it is not put in a request path",
+        ));
+    }
+    found(runner, &source, &path, ".login")
+}
+
+/// Whether the repository `repo` exists for the token (`gh api
+/// repos/<owner>/<repo>`): `false` when GitHub answers HTTP 404, as it does
+/// for a private repository the token cannot see (profile rule D12).
+pub fn repository_found(runner: &Runner, repo: &Repo) -> Result<bool, GhError> {
+    let path = format!("repos/{}/{}", repo.owner(), repo.name());
+    let source = format!("gh api {path}");
+    if !is_login(repo.owner()) || matches!(repo.name(), "." | "..") {
+        return Err(GhError::invalid(
+            &source,
+            "the repository is not a GitHub repository name; it is not put in a request path",
+        ));
+    }
+    found(runner, &source, &path, ".full_name")
+}
+
+/// Whether `gh api <path>` finds what it names: `false` on HTTP 404. An
+/// answer whose `field` is empty is not one GitHub gives, and is an error.
+fn found(runner: &Runner, source: &str, path: &str, field: &str) -> Result<bool, GhError> {
+    match runner.run(source, &args(&["api", path, "--jq", field])) {
+        Ok(out) if String::from_utf8_lossy(&out).trim().is_empty() => Err(GhError::invalid(
+            source,
+            format!("the answer has no {field}"),
+        )),
+        Ok(_) => Ok(true),
+        Err(Refusal::NotFound) => Ok(false),
+        Err(Refusal::Failed(error)) => Err(error),
+    }
+}
+
 /// A REST issue object, as `GET .../issues/N` and the issue listing both
 /// return it, read into an [`Issue`].
 fn rest_issue(source: &str, item: &Map<String, Value>) -> Result<Issue, GhError> {

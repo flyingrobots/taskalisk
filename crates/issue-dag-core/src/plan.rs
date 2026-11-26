@@ -14,7 +14,7 @@ use crate::finding::{Finding, Rule, Severity};
 use crate::forge::Forge;
 use crate::label::Label;
 use crate::observation::{
-    Issue, IssueState, Missing, NotFound, Observed, Parameters, Repo, TRUST_POLICY,
+    Cause, Issue, IssueState, Missing, Observed, Parameters, Repo, TRUST_POLICY,
 };
 use crate::record::{Kind, MeterClaim, Status, TaskType};
 use crate::reference::{IssueRef, MAX_NUMBER};
@@ -254,8 +254,9 @@ pub enum Outcome {
         unavailable: String,
         /// Which part of a reference was not found, when the slot reported
         /// records it (bundle rules OB16 and OB17, profile rules D11 to
-        /// D13); its code is [`NotFound::code`]. A cause is no finding.
-        cause: Option<NotFound>,
+        /// D13), with the reference whose lookup recorded it; its code is
+        /// [`crate::NotFound::code`]. A cause is no finding.
+        cause: Option<Cause>,
     },
     /// Some rule fails. The graph is reported for diagnosis (rule F3) unless
     /// the edges could not all be resolved (X3) or form a cycle (G4).
@@ -610,7 +611,13 @@ impl<'a, F: Forge + ?Sized> Run<'a, F> {
             Observed::Value(issue) => issue,
             Observed::Unavailable(why) => {
                 return Err(match self.forge.not_found(reference) {
-                    Some(cause) => Undecided::NotFound(why, cause),
+                    Some(not_found) => Undecided::NotFound(
+                        why,
+                        Cause {
+                            not_found,
+                            reference: reference.clone(),
+                        },
+                    ),
                     None => Undecided::Unavailable(why),
                 });
             }

@@ -306,7 +306,7 @@ fn conclude(
         Outcome::Incomplete {
             unavailable,
             cause: Some(cause),
-        } => cli::not_found(run, unavailable, *cause, "bundle"),
+        } => cli::not_found(run, unavailable, cause, "bundle"),
         Outcome::Incomplete {
             unavailable,
             cause: None,
