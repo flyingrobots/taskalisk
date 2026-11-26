@@ -49,6 +49,11 @@ class PythonFixtures(unittest.TestCase):
         stale = [name for name in expected if on_disk[name] != expected[name]]
         self.assertEqual(stale, [], "recapture: python3 tests/capture_render_parity.py")
 
+    def test_variant_bundles_are_what_the_script_writes_now(self):
+        expected = capture.expected_bundles()
+        on_disk = {p.stem: p.read_text() for p in (capture.FIXTURES / "bundles").glob("*.json")}
+        self.assertEqual(on_disk, expected, "recapture: python3 tests/capture_render_parity.py")
+
 
 class RustRecordings(unittest.TestCase):
     def test_one_recording_per_python_fixture(self):

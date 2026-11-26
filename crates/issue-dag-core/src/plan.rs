@@ -1423,6 +1423,31 @@ mod tests {
     }
 
     #[test]
+    fn an_opaque_node_carries_the_documents_that_name_it_in_the_order_read() {
+        // The root container o/r#9 names o/r#1 and o/r#2; o/r#1 waits on o/r#2,
+        // which has no frontmatter. o/r#9 is read before o/r#1.
+        let container = "```yaml\n.dag: issue-dag/2\n.id: o/r#9\n.kind: container\n.children: [o/r#1, o/r#2]\n```\n";
+        let observations = Observations {
+            home_open_pull_requests: Some(Observed::Value(Vec::new())),
+            issues: BTreeMap::from([
+                (reference("o/r#9"), owned_issue("o/r#9", container)),
+                (reference("o/r#1"), owned_issue("o/r#1", &task(1, &[2]))),
+                (reference("o/r#2"), owned_issue("o/r#2", "Plain body.")),
+            ]),
+            ..Observations::default()
+        };
+        let outcome = plan(&parameters(&["o/r#9"]), &RecordedForge::new(&observations));
+        let Ok(Outcome::Planned { graph, .. }) = outcome else {
+            panic!("expected a plan, got {outcome:?}");
+        };
+        assert_eq!(
+            graph.nodes[&reference("o/r#2")].named_by,
+            vec![reference("o/r#9"), reference("o/r#1")]
+        );
+        assert_eq!(graph.nodes[&reference("o/r#1")].named_by, Vec::new());
+    }
+
+    #[test]
     fn an_opaque_node_has_no_type_and_no_size() {
         let observations = tasks(vec![(1, "Plain body.".to_owned())]);
         let outcome = plan(&parameters(&["o/r#1"]), &RecordedForge::new(&observations));

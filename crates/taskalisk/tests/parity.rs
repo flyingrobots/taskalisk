@@ -40,9 +40,15 @@ fn fixtures() -> PathBuf {
     root().join("tests/fixtures/render")
 }
 
-/// The corpus case a fixture plans: `<case>--titles` is `<case>` with
-/// titles that hold what JSON must escape (`tests/capture_render_parity.py`).
+/// The bundle a fixture plans: a variant's, written by
+/// `tests/capture_render_parity.py` beside the fixtures, or a corpus
+/// case's; `<case>--titles` is `<case>` with titles that hold what JSON
+/// must escape.
 fn bundle_text(case: &str) -> String {
+    let variant = fixtures().join("bundles").join(format!("{case}.json"));
+    if let Ok(text) = fs::read_to_string(&variant) {
+        return text;
+    }
     let case = case.strip_suffix("--titles").unwrap_or(case);
     let path = root()
         .join("tests/fixtures/issue-dag/corpus/cases/graph")
