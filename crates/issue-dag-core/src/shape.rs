@@ -81,14 +81,16 @@ pub struct ShapeFinding {
 
 /// The shape warnings of a plan's graph, sorted by their findings.
 ///
-/// - `taskalisk.small-container`, for each container of the graph whose
+/// - `taskalisk.small-container`, for each open container of the graph whose
 ///   `.children` names fewer than two distinct issues (a reference to the
 ///   container itself is not a child).
 #[must_use]
 pub fn shape_warnings(graph: &Graph) -> Vec<ShapeFinding> {
     let mut found = Vec::new();
     for (id, children) in &graph.containers {
-        if children.iter().collect::<BTreeSet<_>>().len() < 2 {
+        if !graph.closed_containers.contains(id)
+            && children.iter().collect::<BTreeSet<_>>().len() < 2
+        {
             found.push(ShapeFinding {
                 finding: finding(ShapeWarning::SmallContainer, id, None),
                 detail: Detail::None,

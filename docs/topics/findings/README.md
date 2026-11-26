@@ -652,11 +652,12 @@ one name, rephrase the title or put the name in a code span.
 
 **Severity:** warning. **Rule:** [Containers](../../../skills/taskalisk/SKILL.md#core-doctrine), Core Doctrine 2 of the skill.
 
-A container's `.children` names fewer than two distinct issues: none, or one.
+An open container's `.children` names fewer than two distinct issues: none, or
+one.
 A container exists to group the tasks a split produced, so with one child or
 none it groups nothing. A reference to the container itself is not counted,
-and a child named twice counts once. Every container the plan reads receives
-the check.
+and a child named twice counts once. A closed container, read because an
+open document names it, draws no warning: its grouping is finished.
 
 In a plan where `o/r#9` is a container with `.children: [o/r#1]`, `o/r#9`
 receives `taskalisk.small-container`.
