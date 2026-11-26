@@ -729,6 +729,63 @@ fn a_planted_token_never_reaches_a_bundle() {
     load(&text).expect("a bundle");
 }
 
+/// The `taskalisk.rendering` lines of a run.
+fn renderings(run: &Run) -> Vec<Value> {
+    run.stdout()
+        .into_iter()
+        .filter(|l| schema(l) == "taskalisk.rendering")
+        .collect()
+}
+
+#[test]
+fn a_replay_renders_the_status_coloured_diagram() {
+    let fixture = Fixture::new("plan_state()");
+    let bundle = root().join("tests/fixtures/render/bundles/golden-plan-rich--every-status.json");
+    let run = fixture.replay(
+        "emit",
+        &[
+            "--from-bundle",
+            bundle.to_str().expect("UTF-8"),
+            "--emit-mermaid",
+        ],
+    );
+    assert_eq!(run.status(), 0, "{}", run.explain());
+    assert_eq!(fixture.reads(), "");
+    let lines = renderings(&run);
+    assert_eq!(lines.len(), 1, "{}", run.explain());
+    validate(&lines);
+    let text = lines[0]["text"].as_str().expect("text");
+    for node in [
+        r#"["flyingrobots/geordi#1: (title not recorded)"]:::review"#,
+        r#"["flyingrobots/geordi#3: (title not recorded)"]:::active"#,
+        r#"["flyingrobots/echo#5: (title not recorded)"]:::open"#,
+        r#"["flyingrobots/echo#6: (title not recorded)"]:::blocked"#,
+        r#"["flyingrobots/bunny#7: done"]:::done"#,
+    ] {
+        assert!(text.contains(node), "{node}:\n{text}");
+    }
+    assert_eq!(lines[0]["legend"], taskalisk::views::LEGEND);
+}
+
+#[test]
+fn a_plan_that_is_not_ok_renders_no_view() {
+    let fixture = Fixture::new("plan_state()");
+    let bundle = root().join("tests/fixtures/issue-dag/corpus/cases/graph/graph-cycle/bundle.json");
+    for flag in ["--emit-mermaid", "--emit-roadmap"] {
+        let run = fixture.replay(
+            "cycle",
+            &["--from-bundle", bundle.to_str().expect("UTF-8"), flag],
+        );
+        let plan = run
+            .stdout()
+            .into_iter()
+            .find(|l| schema(l) == "taskalisk.plan")
+            .unwrap_or_else(|| panic!("a plan line: {}", run.explain()));
+        assert_eq!(plan["ok"], false, "{}", run.explain());
+        assert!(renderings(&run).is_empty(), "{flag}: {}", run.explain());
+    }
+}
+
 #[test]
 fn the_committed_bundle_of_this_repository_replays_offline() {
     let dir = root().join("tests/fixtures/bundles");

@@ -577,7 +577,10 @@ fn roadmap_block(document: &Value) -> String {
         ]
         .map(str::to_owned),
     );
-    out.push(format!("| Open nodes | {} |", scalar(&m["open_node_count"])));
+    out.push(format!(
+        "| Open nodes | {} |",
+        scalar(&m["open_node_count"])
+    ));
     out.push(format!(
         "| Reduced edges (raw) | {} ({}) |",
         scalar(&m["reduced_open_edge_count"]),
@@ -744,8 +747,14 @@ mod tests {
             ("back\\slash", "back\\\\slash"),
             ("a\r\nb\nc\u{2028}d", "a b c d"),
             ("\u{202e}x\u{1b}y\0", "xy"),
-            ("&#64; &#x40; &amp; & &;", "&amp;#64; &amp;#x40; &amp;amp; & &;"),
-            ("https://e.x HTTP://e.x", "https:\u{200b}//e.x HTTP:\u{200b}//e.x"),
+            (
+                "&#64; &#x40; &amp; & &;",
+                "&amp;#64; &amp;#x40; &amp;amp; & &;",
+            ),
+            (
+                "https://e.x HTTP://e.x",
+                "https:\u{200b}//e.x HTTP:\u{200b}//e.x",
+            ),
             ("a.www.b WWW.x", "a.www\u{200b}.b WWW\u{200b}.x"),
             ("x@y @ z", "x@\u{200b}y @ z"),
             ("\u{17f}x://y", "\u{17f}x:\u{200b}//y"),

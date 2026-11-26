@@ -77,7 +77,11 @@ fn expected(python: &str, mermaid: bool, hash: Option<(&str, &str)>) -> String {
         if !mermaid && line == "```" {
             fenced = false;
         }
-        out.push(if fenced { intended(line) } else { line.to_owned() });
+        out.push(if fenced {
+            intended(line)
+        } else {
+            line.to_owned()
+        });
         if !mermaid && line == "```mermaid" {
             fenced = true;
         }
@@ -170,7 +174,10 @@ fn a_view_without_a_display_input_has_no_titles_and_no_links() {
     assert!(!block.contains("](http"), "{block}");
     assert!(!block.contains("(title not recorded)"), "{block}");
     let diagram = rendered(case, None, View::StatusMermaid).expect("a diagram");
-    assert!(diagram.contains(r#"["flyingrobots/geordi#1:"]:::review"#), "{diagram}");
+    assert!(
+        diagram.contains(r#"["flyingrobots/geordi#1:"]:::review"#),
+        "{diagram}"
+    );
 }
 
 /// Every status-coloured diagram, held byte for byte.
@@ -205,8 +212,15 @@ fn every_status_diagram_is_its_golden_file() {
         })
         .unwrap_or_default();
     assert!(failures.is_empty(), "{}", failures.join("\n"));
-    assert_eq!(on_disk, want_files, "a golden file without a diagram, or none");
-    assert!(want_files.len() > 100, "too few diagrams: {}", want_files.len());
+    assert_eq!(
+        on_disk, want_files,
+        "a golden file without a diagram, or none"
+    );
+    assert!(
+        want_files.len() > 100,
+        "too few diagrams: {}",
+        want_files.len()
+    );
 }
 
 /// The node lines of a diagram: `key["label"]:::class`, by the label's id.
@@ -314,7 +328,9 @@ fn the_legend_names_each_state_and_its_colour() {
 /// Characters no label may hold: they could end the label, start a tag,
 /// open a directive or hide text (threat model T08, C5).
 fn unsafe_in_label(c: char) -> bool {
-    matches!(c, '"' | '<' | '>' | '[' | ']' | '{' | '}') || dropped(c) || c.is_whitespace() && c != ' '
+    matches!(c, '"' | '<' | '>' | '[' | ']' | '{' | '}')
+        || dropped(c)
+        || c.is_whitespace() && c != ' '
 }
 
 #[test]
@@ -337,7 +353,11 @@ fn hostile_titles_stay_inside_their_labels() {
             };
             assert_eq!(Some(key), shape.split_once("[\"").map(|(k, _)| k), "{line}");
             let (label, tail) = rest.rsplit_once("\"]").expect("a closed label");
-            assert_eq!(Some(tail), shape.rsplit_once("\"]").map(|(_, t)| t), "{line}");
+            assert_eq!(
+                Some(tail),
+                shape.rsplit_once("\"]").map(|(_, t)| t),
+                "{line}"
+            );
             assert!(
                 !label.chars().any(unsafe_in_label),
                 "{which:?}: an unsafe character in {label:?}"

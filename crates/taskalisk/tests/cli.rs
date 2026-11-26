@@ -463,6 +463,106 @@ fn the_plan_matches_the_python_on_the_same_backlog() {
     assert_eq!(findings(&rust), findings(&python));
 }
 
+/// The one `taskalisk.rendering` line of a run, which follows every other
+/// result line (flyingrobots/taskalisk#68).
+fn rendering(run: &Run) -> Value {
+    let out = run.stdout();
+    let at: Vec<usize> = (0..out.len())
+        .filter(|&i| schema(&out[i]) == "taskalisk.rendering")
+        .collect();
+    assert_eq!(at.len(), 1, "one rendering line: {}", run.explain());
+    assert!(
+        out[at[0] + 1..]
+            .iter()
+            .all(|l| !schema(l).starts_with("taskalisk.")),
+        "the rendering line is the last result: {}",
+        run.explain()
+    );
+    out[at[0]].clone()
+}
+
+/// The text after `Artifact hash ` in a ROADMAP block, with the 16 digits
+/// it names replaced: the hash is the Rust document's, which holds the
+/// renderer's documented gaps, so it is not the Python's.
+fn without_hash(block: &str) -> String {
+    let start = block.find("Artifact hash `").expect("a hash") + "Artifact hash `".len();
+    format!("{}<hash>{}", &block[..start], &block[start + 16..])
+}
+
+#[test]
+fn emit_roadmap_writes_the_pythons_block_on_the_same_backlog() {
+    let fixture = Fixture::new("rich_state()");
+    let rust = fixture.plan(&["--sem-capacity", "gpu=1", "--emit-roadmap"]);
+    let python = fixture.python(&["--sem-capacity", "gpu=1", "--emit-roadmap"]);
+    assert_eq!(rust.status(), 0, "{}", rust.explain());
+    assert_eq!(python.status(), 0, "{}", python.explain());
+    let ours = rendering(&rust);
+    let theirs = rendering(&python);
+    assert_valid(std::slice::from_ref(&ours));
+    assert_eq!(ours["format"], "roadmap");
+    assert!(ours.get("legend").is_none(), "a block has no legend");
+    let text = ours["text"].as_str().expect("text");
+    assert!(text.starts_with(taskalisk::views::ROADMAP_BEGIN), "{text}");
+    assert!(text.ends_with(taskalisk::views::ROADMAP_END), "{text}");
+    assert!(text.contains("Home three"), "{text}");
+    assert_eq!(
+        without_hash(text),
+        without_hash(theirs["text"].as_str().expect("text"))
+    );
+    // The receipt records what was asked, and keeps a copy of the line.
+    let receipt = rust.receipt();
+    assert_eq!(receipt[0]["resolved"]["options"]["emit"], "roadmap");
+    assert!(receipt.contains(&ours), "the receipt lacks the rendering");
+}
+
+#[test]
+fn emit_mermaid_writes_the_status_coloured_diagram_and_its_legend() {
+    let fixture = Fixture::new("rich_state()");
+    let run = fixture.plan(&["--sem-capacity", "gpu=1", "--emit-mermaid"]);
+    assert_eq!(run.status(), 0, "{}", run.explain());
+    let line = rendering(&run);
+    assert_valid(std::slice::from_ref(&line));
+    assert_eq!(line["format"], "mermaid");
+    assert_eq!(line["legend"], taskalisk::views::LEGEND);
+    let text = line["text"].as_str().expect("text");
+    assert!(text.starts_with("flowchart TD\n"), "{text}");
+    // geordi#3 has a draft pull request by a trusted author: active.
+    assert!(
+        text.contains(r#"["flyingrobots/geordi#3: Home three"]:::active"#),
+        "{text}"
+    );
+    for class in ["done", "blocked", "open", "active", "review"] {
+        assert!(
+            text.contains(&format!("\n  classDef {class} ")),
+            "{class}: {text}"
+        );
+    }
+    assert_eq!(run.receipt()[0]["resolved"]["options"]["emit"], "mermaid");
+}
+
+#[test]
+fn without_emit_a_plan_writes_no_rendering() {
+    let fixture = Fixture::new("rich_state()");
+    let run = fixture.plan(&["--sem-capacity", "gpu=1"]);
+    assert_eq!(run.status(), 0, "{}", run.explain());
+    assert!(of(&run.stdout(), "taskalisk.rendering").is_empty());
+    assert_eq!(run.receipt()[0]["resolved"]["options"]["emit"], Value::Null);
+}
+
+#[test]
+fn human_prints_the_diagram_and_the_legend() {
+    let fixture = Fixture::new("rich_state()");
+    let run = fixture.plan(&["--sem-capacity", "gpu=1", "--emit-mermaid", "--human"]);
+    assert_eq!(run.status(), 0, "{}", run.explain());
+    let text = run.text();
+    assert!(text.contains("\nflowchart TD\n"), "{text}");
+    assert!(
+        text.lines().any(|l| l == taskalisk::views::LEGEND),
+        "{text}"
+    );
+    assert!(!text.contains("{\""), "no JSON on stdout under --human");
+}
+
 #[test]
 fn equal_inputs_give_identical_output_but_for_the_run() {
     let fixture = Fixture::new("rich_state()");
@@ -606,9 +706,10 @@ fn a_usage_error_exits_3_with_one_startup_line_and_no_receipt() {
         &["plan", "--repo", repo, "--trust-owner", "a/b"],
         &["plan", "--repo", repo, "--trust-repo", "nope"],
         &["plan", "--repo", repo, "stray"],
+        // One view at a time, as in 1.x; a view flag takes no value.
+        &["plan", "--repo", repo, "--emit-mermaid", "--emit-roadmap"],
+        &["plan", "--repo", repo, "--emit-mermaid=yes"],
         // A flag the core cannot honour yet is refused, never ignored.
-        &["plan", "--repo", repo, "--emit-mermaid"],
-        &["plan", "--repo", repo, "--emit-roadmap"],
         &["plan", "--repo", repo, "--since-last"],
         &["plan", "--repo", repo, "--compare-relationships"],
         &["plan", "--repo", repo, "--min-confidence", "0.5"],
@@ -696,7 +797,12 @@ fn help_describes_the_plan_command_and_its_schemas() {
         .iter()
         .map(|l| l["id"].as_str().expect("an id"))
         .collect();
-    for id in ["taskalisk.plan", "taskalisk.frontier_node", "parley.error"] {
+    for id in [
+        "taskalisk.plan",
+        "taskalisk.frontier_node",
+        "taskalisk.rendering",
+        "parley.error",
+    ] {
         assert!(schemas.contains(&id), "{id} in {schemas:?}");
     }
     assert_eq!(out.last().expect("end")["status"], 0);
