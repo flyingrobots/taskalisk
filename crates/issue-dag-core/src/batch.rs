@@ -198,6 +198,7 @@ mod tests {
                 .iter()
                 .map(|m| MeterClaim::parse(m).expect("a claim"))
                 .collect(),
+            ..Node::default()
         }
     }
 
@@ -401,6 +402,7 @@ mod scale {
                 name: "ci".to_owned(),
                 slots: 1,
             }],
+            ..Node::default()
         }
     }
 

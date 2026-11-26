@@ -12,8 +12,8 @@ use crate::finding::{Finding, Rule, Severity};
 use crate::forge::Forge;
 use crate::label::Label;
 use crate::observation::{Issue, IssueState, Missing, Observed, Parameters, Repo, TRUST_POLICY};
-use crate::record::{Kind, MeterClaim, Status};
-use crate::reference::IssueRef;
+use crate::record::{Kind, MeterClaim, Status, TaskType};
+use crate::reference::{IssueRef, MAX_NUMBER};
 use crate::{Judgement, admit};
 
 /// The status of an open node (rule S2).
@@ -49,7 +49,7 @@ impl NodeStatus {
 }
 
 /// A node of the graph (rule G1).
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Node {
     /// Whether its issue is closed (rule G2).
     pub complete: bool,
@@ -63,6 +63,23 @@ pub struct Node {
     pub holds: BTreeSet<String>,
     /// Its `.meters` claims; empty for an opaque node.
     pub meters: Vec<MeterClaim>,
+    /// Its `.type`; `None` for an opaque node or a task without one.
+    pub task_type: Option<TaskType>,
+    /// Its `.size_hours` when valid (rule L4); `None` otherwise.
+    pub size_hours: Option<u32>,
+    /// The admitted pull requests that close it, in the order observed,
+    /// where rule S2 reads them: an open home node that is trusted. Empty
+    /// otherwise.
+    pub pull_requests: Vec<LinkedPullRequest>,
+}
+
+/// An admitted open pull request that closes a node (rules S1, S2).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct LinkedPullRequest {
+    /// Its number.
+    pub number: u64,
+    /// Whether it is a draft.
+    pub draft: bool,
 }
 
 /// An edge `(from, to)`: `from` must be complete before `to` is correct.
@@ -205,6 +222,8 @@ struct Reading {
     status: Option<Status>,
     holds: BTreeSet<String>,
     meters: Vec<MeterClaim>,
+    task_type: Option<TaskType>,
+    size_hours: Option<u32>,
 }
 
 impl Reading {
@@ -236,6 +255,18 @@ impl Reading {
             Some(Value::List(items)) => items.iter().filter(|i| !i.is_empty()).cloned().collect(),
             _ => BTreeSet::new(),
         };
+        let task_type = match one(".type") {
+            Some(Value::String(text)) => TaskType::parse(text),
+            _ => None,
+        };
+        // L4: a size from 1 to MAX_NUMBER; any other value is no size.
+        let size_hours = match one(".size_hours") {
+            Some(Value::Integer(n)) => n
+                .to_i64()
+                .and_then(|n| u32::try_from(n).ok())
+                .filter(|n| (1..=MAX_NUMBER).contains(n)),
+            _ => None,
+        };
         let meters = match one(".meters") {
             Some(Value::List(items)) => items.iter().filter_map(|i| MeterClaim::parse(i)).collect(),
             _ => Vec::new(),
@@ -255,6 +286,8 @@ impl Reading {
             status,
             holds,
             meters,
+            task_type,
+            size_hours,
         }
     }
 
@@ -287,9 +320,9 @@ struct Document {
     reading: Reading,
 }
 
-/// For each issue, the draft slots of the admitted pull requests that close
-/// it (S1). A slot is read only where S2 needs it (I5).
-type Linked = BTreeMap<IssueRef, Vec<Observed<bool>>>;
+/// For each issue, the number and draft slot of each admitted pull request
+/// that closes it (S1). A slot is read only where S2 needs it (I5).
+type Linked = BTreeMap<IssueRef, Vec<(u64, Observed<bool>)>>;
 
 /// The closure of a run (D2): every reference visited, and the documents
 /// that name each one.
@@ -366,7 +399,10 @@ impl<'a, F: Forge + ?Sized> Run<'a, F> {
             }
             if self.admission.pull_request_admitted(&pull, home)? {
                 for closed in pull.closes {
-                    linked.entry(closed).or_default().push(pull.draft.clone());
+                    linked
+                        .entry(closed)
+                        .or_default()
+                        .push((pull.number, pull.draft.clone()));
                 }
             } else {
                 untrusted.insert(pull.number);
@@ -506,9 +542,7 @@ impl<'c> Assembly<'c> {
                 complete: issue.state == IssueState::Closed,
                 opaque: true,
                 untrusted,
-                status: None,
-                holds: BTreeSet::new(),
-                meters: Vec::new(),
+                ..Node::default()
             },
         );
         self.issues.insert(reference.clone(), issue);
@@ -539,6 +573,9 @@ impl<'c> Assembly<'c> {
                 status: None,
                 holds: reading.holds.clone(),
                 meters: reading.meters.clone(),
+                task_type: reading.task_type,
+                size_hours: reading.size_hours,
+                pull_requests: Vec::new(),
             },
         );
         self.readings.insert(reference.clone(), reading);
@@ -598,16 +635,23 @@ impl<'c> Assembly<'c> {
             if node.complete {
                 continue;
             }
-            let drafts: Vec<bool> = if Repo::of(id) == *home && !node.untrusted {
+            let pulls: Vec<LinkedPullRequest> = if Repo::of(id) == *home && !node.untrusted {
                 linked
                     .get(id)
                     .into_iter()
                     .flatten()
-                    .map(|slot| value(slot.clone()))
+                    .map(|(number, slot)| {
+                        value(slot.clone()).map(|draft| LinkedPullRequest {
+                            number: *number,
+                            draft,
+                        })
+                    })
                     .collect::<Result<_, _>>()?
             } else {
                 Vec::new()
             };
+            let drafts: Vec<bool> = pulls.iter().map(|p| p.draft).collect();
+            node.pull_requests = pulls;
             node.status = Some(if drafts.iter().any(|draft| !draft) {
                 NodeStatus::InReview
             } else if !drafts.is_empty() {
@@ -1032,7 +1076,7 @@ mod tests {
         };
         let node = &graph.nodes[&reference("o/r#1")];
         assert_eq!((node.task_type, node.size_hours), (None, None));
-        assert!(node.pull_requests.is_empty());
+        assert_eq!(node.pull_requests, Vec::new());
     }
 
     #[test]
@@ -1069,6 +1113,6 @@ mod tests {
             ]
         );
         assert_eq!(one.status, Some(NodeStatus::InReview));
-        assert!(graph.nodes[&reference("o/r#2")].pull_requests.is_empty());
+        assert_eq!(graph.nodes[&reference("o/r#2")].pull_requests, Vec::new());
     }
 }
