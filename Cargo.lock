@@ -19,6 +19,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "issue-dag-gh"
+version = "0.1.0"
+dependencies = [
+ "issue-dag-core",
+ "serde_json",
+]
+
+[[package]]
 name = "issue-dag-git"
 version = "0.1.0"
 dependencies = [

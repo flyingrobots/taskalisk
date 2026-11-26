@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 
 use crate::local::{AheadBehind, Branch, Worktree};
 use crate::observation::{
-    CodeownersFile, Issue, Lookup, Missing, Observed, Parameters, PullRequest, Repo,
+    Body, CodeownersFile, Issue, Lookup, Missing, Observed, Parameters, PullRequest, Repo,
 };
 use crate::reference::IssueRef;
 
@@ -39,6 +39,21 @@ pub trait Forge {
     ///
     /// [`Missing`] when the issue was not recorded.
     fn issue(&self, reference: &IssueRef) -> Lookup<Issue>;
+
+    /// The body of the issue a reference resolves to, and the actor of
+    /// every edit of it (bundle rule OB8). A separate read from
+    /// [`Forge::issue`], so that a planner reads it only for an issue whose
+    /// author is trusted: an issue a stranger wrote costs no further query
+    /// (threat model C15).
+    ///
+    /// A caller asks for it only after it has read the issue and admitted
+    /// its author ([`crate::Admission::trusted`]); the planner is the only
+    /// caller. Asking for the body of a stranger's issue defeats C15.
+    ///
+    /// # Errors
+    ///
+    /// [`Missing`] when the body was not recorded.
+    fn body(&self, reference: &IssueRef) -> Lookup<Body>;
 
     /// The permission of a login on a repository (bundle rule OB10), or
     /// `None` when the login is not a collaborator. `login` is in lower case.
@@ -116,6 +131,10 @@ pub struct Observations {
     pub home_open_pull_requests: Option<Observed<Vec<PullRequest>>>,
     /// `issues`, keyed by the reference read (OB8).
     pub issues: BTreeMap<IssueRef, Observed<Issue>>,
+    /// The `body` slot of each issue whose body was read, keyed as
+    /// `issues` (OB8). A body the run never read, such as that of an issue
+    /// whose author is not trusted, has no key (OB14).
+    pub bodies: BTreeMap<IssueRef, Observed<Body>>,
     /// `permissions`: repository, then login in lower case (OB10).
     pub permissions: BTreeMap<Repo, BTreeMap<String, Observed<Option<String>>>>,
     /// `codeowners` (OB11).
@@ -169,6 +188,20 @@ impl Forge for RecordedForge<'_> {
         })
     }
 
+    fn body(&self, reference: &IssueRef) -> Lookup<Body> {
+        let missing = || Missing {
+            what: format!("the body of {reference}"),
+        };
+        match self.observations.issues.get(reference) {
+            Some(Observed::Value(_)) => recorded(self.observations.bodies.get(reference), || {
+                format!("the body of {reference}")
+            }),
+            // An issue that could not be read has no body to read.
+            Some(Observed::Unavailable(why)) => Ok(Observed::Unavailable(why.clone())),
+            None => Err(missing()),
+        }
+    }
+
     fn permission(&self, repo: &Repo, login: &str) -> Lookup<Option<String>> {
         recorded(
             self.observations
@@ -193,7 +226,7 @@ impl Forge for RecordedForge<'_> {
 #[cfg(test)]
 mod tests {
     use super::{Forge, LocalRepository, NoLocalRepository, Observations, RecordedForge};
-    use crate::observation::{Observed, Repo};
+    use crate::observation::{Body, Issue, IssueState, Observed, Repo};
     use crate::reference::IssueRef;
 
     #[test]
@@ -219,6 +252,52 @@ mod tests {
         assert!(forge.issue(&reference).is_err());
         assert!(forge.permission(&repo, "dev").is_err());
         assert!(forge.codeowners(&repo).is_err());
+    }
+
+    fn issue() -> Observed<Issue> {
+        Observed::Value(Issue {
+            address: IssueRef::parse("o/r#1").expect("a reference"),
+            pull_request: false,
+            state: IssueState::Open,
+            state_reason: None,
+            author: None,
+            author_association: None,
+        })
+    }
+
+    #[test]
+    fn the_body_is_its_own_read() {
+        let reference = IssueRef::parse("o/r#1").expect("a reference");
+        let body = Observed::Value(Body {
+            text: "text".to_owned(),
+            editors: vec![None],
+        });
+        let mut observations = Observations::default();
+        observations.issues.insert(reference.clone(), issue());
+        observations.bodies.insert(reference.clone(), body.clone());
+        let forge = RecordedForge::new(&observations);
+        assert_eq!(forge.issue(&reference), Ok(issue()));
+        assert_eq!(forge.body(&reference), Ok(body));
+    }
+
+    #[test]
+    fn a_body_not_recorded_is_missing_never_empty() {
+        let reference = IssueRef::parse("o/r#1").expect("a reference");
+        let mut observations = Observations::default();
+        let forge = RecordedForge::new(&observations);
+        assert!(forge.body(&reference).is_err(), "no issue recorded");
+        observations.issues.insert(reference.clone(), issue());
+        let forge = RecordedForge::new(&observations);
+        assert!(forge.body(&reference).is_err(), "no body recorded");
+        observations.issues.insert(
+            reference.clone(),
+            Observed::Unavailable("HTTP 502".to_owned()),
+        );
+        let forge = RecordedForge::new(&observations);
+        assert_eq!(
+            forge.body(&reference),
+            Ok(Observed::Unavailable("HTTP 502".to_owned()))
+        );
     }
 
     #[test]
