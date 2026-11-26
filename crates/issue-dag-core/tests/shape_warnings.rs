@@ -37,6 +37,12 @@ fn container(id: u32, children: &[u32]) -> String {
 /// The graph of a run over the open home issues `bodies`, by number, each
 /// written by the owner; the run must give a plan.
 fn graph(bodies: &[(u32, String)]) -> Graph {
+    graph_closing(bodies, &[])
+}
+
+/// As [`graph`], with the issues numbered in `closed` closed: they are not
+/// seeds, and are read only when a document names them.
+fn graph_closing(bodies: &[(u32, String)], closed: &[u32]) -> Graph {
     let owner = Actor {
         login: "o".to_owned(),
         actor_type: "User".to_owned(),
@@ -45,6 +51,7 @@ fn graph(bodies: &[(u32, String)]) -> Graph {
         home_open_issues: Some(Observed::Value(
             bodies
                 .iter()
+                .filter(|(n, _)| !closed.contains(n))
                 .map(|(n, _)| reference(&format!("o/r#{n}")))
                 .collect(),
         )),
@@ -58,7 +65,11 @@ fn graph(bodies: &[(u32, String)]) -> Graph {
             Observed::Value(Issue {
                 address: address.clone(),
                 pull_request: false,
-                state: IssueState::Open,
+                state: if closed.contains(n) {
+                    IssueState::Closed
+                } else {
+                    IssueState::Open
+                },
                 state_reason: None,
                 author: Some(owner.clone()),
                 author_association: Some("OWNER".to_owned()),
@@ -144,4 +155,22 @@ fn a_child_named_twice_counts_once() {
     let small = of(&found, ShapeWarning::SmallContainer);
     assert_eq!(small.len(), 1, "{found:?}");
     assert_eq!(small[0].finding.subject, reference("o/r#8"));
+}
+
+/// #63: only an open container is warned about. A closed one with a single
+/// child, read because an open container names it, draws none.
+#[test]
+fn a_closed_container_gives_no_warning() {
+    let found = shape_warnings(&graph_closing(
+        &[
+            (1, task(1, &[], "")),
+            (9, container(9, &[1])),
+            (10, container(10, &[1, 9])),
+        ],
+        &[9],
+    ));
+    assert!(
+        of(&found, ShapeWarning::SmallContainer).is_empty(),
+        "{found:?}"
+    );
 }
