@@ -1,0 +1,13 @@
+{
+  "cites": [
+    "AD3",
+    "AD4",
+    "AD5",
+    "AD8"
+  ],
+  "id": "graph/ad3-bot-sharing-the-author-login",
+  "kind": "normative",
+  "level": "graph",
+  "source": "constructed from the rule text",
+  "title": "A bot editor whose name is the author's login is another identity and is judged"
+}

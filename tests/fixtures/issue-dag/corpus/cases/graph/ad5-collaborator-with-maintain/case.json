@@ -1,0 +1,11 @@
+{
+  "cites": [
+    "AD5",
+    "AD6"
+  ],
+  "id": "graph/ad5-collaborator-with-maintain",
+  "kind": "normative",
+  "level": "graph",
+  "source": "constructed from the rule text",
+  "title": "A COLLABORATOR with maintain permission is trusted"
+}

@@ -1,0 +1,11 @@
+{
+  "cites": [
+    "AD5",
+    "AD10"
+  ],
+  "id": "graph/ad10-permission-not-reached",
+  "kind": "normative",
+  "level": "graph",
+  "source": "constructed from the rule text",
+  "title": "The permission of an author whose association decides is not required"
+}

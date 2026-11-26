@@ -330,8 +330,10 @@ def i(body: str, state: str = "open", reason: str | None = None, **kw: Any) -> d
     return issue(0, "", body, state=state, reason=reason, **kw)
 
 
-def pr(number: int, closes: list[int], draft: Any = False, author: str = "dev", cross: bool | None = False, slug: str = R) -> dict[str, Any]:
-    out = {"number": number, "isDraft": draft, "url": "u", "author": {"login": author}, "closingIssuesReferences": [closing(n, slug) for n in closes]}
+def pr(number: int, closes: list[int], draft: Any = False, author: str | None = "dev", cross: bool | None = False, slug: str = R,
+       bot: bool = False) -> dict[str, Any]:
+    who: dict[str, Any] = {"login": author, "is_bot": True} if bot else {"login": author}
+    out = {"number": number, "isDraft": draft, "url": "u", "author": who, "closingIssuesReferences": [closing(n, slug) for n in closes]}
     if cross is not None:
         out["isCrossRepository"] = cross
     return out
@@ -339,9 +341,11 @@ def pr(number: int, closes: list[int], draft: Any = False, author: str = "dev", 
 
 def bundle(issues: dict[str, dict[str, Any]], roots: tuple[str, ...] = (), prs: tuple[dict[str, Any], ...] = (), capacities: dict[str, int] | None = None,
            logins: tuple[str, ...] = ("dev",), owners: tuple[str, ...] = (), mutate: Callable[[dict[str, Any]], None] | None = None,
-           **state_extra: Any) -> dict[str, Any]:
-    state = {"home": R, "default_author": "o", "blocked_by": {}, "issues": issues, "prs": list(prs), **state_extra}
-    b = ob.from_fake_state(state, roots=list(roots), trust={"owners": list(owners), "logins": list(logins)}, capacities=capacities)
+           codeowners: bool = False, codeowners_files: dict[str, dict[str, str]] | None = None, **state_extra: Any) -> dict[str, Any]:
+    state = {"home": R, "default_author": "o", "blocked_by": {}, "issues": issues, "prs": list(prs), "codeowners": codeowners_files or {},
+             **state_extra}
+    b = ob.from_fake_state(state, roots=list(roots), trust={"owners": list(owners), "logins": list(logins), "codeowners": codeowners},
+                           capacities=capacities)
     if mutate:
         mutate(b)
     return b
@@ -416,9 +420,9 @@ NORMATIVE_GRAPHS: list[Graph] = [
       bundle({R1: i(d(R1))}, prs=(pr(8, [1], draft="false"),)), {"outcome": "incomplete"}, ["I5", "S1", "S2"]),
     G("i5-draft-flag-of-an-unadmitted-pull-request", "The draft flag of a pull request that is not admitted is not read",
       bundle({R1: i(d(R1))}, prs=(pr(8, [1], draft="false", cross=True),)),
-      planned([node(R1)], [R1], [R1], untrusted_pull_requests=[8]), ["I5", "S1", "W1"]),
+      planned([node(R1)], [R1], [R1], untrusted_pull_requests=[8]), ["I5", "S1", "W1", "AD9"]),
     G("i5-permission-unavailable", "A permission lookup that cannot be made makes the run incomplete",
-      bundle({R1: i(d(R1), editors=["o", "carol"])}, roots=(R1,), collaborators_forbidden=True), {"outcome": "incomplete"}, ["I5", "F1"]),
+      bundle({R1: i(d(R1), editors=["o", "carol"])}, roots=(R1,), collaborators_forbidden=True), {"outcome": "incomplete"}, ["I5", "F1", "AD8", "AD10"]),
     G("f1-incomplete-before-invalid", "An unavailable observation outranks a violation",
       bundle({R1: i(d(R1, (R2,), extra=".priority: 1")), R2: i(d(R2))}, roots=(R1,), mutate=unavailable("issues", R2)), {"outcome": "incomplete"}, ["F1"]),
     # Discovery: D1 to D9
@@ -435,7 +439,7 @@ NORMATIVE_GRAPHS: list[Graph] = [
       bundle({R1: i(d(R1, ("O/S#2", S2))), S2: i(d(S2))}, roots=(R1,)),
       planned([node(R1), node(S2)], [S2], [S2], [e(S2, R1)]), ["D2", "L1", "G3"]),
     G("d3-outside-the-scope", "A reference outside the read scope is never read; the document naming it receives a violation",
-      bundle({R1: i(d(R1, ("x/y#1",)))}, roots=(R1,)), invalid_run(f(R1, "D3", "x/y#1"), f(R1, "X3", "x/y#1")), ["D3", "X3", "F1"]),
+      bundle({R1: i(d(R1, ("x/y#1",)))}, roots=(R1,)), invalid_run(f(R1, "D3", "x/y#1"), f(R1, "X3", "x/y#1")), ["D3", "X3", "F1", "AD2"]),
     G("d3-each-document-naming-it", "Every document that names a reference outside the scope receives a violation, whatever the order of visits",
       bundle({R1: i(d(R1, ("x/y#1", R2))), R2: i(d(R2, ("x/y#1",)))}, roots=(R1,)),
       invalid_run(f(R1, "D3", "x/y#1"), f(R2, "D3", "x/y#1"), f(R1, "X3", "x/y#1"), f(R2, "X3", "x/y#1")), ["D2", "D3", "X3"],
@@ -457,14 +461,14 @@ NORMATIVE_GRAPHS: list[Graph] = [
     G("d6-not-admitted-prerequisite", "An issue that is not admitted is an opaque, untrusted node whose body is not read",
       bundle({R1: i(d(R1, (R2,))), R2: i(d(R2, (R3,)), **MALLORY), R3: i(d(R3))}, roots=(R1,)),
       planned([node(R1), node(R2, "blocked", opaque=True, untrusted=True)], [R2], [], [e(R2, R1)], untrusted=[R2], scores={R1: 10, R2: 121}),
-      ["D6", "T2", "S2", "Q2", "W1"]),
+      ["D6", "T2", "S2", "Q2", "W1", "AD5", "AD8"]),
     G("d6-not-admitted-seed", "A seed that is not admitted and that no document names is only listed",
-      bundle({R1: i(d(R1)), R3: i(d(R3), **MALLORY)}), planned([node(R1)], [R1], [R1], untrusted=[R3]), ["D6", "W1"]),
+      bundle({R1: i(d(R1)), R3: i(d(R3), **MALLORY)}), planned([node(R1)], [R1], [R1], untrusted=[R3]), ["D6", "W1", "AD8"]),
     G("d6-not-admitted-root", "A root that is not admitted and that no document names is only listed",
-      bundle({R3: i(d(R3), **MALLORY)}, roots=(R3,)), planned([], [], [], untrusted=[R3], critical_path=[]), ["D6", "K8"]),
+      bundle({R3: i(d(R3), **MALLORY)}, roots=(R3,)), planned([], [], [], untrusted=[R3], critical_path=[]), ["D6", "K8", "AD8"]),
     G("d6-not-admitted-editor", "An issue with an editor who is not trusted is not admitted",
       bundle({R1: i(d(R1, (R2,))), R2: i(d(R2), editors=["o", STRANGER])}, roots=(R1,)),
-      planned([node(R1), node(R2, "blocked", opaque=True, untrusted=True)], [R2], [], [e(R2, R1)], untrusted=[R2]), ["D6", "I3"]),
+      planned([node(R1), node(R2, "blocked", opaque=True, untrusted=True)], [R2], [], [e(R2, R1)], untrusted=[R2]), ["D6", "I3", "AD8"]),
     G("d7-no-frontmatter-is-opaque", "An admitted issue without frontmatter is an opaque node",
       bundle({R1: i(d(R1, (R2,))), R2: i("Plain body.")}, roots=(R1,)),
       planned([node(R1), node(R2, "blocked", opaque=True)], [R2], [], [e(R2, R1)]), ["D7", "S2", "Q1", "Q2"]),
@@ -541,13 +545,13 @@ NORMATIVE_GRAPHS: list[Graph] = [
     G("s2-pull-request-overrides-blocked", "A linked pull request overrides `.status: blocked`",
       bundle({R1: i(d(R1, extra=".status: blocked"))}, prs=(pr(8, [1]),)), planned([node(R1, "in-review")], [R1], [R1]), ["S2", "Q2"]),
     G("s1-pull-request-not-admitted", "A pull request that is not admitted links nothing",
-      bundle({R1: i(d(R1))}, prs=(pr(8, [1], cross=True),)), planned([node(R1)], [R1], [R1], untrusted_pull_requests=[8]), ["S1", "W1"]),
+      bundle({R1: i(d(R1))}, prs=(pr(8, [1], cross=True),)), planned([node(R1)], [R1], [R1], untrusted_pull_requests=[8]), ["S1", "W1", "AD9"]),
     G("s1-node-outside-home", "A node outside the home repository has no linked pull request",
       bundle({R1: i(d(R1, (S2,))), S2: i(d(S2))}, roots=(R1,), prs=(pr(8, [2], slug="o/s"),)),
       planned([node(R1), node(S2)], [S2], [S2], [e(S2, R1)]), ["S1"]),
     G("s1-untrusted-node", "An untrusted node has no linked pull request",
       bundle({R1: i(d(R1, (R2,))), R2: i(d(R2), **MALLORY)}, prs=(pr(8, [2]),)),
-      planned([node(R1), node(R2, "blocked", opaque=True, untrusted=True)], [R2], [], [e(R2, R1)], untrusted=[R2]), ["S1", "S2", "T2"]),
+      planned([node(R1), node(R2, "blocked", opaque=True, untrusted=True)], [R2], [], [e(R2, R1)], untrusted=[R2]), ["S1", "S2", "T2", "AD8"]),
     G("s2-opaque-with-pull-request", "An opaque node with a linked pull request is in review and still not dispatchable",
       bundle({R1: i(d(R1, (R2,))), R2: i("Plain body.")}, roots=(R1,), prs=(pr(8, [2]),)),
       planned([node(R1), node(R2, "in-review", opaque=True)], [R2], [], [e(R2, R1)], scores={R1: 10, R2: 1121}), ["S2", "Q2", "K4"]),
@@ -583,6 +587,149 @@ NORMATIVE_GRAPHS: list[Graph] = [
     # Reported lists: W1, with V10
     G("w1-warning", "A size above 8 is reported and does not invalidate the run",
       bundle({R1: i(d(R1, extra=".size_hours: 12"))}), planned([node(R1)], [R1], [R1], findings=[f(R1, "V10")]), ["W1", "V10"]),
+]
+
+
+# Admission (profiles/admission.md): AD1 to AD10. The subject is o/r#2 (or o/s#2), a prerequisite of the
+# trusted root o/r#1: admitted, it is an open node; not admitted, an opaque, untrusted blocker (D6).
+def subject(kw: dict[str, Any] | None = None, ref: str = R2, **opts: Any) -> dict[str, Any]:
+    return bundle({R1: i(d(R1, (ref,))), ref: i(d(ref), **(kw or {}))}, roots=(R1,), **opts)
+
+
+def admitted(ref: str = R2) -> dict[str, Any]:
+    return planned([node(R1), node(ref)], [ref], [ref], [e(ref, R1)])
+
+
+def refused(ref: str = R2) -> dict[str, Any]:
+    return planned([node(R1), node(ref, "blocked", opaque=True, untrusted=True)], [ref], [], [e(ref, R1)], untrusted=[ref])
+
+
+def set_issue(ref: str, **members: Any) -> Callable[[dict[str, Any]], None]:
+    def go(b: dict[str, Any]) -> None:
+        b["observations"]["issues"][ref]["value"].update(members)
+    return go
+
+
+def perms(repo: str, login: str) -> Callable[[dict[str, Any]], None]:
+    return unavailable("permissions", repo, login)
+
+
+INCOMPLETE = {"outcome": "incomplete"}
+CAROL = "carol"
+HELPER = {"author": "helper", "author_type": "Bot", "association": "NONE"}
+OWNERS_FILE = ".github/CODEOWNERS"
+
+
+def as_(association: str | None, author: str = CAROL) -> dict[str, Any]:
+    return {"author": author, "association": association}
+
+
+def writes(level: str, repo: str = R, login: str = CAROL) -> dict[str, Any]:
+    return {"collaborators": {repo: {login: level}}}
+
+
+def in_flight(**more: Any) -> dict[str, Any]:
+    return planned([node(R1, "in-review")], [R1], [R1], scores={R1: 1010}, untrusted_pull_requests=[], **more)
+
+
+def idle(*untrusted_prs: int) -> dict[str, Any]:
+    return planned([node(R1)], [R1], [R1], scores={R1: 10}, untrusted_pull_requests=list(untrusted_prs))
+
+
+NORMATIVE_GRAPHS += [
+    # AD2: scope
+    G("ad2-owner-in-another-scope-repository", "An author who is OWNER of another repository of the scope is trusted there",
+      subject(as_("OWNER"), ref=S2), admitted(S2), ["AD2", "AD5", "AD8"]),
+    G("ad2-permission-counts-per-repository", "Write permission on one repository does not trust the person in another",
+      subject(as_("COLLABORATOR"), ref=S2, collaborators={R: {CAROL: "write"}, "o/s": {CAROL: "read"}}), refused(S2), ["AD2", "AD5", "AD6", "AD8", "D6"]),
+    # AD3, AD4: identities and the allowlist
+    G("ad3-allowlist-ignores-case", "An allowlisted login matches in any case",
+      subject(as_("NONE", author="DEV"), logins=("Dev",)), admitted(), ["AD3", "AD4", "AD5"]),
+    G("ad3-permission-ignores-case", "A permission is looked up under the login in lower case",
+      subject(as_("MEMBER", author="Carol"), collaborators={R: {"Carol": "write"}}), admitted(), ["AD3", "AD6"]),
+    G("ad3-editor-is-the-author-in-another-case", "An editor who is the author, spelled in another case, is not judged again",
+      subject({"author": CAROL, "association": "OWNER", "editors": [CAROL, "CAROL"]}), admitted(), ["AD3", "AD8"]),
+    G("ad3-bot-sharing-the-author-login", "A bot editor whose name is the author's login is another identity and is judged",
+      subject({"author": "dev", "association": "NONE", "editors": ["dev", {"login": "dev", "type": "Bot"}]}), refused(), ["AD3", "AD4", "AD5", "AD8"]),
+    G("ad4-person-entry-does-not-trust-the-bot", "Allowlisting `helper` does not trust the app `helper`",
+      subject(HELPER, logins=("helper",)), refused(), ["AD4", "AD5"]),
+    G("ad4-bot-entry-trusts-the-bot", "Allowlisting `helper[bot]` trusts the app `helper`",
+      subject(HELPER, logins=("helper[bot]",)), admitted(), ["AD3", "AD4", "AD5"]),
+    G("ad4-app-entry-trusts-the-bot", "Allowlisting `app/helper` trusts the app `helper`",
+      subject(HELPER, logins=("app/helper",)), admitted(), ["AD3", "AD4", "AD5"]),
+    G("ad4-bot-entry-does-not-trust-the-person", "Allowlisting `helper[bot]` does not trust the person `helper`",
+      subject(as_("NONE", author="helper"), logins=("helper[bot]",)), refused(), ["AD3", "AD4", "AD5"]),
+    # AD5: judging one actor
+    G("ad5-deleted-author", "A deleted author is not trusted", subject(mutate=set_issue(R2, author=None)), refused(), ["AD5", "AD8"]),
+    G("ad5-deleted-editor", "A deleted editor is not trusted", subject({"editors": ["o", None]}), refused(), ["AD5", "AD8"]),
+    G("ad5-bot-not-allowlisted", "A bot that is not allowlisted is not trusted", subject(HELPER), refused(), ["AD5"]),
+    G("ad5-owner-association", "An author whose association is OWNER is trusted without a permission", subject(as_("OWNER")), admitted(), ["AD5"]),
+    G("ad5-member-with-write", "A MEMBER with write permission is trusted", subject(as_("MEMBER"), **writes("write")), admitted(), ["AD5", "AD6"]),
+    G("ad5-member-with-read", "A MEMBER with read permission is not trusted", subject(as_("MEMBER"), **writes("read")), refused(), ["AD5", "AD6", "D6"]),
+    G("ad5-collaborator-with-maintain", "A COLLABORATOR with maintain permission is trusted",
+      subject(as_("COLLABORATOR"), **writes("maintain")), admitted(), ["AD5", "AD6"]),
+    G("ad5-collaborator-with-admin", "A COLLABORATOR with admin permission is trusted",
+      subject(as_("COLLABORATOR"), **writes("admin")), admitted(), ["AD5", "AD6"]),
+    G("ad5-collaborator-with-triage", "A COLLABORATOR with triage permission is not trusted",
+      subject(as_("COLLABORATOR"), **writes("triage")), refused(), ["AD5", "AD6", "D6"]),
+    G("ad5-collaborator-not-a-collaborator", "A COLLABORATOR association with no permission is not trusted",
+      subject(as_("COLLABORATOR")), refused(), ["AD5", "AD6"]),
+    G("ad5-other-association-decides", "An association outside OWNER, MEMBER and COLLABORATOR decides without the permission",
+      subject(as_("CONTRIBUTOR"), **writes("write")), refused(), ["AD5", "AD10"]),
+    G("ad5-no-association-reads-the-permission", "An author with no recorded association is judged by the permission",
+      subject(as_("NONE"), mutate=set_issue(R2, author_association=None), **writes("write")), admitted(), ["AD5", "AD6"]),
+    # AD7: CODEOWNERS
+    G("ad7-codeowners-person", "A person named in CODEOWNERS is trusted in that repository",
+      subject(as_("NONE"), codeowners=True, codeowners_files={R: {OWNERS_FILE: "* @o @Carol\n"}}), admitted(), ["AD7", "AD5", "AD3"]),
+    G("ad7-codeowners-later-path", "CODEOWNERS is read from the first of its paths that exists",
+      subject(as_("NONE"), codeowners=True, codeowners_files={R: {"docs/CODEOWNERS": "/src/ @carol\n"}}), admitted(), ["AD7"]),
+    G("ad7-codeowners-team-is-not-expanded", "A team named in CODEOWNERS trusts nobody",
+      subject(as_("MEMBER"), codeowners=True, codeowners_files={R: {OWNERS_FILE: "* @o/core\n"}}, **writes("read")), refused(), ["AD7", "AD5"]),
+    G("ad7-codeowners-comment", "A name after `#` in CODEOWNERS is a comment",
+      subject(as_("NONE"), codeowners=True, codeowners_files={R: {OWNERS_FILE: "* @o # @carol\n"}}), refused(), ["AD7"]),
+    G("ad7-codeowners-of-another-repository", "CODEOWNERS of one repository trusts nobody in another",
+      subject(as_("NONE"), ref=S2, codeowners=True, codeowners_files={R: {OWNERS_FILE: "* @o @carol\n"}}), refused(S2), ["AD7", "AD2"]),
+    G("ad7-codeowners-does-not-trust-a-bot", "A bot named in CODEOWNERS is not trusted",
+      subject(HELPER, codeowners=True, codeowners_files={R: {OWNERS_FILE: "* @helper[bot]\n"}}), refused(), ["AD7", "AD5"]),
+    G("ad7-codeowners-off", "CODEOWNERS is not read when the policy does not read it",
+      subject(as_("NONE")), refused(), ["AD7", "AD1"]),
+    # AD8: issue admission
+    G("ad8-trusted-editors", "An issue whose author and every editor are trusted is admitted",
+      subject({"editors": ["o", CAROL]}, **writes("write")), admitted(), ["AD8"]),
+    G("ad8-untrusted-editor-after-trusted-author", "One untrusted editor after a trusted author refuses the issue",
+      subject({"editors": ["o", CAROL, STRANGER]}, **writes("write")), refused(), ["AD8", "D6"]),
+    G("ad8-every-editor-is-judged", "An unavailable lookup of a later editor makes the run incomplete, even after an untrusted one",
+      subject({"editors": ["o", STRANGER, CAROL]}, mutate=perms(R, CAROL)), INCOMPLETE, ["AD8", "AD10", "I5"]),
+    G("ad8-body-of-an-untrusted-author-is-not-read", "The body of an issue whose author is not trusted is not read",
+      subject(MALLORY, fail_graphql_for=[R2]), refused(), ["AD8", "AD10", "D6"]),
+    # AD9: pull requests
+    G("ad9-same-repository-trusted-author", "A same-repository pull request by an author with write permission is admitted",
+      bundle({R1: i(d(R1))}, prs=(pr(8, [1], author=CAROL),), **writes("write")), in_flight(), ["AD9", "S1", "S2"]),
+    G("ad9-same-repository-untrusted-author", "A same-repository pull request by an author without write permission is not admitted",
+      bundle({R1: i(d(R1))}, prs=(pr(8, [1], author=CAROL),), **writes("triage")), idle(8), ["AD9", "S1", "W1"]),
+    G("ad9-fork-by-a-trusted-author", "A pull request from a fork is not admitted, whoever opened it",
+      bundle({R1: i(d(R1))}, prs=(pr(8, [1], cross=True),)), idle(8), ["AD9", "S1"]),
+    G("ad9-head-not-observed", "A pull request whose head repository was not observed is not admitted",
+      bundle({R1: i(d(R1))}, prs=(pr(8, [1], cross=None),)), idle(8), ["AD9"]),
+    G("ad9-deleted-author", "A pull request by a deleted account is not admitted",
+      bundle({R1: i(d(R1))}, prs=(pr(8, [1], author=None),)), idle(8), ["AD9", "AD5"]),
+    G("ad9-bot-author", "A pull request by a bot that is not allowlisted is not admitted",
+      bundle({R1: i(d(R1))}, prs=(pr(8, [1], author="app/helper", bot=True),)), idle(8), ["AD9", "AD5"]),
+    G("ad9-allowlisted-bot-author", "A pull request by an allowlisted bot is admitted",
+      bundle({R1: i(d(R1))}, prs=(pr(8, [1], author="app/helper", bot=True),), logins=("helper[bot]",)), in_flight(), ["AD9", "AD4"]),
+    G("ad9-permission-unavailable", "An unavailable permission of a pull request's author makes the run incomplete",
+      bundle({R1: i(d(R1))}, prs=(pr(8, [1], author=CAROL),), mutate=perms(R, CAROL)), INCOMPLETE, ["AD9", "AD10"]),
+    G("ad9-fork-author-is-not-judged", "The author of a pull request from a fork is not judged, so its permission is not required",
+      bundle({R1: i(d(R1))}, prs=(pr(8, [1], author=CAROL, cross=True),), mutate=perms(R, CAROL)), idle(8), ["AD9", "AD10"]),
+    G("ad9-closing-nothing-is-not-judged", "A pull request that closes no issue reads nothing",
+      bundle({R1: i(d(R1))}, prs=(pr(8, [], author=CAROL),), mutate=perms(R, CAROL)), idle(), ["AD9", "AD10"]),
+    # AD10: completeness
+    G("ad10-codeowners-unavailable", "An unavailable CODEOWNERS that a judgement reads makes the run incomplete",
+      subject(as_("NONE"), codeowners=True, contents_fail=True), INCOMPLETE, ["AD7", "AD10", "I5"]),
+    G("ad10-codeowners-not-reached", "An unavailable CODEOWNERS that no judgement reaches is not required",
+      subject(as_("NONE"), codeowners=True, contents_fail=True, logins=("o", CAROL)), admitted(), ["AD5", "AD10"]),
+    G("ad10-permission-not-reached", "The permission of an author whose association decides is not required",
+      subject(MALLORY, collaborators_forbidden=True), refused(), ["AD5", "AD10"]),
 ]
 
 

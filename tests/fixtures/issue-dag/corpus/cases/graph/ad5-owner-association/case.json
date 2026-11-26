@@ -1,0 +1,10 @@
+{
+  "cites": [
+    "AD5"
+  ],
+  "id": "graph/ad5-owner-association",
+  "kind": "normative",
+  "level": "graph",
+  "source": "constructed from the rule text",
+  "title": "An author whose association is OWNER is trusted without a permission"
+}

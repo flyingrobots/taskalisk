@@ -1,0 +1,11 @@
+{
+  "cites": [
+    "AD8",
+    "D6"
+  ],
+  "id": "graph/ad8-untrusted-editor-after-trusted-author",
+  "kind": "normative",
+  "level": "graph",
+  "source": "constructed from the rule text",
+  "title": "One untrusted editor after a trusted author refuses the issue"
+}

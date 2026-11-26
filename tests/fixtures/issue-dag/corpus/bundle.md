@@ -73,7 +73,9 @@ members, which are the run parameters of profile rule I1:
   MUST include `H`;
 - `trust`: an object with the members `policy`, the name of the trust policy
   that makes the admission decisions, `logins`, the logins that policy trusts
-  by name, and `codeowners`, true when that policy reads CODEOWNERS files;
+  by name, and `codeowners`, true when that policy reads CODEOWNERS files.
+  The policy `taskalisk/threat-model` is defined by the [admission
+  policy](../profiles/admission.md), rules AD1 to AD10;
 - `capacities`: an object from semaphore names to positive integers, possibly
   empty.
 
@@ -175,8 +177,9 @@ requests the run reads. It MAY hold slots that the run does not read.
 > be kept or left out; keeping it costs nothing and lets a second trust policy
 > be tried on the same evidence.
 >
-> The admission decision belongs to the trust policy, which this
-> specification does not define (profile, commentary to I5). A bundle
-> therefore carries the observations a policy reads and names the policy; a
-> case whose expected plan depends on an admission decision depends on that
-> policy too.
+> The admission decision belongs to the trust policy that the bundle names.
+> This specification defines one, `taskalisk/threat-model`, in the
+> [admission policy](../profiles/admission.md) (profile rule I6), and every
+> bundle of the corpus names it. A bundle carries the observations a policy
+> reads and names the policy; a case whose expected plan depends on an
+> admission decision depends on that policy too.

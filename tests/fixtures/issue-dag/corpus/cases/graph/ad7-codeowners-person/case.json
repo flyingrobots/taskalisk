@@ -1,0 +1,12 @@
+{
+  "cites": [
+    "AD7",
+    "AD5",
+    "AD3"
+  ],
+  "id": "graph/ad7-codeowners-person",
+  "kind": "normative",
+  "level": "graph",
+  "source": "constructed from the rule text",
+  "title": "A person named in CODEOWNERS is trusted in that repository"
+}

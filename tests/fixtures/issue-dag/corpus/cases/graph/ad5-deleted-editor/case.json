@@ -1,0 +1,11 @@
+{
+  "cites": [
+    "AD5",
+    "AD8"
+  ],
+  "id": "graph/ad5-deleted-editor",
+  "kind": "normative",
+  "level": "graph",
+  "source": "constructed from the rule text",
+  "title": "A deleted editor is not trusted"
+}

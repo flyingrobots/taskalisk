@@ -1,0 +1,12 @@
+{
+  "cites": [
+    "AD3",
+    "AD4",
+    "AD5"
+  ],
+  "id": "graph/ad4-app-entry-trusts-the-bot",
+  "kind": "normative",
+  "level": "graph",
+  "source": "constructed from the rule text",
+  "title": "Allowlisting `app/helper` trusts the app `helper`"
+}

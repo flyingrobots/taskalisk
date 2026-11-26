@@ -1,0 +1,11 @@
+{
+  "cites": [
+    "AD3",
+    "AD6"
+  ],
+  "id": "graph/ad3-permission-ignores-case",
+  "kind": "normative",
+  "level": "graph",
+  "source": "constructed from the rule text",
+  "title": "A permission is looked up under the login in lower case"
+}

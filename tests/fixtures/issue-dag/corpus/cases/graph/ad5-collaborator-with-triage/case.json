@@ -1,0 +1,12 @@
+{
+  "cites": [
+    "AD5",
+    "AD6",
+    "D6"
+  ],
+  "id": "graph/ad5-collaborator-with-triage",
+  "kind": "normative",
+  "level": "graph",
+  "source": "constructed from the rule text",
+  "title": "A COLLABORATOR with triage permission is not trusted"
+}

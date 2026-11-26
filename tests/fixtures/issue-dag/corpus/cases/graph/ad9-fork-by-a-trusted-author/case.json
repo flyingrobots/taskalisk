@@ -1,0 +1,11 @@
+{
+  "cites": [
+    "AD9",
+    "S1"
+  ],
+  "id": "graph/ad9-fork-by-a-trusted-author",
+  "kind": "normative",
+  "level": "graph",
+  "source": "constructed from the rule text",
+  "title": "A pull request from a fork is not admitted, whoever opened it"
+}

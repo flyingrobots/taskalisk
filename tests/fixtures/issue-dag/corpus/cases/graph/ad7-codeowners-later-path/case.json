@@ -1,0 +1,10 @@
+{
+  "cites": [
+    "AD7"
+  ],
+  "id": "graph/ad7-codeowners-later-path",
+  "kind": "normative",
+  "level": "graph",
+  "source": "constructed from the rule text",
+  "title": "CODEOWNERS is read from the first of its paths that exists"
+}

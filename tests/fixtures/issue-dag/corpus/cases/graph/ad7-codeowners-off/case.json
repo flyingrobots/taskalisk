@@ -1,0 +1,11 @@
+{
+  "cites": [
+    "AD7",
+    "AD1"
+  ],
+  "id": "graph/ad7-codeowners-off",
+  "kind": "normative",
+  "level": "graph",
+  "source": "constructed from the rule text",
+  "title": "CODEOWNERS is not read when the policy does not read it"
+}

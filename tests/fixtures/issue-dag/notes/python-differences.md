@@ -20,7 +20,11 @@ Differences 8, 10 to 15, 17 and 18 come from reading the code. On 2026-11-25
 the corpus confirmed differences 1 to 10 and 16 by running the compiler at
 `flyingrobots/taskalisk@394a5e9`, and found difference 19 among the cases it
 added for the amended rule C8; it found no other difference among its
-normative cases.
+normative cases. On 2026-11-26 the 46 normative cases added for the
+[admission policy](../profiles/admission.md) (rules AD1 to AD10,
+`flyingrobots/taskalisk#101`) found no difference: the compiler's
+`TrustPolicy` makes every decision those rules state, and reads, or leaves
+unread, the same lookups.
 
 None of these differences changes the verdict on any document in the
 [census of 2026-11-12](../evidence/2026-11-12-frontmatter-shapes.md): the

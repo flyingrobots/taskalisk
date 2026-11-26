@@ -27,7 +27,7 @@ plan.
 - A *home repository* `H`: the repository the planner works for.
 - Optionally, a non-empty list of *root references*.
 - A *read scope*: the set of repositories the run may read. It includes `H`.
-  A planner obtains it from its trust policy.
+  It is also the scope of admission (admission rule AD2).
 - A map from semaphore names to capacities, each a positive integer. It may be
   empty.
 
@@ -43,29 +43,36 @@ planner observes:
   issue was transferred;
 - its state, `open` or `closed`, and for a closed issue its close reason,
   which is `completed`, `not_planned` or another value;
-- its *admission decision*, `admitted` or `not admitted`, made by the
-  planner's trust policy;
+- its *admission decision*, `admitted` or `not admitted`, made under the
+  [admission policy](admission.md) (rule AD8);
 - for an admitted issue, its body: the body that the admission
-  decision covered.
+  decision covered (AD8).
 
 **I4. Observations of the home repository.** When the run has no root
 references, the planner observes the complete list of `H`'s open issues. In
 every run it observes the complete list of `H`'s open pull requests, and for
 each pull request the issues it closes, whether it is a draft, and its
-admission decision.
+admission decision (AD9).
 
-**I5. Completeness.** An observation is required when a rule of this profile
-reads it. A required observation that the planner cannot make, or cannot show
-to be complete, is *unavailable*. A listing that may have been truncated is
-unavailable. A draft flag that is not a boolean is unavailable.
+**I5. Completeness.** An observation is required when a rule of this profile,
+or a rule of the admission policy (I6), reads it. A required observation that
+the planner cannot make, or cannot show to be complete, is *unavailable*. A
+listing that may have been truncated is unavailable. A draft flag that is not
+a boolean is unavailable.
 
-> *Commentary.* The trust policy is outside the format and outside this
-> profile. The profile fixes what an admission decision causes, not how it is
-> made. Taskalisk's trust policy is the threat model in
-> `flyingrobots/taskalisk`, `docs/threat-model.md`: an issue is admitted when
-> its repository is in scope and its author and every editor of its body are
-> trusted; a pull request is admitted when its head branch is in the same
-> repository and its author is trusted.
+**I6. Admission.** Admission decisions are made under the [admission
+policy](admission.md), rules AD1 to AD10, from the observations alone. An
+unavailable observation that those rules read makes the run incomplete
+(AD10).
+
+> *Commentary.* Admission is outside the format: no key of a document can
+> claim trust. The profile fixes what an admission decision causes (D6, S1,
+> T1, T2); the admission policy fixes how it is made. In short, an issue is
+> admitted when its repository is in scope and its author and every editor
+> of its body are trusted; a pull request is admitted when its head branch is
+> in the same repository and its author is trusted. The rationale is
+> Taskalisk's threat model (`flyingrobots/taskalisk`,
+> `docs/threat-model.md`), which is not normative here.
 
 ## 2. Outcome
 
@@ -127,7 +134,7 @@ gives a violation to each document that names it. When it is a root
 reference that no document read in the run names, the violation is the
 reference's own. It is not a node.
 
-**D6. Not admitted.** An issue whose admission decision is `not admitted` is
+**D6. Not admitted.** An issue that is not admitted (AD8) is
 an *opaque node* and its body is not read as a document. It is marked
 *untrusted*. If it is a seed and no document read in the run names it, it is
 not a node and is only listed.
@@ -209,7 +216,7 @@ are listed as redundant.
 ## 6. Status
 
 **S1. Linked pull requests.** The linked pull requests of a node are the
-admitted open pull requests of `H` that close it. A node outside `H`, and an
+open pull requests of `H` that close it and are admitted (AD9). A node outside `H`, and an
 untrusted node, has none.
 
 **S2. Status.** The status of an open node is the first that applies:
