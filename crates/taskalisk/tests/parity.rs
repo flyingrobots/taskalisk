@@ -422,9 +422,9 @@ fn every_agreed_case_renders_as_the_python_does() {
         names.len(),
         failures.join("\n")
     );
-    // 71 corpus cases, and the one planned again with hostile titles.
+    // 76 corpus cases, and the one planned again with hostile titles.
     assert_eq!(
-        equal_hashes, 72,
+        equal_hashes, 77,
         "the cases whose artifact_hash is the Python's"
     );
 }
