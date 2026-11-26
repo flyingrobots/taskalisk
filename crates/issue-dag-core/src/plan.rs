@@ -120,6 +120,12 @@ pub struct Graph {
     pub redundant: BTreeSet<Edge>,
     /// The ready set (rule Q1), unordered: its rank order is rule K6's.
     pub ready: BTreeSet<IssueRef>,
+    /// Every reference the closure visited, in the order it read them
+    /// (D2): the order a report lists what discovery found in.
+    pub visit_order: Vec<IssueRef>,
+    /// The numbers in `untrusted_pull_requests`, in the order the pull
+    /// requests were observed.
+    pub untrusted_pull_request_order: Vec<u64>,
 }
 
 impl Graph {
@@ -335,6 +341,8 @@ struct Closure {
     has_roots: bool,
     seeds: BTreeSet<IssueRef>,
     visits: BTreeMap<IssueRef, Visit>,
+    /// The references visited, in the order read.
+    order: Vec<IssueRef>,
     /// The documents that name each reference, in the order read, once per
     /// mention (a document that names it twice appears twice).
     naming: BTreeMap<IssueRef, Vec<IssueRef>>,
@@ -410,9 +418,9 @@ impl<'a, F: Forge + ?Sized> Run<'a, F> {
 
     /// I4 and AD9: for each issue, the draft slots of the admitted pull
     /// requests that close it; and the numbers of those not admitted.
-    fn pull_requests(&mut self, gaps: &mut Gaps) -> (Linked, BTreeSet<u64>) {
+    fn pull_requests(&mut self, gaps: &mut Gaps) -> (Linked, Vec<u64>) {
         let mut linked = Linked::new();
-        let mut untrusted = BTreeSet::new();
+        let mut untrusted = Vec::new();
         let home = &self.parameters.home;
         let pulls = gaps
             .note(lookup(self.forge.home_open_pull_requests()))
@@ -431,7 +439,9 @@ impl<'a, F: Forge + ?Sized> Run<'a, F> {
                     }
                 }
                 Some(false) => {
-                    untrusted.insert(pull.number);
+                    if !untrusted.contains(&pull.number) {
+                        untrusted.push(pull.number);
+                    }
                 }
                 None => {}
             }
@@ -447,6 +457,7 @@ impl<'a, F: Forge + ?Sized> Run<'a, F> {
             has_roots,
             seeds: seeds.iter().cloned().collect(),
             visits: BTreeMap::new(),
+            order: Vec::new(),
             naming: BTreeMap::new(),
         };
         let mut undecided = BTreeSet::new();
@@ -469,6 +480,7 @@ impl<'a, F: Forge + ?Sized> Run<'a, F> {
                     queue.push_back(name.clone());
                 }
             }
+            closure.order.push(reference.clone());
             closure.visits.insert(reference, visit);
         }
         closure
@@ -526,10 +538,12 @@ struct Assembly<'c> {
 impl<'c> Assembly<'c> {
     /// D3 to D9 and G1: the nodes, containers and lists, and the findings
     /// of discovery and of each document.
-    fn new(closure: &'c Closure, untrusted_pull_requests: BTreeSet<u64>) -> Self {
+    fn new(closure: &'c Closure, untrusted_pull_requests: Vec<u64>) -> Self {
         let mut a = Self {
             graph: Graph {
-                untrusted_pull_requests,
+                untrusted_pull_requests: untrusted_pull_requests.iter().copied().collect(),
+                untrusted_pull_request_order: untrusted_pull_requests,
+                visit_order: closure.order.clone(),
                 ..Graph::default()
             },
             findings: BTreeSet::new(),

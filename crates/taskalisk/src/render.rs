@@ -906,19 +906,32 @@ struct Discovery {
 }
 
 impl Discovery {
-    fn of(graph: &Graph, shown: &Shown) -> Self {
-        let containers = graph
-            .containers
-            .keys()
+    /// Each list in the order 1.x writes it: the order discovery read the
+    /// issues in (`Graph::visit_order`), and for not-planned prerequisites
+    /// that of the task, then of the prerequisite; untrusted pull requests
+    /// in the order they were observed.
+    fn of<'a>(graph: &'a Graph, shown: &Shown) -> Self {
+        let position: BTreeMap<&IssueRef, usize> = graph
+            .visit_order
+            .iter()
+            .enumerate()
+            .map(|(i, id)| (id, i))
+            .collect();
+        let read = |id: &IssueRef| position.get(id).copied().unwrap_or(usize::MAX);
+        let in_order = |mut ids: Vec<&'a IssueRef>| -> Vec<&'a IssueRef> {
+            ids.sort_by_key(|id| read(id));
+            ids
+        };
+        let containers = in_order(graph.containers.keys().collect())
+            .into_iter()
             .map(|id| {
                 let mut c = object(json!({"id": id.to_string(), "number": id.number()}));
                 shown.title(&mut c, id, false);
                 Value::Object(c)
             })
             .collect();
-        let unmodeled = graph
-            .unmodeled
-            .iter()
+        let unmodeled = in_order(graph.unmodeled.iter().collect())
+            .into_iter()
             .map(|id| {
                 let mut u = object(json!({"id": id.to_string()}));
                 shown.title(&mut u, id, false);
@@ -926,21 +939,25 @@ impl Discovery {
                 Value::Object(u)
             })
             .collect();
-        let untrusted = graph
-            .untrusted
-            .iter()
+        let untrusted = in_order(graph.untrusted.iter().collect())
+            .into_iter()
             .map(|id| json!({"id": id.to_string()}))
             .collect();
         let untrusted_pull_requests = graph
-            .untrusted_pull_requests
+            .untrusted_pull_request_order
             .iter()
             .map(|n| json!({"number": n}))
             .collect();
-        let opaque = graph
+        let opaque_ids = graph
             .nodes
             .iter()
             .filter(|(_, n)| n.opaque && !n.untrusted)
-            .map(|(id, node)| {
+            .map(|(id, _)| id)
+            .collect();
+        let opaque = in_order(opaque_ids)
+            .into_iter()
+            .map(|id| {
+                let node = &graph.nodes[id];
                 // Every document that names it, containers included, in the
                 // order discovery read them, as 1.x lists them.
                 let referenced_by = texts(&node.named_by);
@@ -953,9 +970,10 @@ impl Discovery {
                 Value::Object(o)
             })
             .collect();
-        let not_planned = graph
-            .not_planned
-            .iter()
+        let mut not_planned_edges: Vec<_> = graph.not_planned.iter().collect();
+        not_planned_edges.sort_by_key(|e| (read(&e.to), read(&e.from)));
+        let not_planned = not_planned_edges
+            .into_iter()
             .map(|e| {
                 let mut n =
                     object(json!({"parent": e.from.to_string(), "child": e.to.to_string()}));
