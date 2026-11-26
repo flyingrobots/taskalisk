@@ -619,6 +619,42 @@ fn a_file_that_is_not_a_bundle_is_a_reported_error() {
     assert_eq!(fixture.reads(), "");
 }
 
+/// The largest bundle or record a replay reads: 64 MiB.
+const READ_LIMIT: u64 = 64 * 1024 * 1024;
+
+#[test]
+fn a_file_over_the_read_limit_is_refused_unread() {
+    let fixture = Fixture::new("plan_state()");
+    // A sparse file one byte over the limit: refused before it is read.
+    let path = fixture.dir.join("huge.json");
+    fs::File::create(&path)
+        .and_then(|f| f.set_len(READ_LIMIT + 1))
+        .expect("a sparse file");
+    for (flag, code) in [
+        ("--from-bundle", "bundle.unreadable"),
+        ("--from-record", "evaluation.unreadable"),
+    ] {
+        let replay = fixture.replay("huge", &[flag, path.to_str().expect("UTF-8")]);
+        assert_eq!(replay.status(), 2, "{}", replay.explain());
+        let errors = replay.errors();
+        assert_eq!(errors[0]["code"], code, "{}", replay.explain());
+        assert_eq!(
+            errors[0]["detail"]["limit"],
+            READ_LIMIT,
+            "{}",
+            replay.explain()
+        );
+    }
+    // A file at the limit is read (and here is not JSON).
+    fs::File::create(&path)
+        .and_then(|f| f.set_len(READ_LIMIT))
+        .expect("a sparse file");
+    let replay = fixture.replay("limit", &["--from-bundle", path.to_str().expect("UTF-8")]);
+    assert_eq!(replay.status(), 2, "{}", replay.explain());
+    assert_eq!(replay.errors()[0]["code"], "bundle.invalid");
+    assert_eq!(fixture.reads(), "");
+}
+
 #[test]
 fn with_reads_disabled_and_no_bundle_the_command_exits_2() {
     let fixture = Fixture::new("plan_state()");

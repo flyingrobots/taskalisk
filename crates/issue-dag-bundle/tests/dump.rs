@@ -38,12 +38,14 @@ fn corpus_bundles() -> Vec<PathBuf> {
 fn every_corpus_bundle_dumps_to_the_bundle_it_was_read_from() {
     let bundles = corpus_bundles();
     assert!(bundles.len() > 20, "the corpus has its bundles");
-    for path in bundles {
-        let text = fs::read_to_string(&path).expect("a bundle");
-        let Ok(bundle) = load(&text) else {
-            // A bundle the reader rejects has no domain value to write.
-            continue;
-        };
+    let mut round_tripped = 0;
+    for path in &bundles {
+        let text = fs::read_to_string(path).expect("a bundle");
+        // A case's input is a bundle (corpus rule CC2): a bundle that OB1,
+        // OB15 or OB17 rejects is not one, so the corpus holds none, and
+        // none may be skipped here.
+        let bundle = load(&text)
+            .unwrap_or_else(|e| panic!("{}: the corpus bundle is rejected: {e}", path.display()));
         let written = dump(&bundle);
         assert_eq!(
             load(&written).as_ref(),
@@ -59,7 +61,13 @@ fn every_corpus_bundle_dumps_to_the_bundle_it_was_read_from() {
             "{}: the dump is not the bundle",
             path.display()
         );
+        round_tripped += 1;
     }
+    assert_eq!(
+        round_tripped,
+        bundles.len(),
+        "every corpus bundle round-trips"
+    );
 }
 
 fn reference(text: &str) -> IssueRef {
