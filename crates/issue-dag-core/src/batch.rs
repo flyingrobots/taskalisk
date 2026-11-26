@@ -380,8 +380,10 @@ mod scale {
     use crate::record::MeterClaim;
     use crate::reference::IssueRef;
 
-    /// The bound ranking and selection must finish within, in a debug
-    /// build, as for planning (`plan::tests::LARGE_GRAPH_BOUND`).
+    /// The bound ranking and selection must finish within, as for planning
+    /// (`plan::tests::LARGE_GRAPH_BOUND`). Wall-clock time depends on the
+    /// machine's load, so the default suite checks only the results; the
+    /// ignored `perf_` tests check the bound, in CI's release-mode job.
     const BOUND: Duration = Duration::from_secs(1);
     const LARGE: u32 = 5_000;
 
@@ -423,15 +425,50 @@ mod scale {
             ..Graph::default()
         }
     }
+    #[test]
+    fn a_chain_of_5000_nodes_ranks_and_selects() {
+        chain_of_5000();
+    }
 
     #[test]
-    fn a_chain_of_5000_nodes_ranks_and_selects_within_the_bound() {
+    #[ignore = "wall-clock bound; run with --release --ignored"]
+    fn perf_a_chain_of_5000_nodes_ranks_and_selects_within_the_bound() {
+        let took = chain_of_5000();
+        assert!(took < BOUND, "a chain took {took:?}");
+    }
+
+    #[test]
+    fn a_wide_frontier_of_5000_nodes_ranks_and_selects() {
+        wide_frontier_of_5000();
+    }
+
+    #[test]
+    #[ignore = "wall-clock bound; run with --release --ignored"]
+    fn perf_a_wide_frontier_of_5000_nodes_ranks_and_selects_within_the_bound() {
+        let took = wide_frontier_of_5000();
+        assert!(took < BOUND, "a wide frontier took {took:?}");
+    }
+
+    #[test]
+    fn a_fan_of_5000_nodes_ranks() {
+        fan_of_5000();
+    }
+
+    #[test]
+    #[ignore = "wall-clock bound; run with --release --ignored"]
+    fn perf_a_fan_of_5000_nodes_ranks_within_the_bound() {
+        let took = fan_of_5000();
+        assert!(took < BOUND, "a fan took {took:?}");
+    }
+
+    /// Ranks and selects a chain of [`LARGE`] nodes, checks the result, and
+    /// returns how long ranking and selection took.
+    fn chain_of_5000() -> Duration {
         let g = graph((1..LARGE).map(|n| (n, n + 1)), LARGE);
         let start = Instant::now();
         let ranking = rank(&g).expect("acyclic");
         let batch = select(&g, &ranking, &[("ci".to_owned(), 1)].into());
         let took = start.elapsed();
-        println!("took {took:?}");
         assert_eq!(
             ranking.scores[&r(1)],
             100 * u64::from(LARGE - 1) + 10 * u64::from(LARGE) + 1
@@ -439,11 +476,12 @@ mod scale {
         assert_eq!(ranking.waves.len(), LARGE as usize);
         assert_eq!(ranking.critical_path.len(), LARGE as usize);
         assert_eq!(batch.selected, vec![r(1)]);
-        assert!(took < BOUND, "a chain took {took:?}");
+        took
     }
 
-    #[test]
-    fn a_wide_frontier_of_5000_nodes_ranks_and_selects_within_the_bound() {
+    /// Ranks and selects a frontier of [`LARGE`] ready nodes, checks the
+    /// result, and returns how long ranking and selection took.
+    fn wide_frontier_of_5000() -> Duration {
         // Every node is ready, so B5 considers 5000 nodes against a batch
         // that grows to 5000 nodes holding 10000 keys.
         let g = graph([], LARGE);
@@ -452,14 +490,14 @@ mod scale {
         let ranking = rank(&g).expect("acyclic");
         let batch = select(&g, &ranking, &capacities);
         let took = start.elapsed();
-        println!("took {took:?}");
         assert_eq!(batch.selected.len(), LARGE as usize);
         assert_eq!(batch.skipped, Vec::new());
-        assert!(took < BOUND, "a wide frontier took {took:?}");
+        took
     }
 
-    #[test]
-    fn a_fan_of_5000_nodes_ranks_within_the_bound() {
+    /// Ranks a fan of [`LARGE`] nodes, checks the result, and returns how
+    /// long ranking took.
+    fn fan_of_5000() -> Duration {
         // o/r#1 blocks every other node and o/r#2 blocks the rest too: the
         // edges from o/r#1 to o/r#3.. are redundant (G5).
         let mut edges: Vec<(u32, u32)> = (2..=LARGE).map(|n| (1, n)).collect();
@@ -474,7 +512,6 @@ mod scale {
         let start = Instant::now();
         let ranking = rank(&g).expect("acyclic");
         let took = start.elapsed();
-        println!("took {took:?}");
         assert_eq!(
             ranking.scores[&r(1)],
             100 * u64::from(LARGE - 1) + 10 * 3 + 1
@@ -482,6 +519,6 @@ mod scale {
         // Every node from o/r#3 has level 2; the greatest identifier as text
         // (K8) is o/r#999, not o/r#5000.
         assert_eq!(ranking.critical_path, vec![r(1), r(2), r(999)]);
-        assert!(took < BOUND, "a fan took {took:?}");
+        took
     }
 }
