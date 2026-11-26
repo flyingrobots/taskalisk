@@ -81,7 +81,10 @@ The Rust rebuild ([decision 0001](docs/decisions/0001-rust-issue-dag-contract.md
 workspace at the repository root. `crates/issue-dag-core` reads and validates `issue-dag/2`
 documents and plans the graph and readiness over recorded observations, with no I/O;
 `crates/issue-dag-bundle` reads an observation bundle into it. Together they run every document
-and graph case of the vendored corpus. The toolchain is pinned in
+and graph case of the vendored corpus. `crates/issue-dag-git` answers the core's
+`LocalRepository` port (branches, worktrees, ahead/behind) by running `git`; its tests build
+temporary repositories, so `git` 2.36 or later must be on `PATH`. A path that is not a
+repository, or a `git` call that fails, is an error, never an empty answer. The toolchain is pinned in
 `rust-toolchain.toml`, and CI runs the same three checks:
 
 ```sh

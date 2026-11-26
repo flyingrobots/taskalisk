@@ -48,6 +48,24 @@ schema version under `Unreleased` is a draft and may change in place.
   and `[bot]` suffix are matched without regard to case; a bundle with an `observations` member
   the bundle rules do not define is rejected.
 
+- **The git adapter** (flyingrobots/taskalisk#57). A new crate, `issue-dag-git`, implements the
+  core's `LocalRepository` port by running `git -C <path>` with argument lists, never a shell:
+  `for-each-ref` with NUL-separated fields for local and remote-tracking branches (tip and
+  subject; `origin/HEAD` and other symbolic refs left out), `worktree list --porcelain -z` for
+  worktrees (path, head, branch or detached or bare, locked, prunable, whether the directory
+  exists), `status --porcelain -z` in each worktree for its dirty state, and `rev-list
+  --left-right --count --end-of-options` for ahead/behind. The port gains `branches`, `worktrees`
+  and `ahead_behind`, with the value types `Branch`, `BranchScope`, `Worktree`, `Checkout` and
+  `AheadBehind`, because the inventory reports them and the port held only local branch names.
+  It fails closed: `GitRepository::open` refuses a path that is not a repository, each read
+  returns a `GitError` when `git` fails or answers in a shape it cannot read (an empty worktree
+  listing included), and the port answers `Unavailable`, never an empty list; the binary maps a
+  `GitError` to `git.command_failed`, exit 2. The adapter removes `GIT_DIR`, `GIT_WORK_TREE` and
+  the other variables that select another repository, so a run inside a hook reads the repository
+  it was given, and holds each worktree's `status` to that worktree, so one whose `.git` is gone
+  never reads the repository above it. A missing worktree directory is reported (`path_exists`
+  false, `dirty` unknown), not dropped.
+
 - **Repeated keys, warnings and refusal order in the specification** (flyingrobots/taskalisk#104).
   The vendored issue-dag specification now states the rulings the Rust core implements: no rule of
   sections 3 to 5 labels a repeated key, so labels never depend on line order, while its lines keep
