@@ -1544,7 +1544,7 @@ def score_terms(node: dict[str, Any]) -> dict[str, Any]:
 REMEDIES = {
     "gh.command_failed": "check `gh auth status` and the network, then rerun; nothing was compiled from a partial read",
     "gh.list_limit_reached": "narrow the seeds with --root; a list that fills its limit may be truncated (threat model C15)",
-    "gh.response_invalid": "rerun; if it persists, report the gh version with the receipt",
+    "gh.response_invalid": "report the gh version with the receipt; a malformed answer is not fixed by running again",
     "gh.mutation_failed": "check the token can edit issues in that repository, then rerun",
     "git.command_failed": "run the command shown in detail.source inside --repo to see why",
     "root.invalid_reference": "name the root as owner/repo#N",
@@ -1557,31 +1557,55 @@ REMEDIES = {
     "edge.rewrite_impossible": "the child's frontmatter needs exactly one .blocked_by line",
 }
 
+# Whether a retry can help, for each code `classify` returns. docs/topics/output/README.md and
+# SKILL.md state the same flags; tests/test_parley_output.py holds the three together.
+RETRYABLE = {
+    "gh.command_failed": True,
+    "gh.list_limit_reached": False,
+    "gh.response_invalid": False,
+    "gh.mutation_failed": True,
+    "git.command_failed": True,
+    "root.invalid_reference": False,
+    "root.out_of_scope": False,
+    "edge.out_of_scope": False,
+    "edge.child_not_issue": False,
+    "edge.child_untrusted": False,
+    "edge.child_frontmatter_missing": False,
+    "edge.child_frontmatter_invalid": False,
+    "edge.rewrite_impossible": False,
+}
+
 
 def classify(err: dict[str, str]) -> tuple[str, bool]:
-    """A stable code, and whether a retry can help, for one failure the compiler records."""
+    """A stable code, and whether a retry can help (`RETRYABLE`), for one failure the compiler records."""
+    code = error_code(err)
+    return code, RETRYABLE[code]
+
+
+def error_code(err: dict[str, str]) -> str:
+    """The stable code for one failure the compiler records."""
     src, msg = err["source"], err["error"]
     if "possible truncation" in msg or "possibly truncated" in msg:
-        return "gh.list_limit_reached", False
+        return "gh.list_limit_reached"
     if src == "--root":
-        return ("root.out_of_scope" if "outside the trusted" in msg else "root.invalid_reference"), False
+        return "root.out_of_scope" if "outside the trusted" in msg else "root.invalid_reference"
     if src.startswith("edge "):
-        return ("edge.child_not_issue" if "pull request" in msg else "edge.out_of_scope"), False
+        return "edge.child_not_issue" if "pull request" in msg else "edge.out_of_scope"
     if src.startswith("frontmatter of "):
         if msg.startswith("child is untrusted"):
-            return "edge.child_untrusted", False
+            return "edge.child_untrusted"
         if msg.startswith("missing or unparseable"):
-            return "edge.child_frontmatter_missing", False
+            return "edge.child_frontmatter_missing"
         if msg.startswith("invalid task frontmatter"):
-            return "edge.child_frontmatter_invalid", False
-        return "edge.rewrite_impossible", False
+            return "edge.child_frontmatter_invalid"
+        return "edge.rewrite_impossible"
     if src.startswith("gh api PATCH"):
-        return "gh.mutation_failed", True
+        return "gh.mutation_failed"
     if any(k in msg for k in ("Unparseable JSON", "Expected a JSON", "GraphQL response has no", "no cursor", "isDraft", "repository_url")):
-        return "gh.response_invalid", False
+        return "gh.response_invalid"
     if src.startswith("git"):
-        return "git.command_failed", True
-    return "gh.command_failed", True
+        return "git.command_failed"
+    return "gh.command_failed"
 
 
 def one_sentence(text: str, limit: int = 600) -> str:
