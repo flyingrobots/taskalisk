@@ -17,7 +17,9 @@ pub enum Kind {
 }
 
 impl Kind {
-    pub(crate) fn from_str(text: &str) -> Option<Self> {
+    /// Reads the value as written, or `None` for any other text.
+    #[must_use]
+    pub fn parse(text: &str) -> Option<Self> {
         match text {
             "task" => Some(Self::Task),
             "container" => Some(Self::Container),
@@ -55,7 +57,9 @@ pub enum TaskType {
 }
 
 impl TaskType {
-    pub(crate) fn from_str(text: &str) -> Option<Self> {
+    /// Reads the value as written, or `None` for any other text.
+    #[must_use]
+    pub fn parse(text: &str) -> Option<Self> {
         match text {
             "feature" => Some(Self::Feature),
             "bug" => Some(Self::Bug),
@@ -95,7 +99,9 @@ pub enum Status {
 }
 
 impl Status {
-    pub(crate) fn from_str(text: &str) -> Option<Self> {
+    /// Reads the value as written, or `None` for any other text.
+    #[must_use]
+    pub fn parse(text: &str) -> Option<Self> {
         match text {
             "active" => Some(Self::Active),
             "parked" => Some(Self::Parked),

@@ -114,8 +114,159 @@ pub enum Parse {
 /// Locates and reads the frontmatter block of a body.
 #[must_use]
 pub fn parse(body: &str) -> Parse {
-    let _ = body;
-    Parse::NoDocument
+    let Some(lines) = block_lines(body) else {
+        return Parse::NoDocument;
+    };
+    if lines
+        .iter()
+        .any(|line| has_forbidden_break(&body[line.clone()]))
+    {
+        return Parse::Unreadable;
+    }
+    let mut entries = Vec::new();
+    let mut violations = BTreeSet::new();
+    let mut keys = BTreeSet::new();
+    for line in lines {
+        let text = &body[line.clone()];
+        let content = text.trim_end_matches([' ', '\t']);
+        if content.is_empty() || content.trim_start_matches([' ', '\t']).starts_with('#') {
+            continue; // C5
+        }
+        let Some((key, raw)) = split_entry(content) else {
+            violations.insert(Label::C6);
+            continue;
+        };
+        if !keys.insert(key) {
+            violations.insert(Label::C7);
+        }
+        let value = read_value(trim(raw));
+        if value.is_none() {
+            violations.insert(Label::C8);
+        }
+        entries.push(Entry {
+            key: key.to_owned(),
+            value,
+            line,
+        });
+    }
+    Parse::Block(Block {
+        entries,
+        violations,
+    })
+}
+
+/// The byte ranges, without line ends, of the block's content lines (rules
+/// C1 and C2), or `None` when the body has no block (rule C3).
+pub fn block_lines(body: &str) -> Option<Vec<Range<usize>>> {
+    let mut pos = opening_fence_end(body)?;
+    let mut lines = Vec::new();
+    loop {
+        let rest = &body[pos..];
+        let (segment_end, next) = rest
+            .find('\n')
+            .map_or((body.len(), None), |i| (pos + i, Some(pos + i + 1)));
+        // A CR directly before an LF belongs to the line end.
+        let line_end = if next.is_some() && body[pos..segment_end].ends_with('\r') {
+            segment_end - 1
+        } else {
+            segment_end
+        };
+        if !lines.is_empty() && is_closing_fence(&body[pos..line_end]) {
+            return Some(lines);
+        }
+        let next = next?; // the body ended before a closing fence
+        lines.push(pos..line_end);
+        pos = next;
+    }
+}
+
+/// C1: the byte offset just after the opening fence's line end.
+fn opening_fence_end(body: &str) -> Option<usize> {
+    let rest = body.trim_start_matches([' ', '\t', '\r', '\n']);
+    let rest = rest.strip_prefix("```yaml")?;
+    let rest = rest.trim_start_matches([' ', '\t']);
+    let rest = rest
+        .strip_prefix("\r\n")
+        .or_else(|| rest.strip_prefix('\n'))?;
+    Some(body.len() - rest.len())
+}
+
+/// C2: three backticks and zero or more blanks.
+fn is_closing_fence(line: &str) -> bool {
+    line.strip_prefix("```")
+        .is_some_and(|rest| rest.bytes().all(|b| b == b' ' || b == b'\t'))
+}
+
+/// C4: a lone CR, or a character that some readers take as a line break.
+fn has_forbidden_break(line: &str) -> bool {
+    line.chars().any(|c| {
+        matches!(
+            c,
+            '\r' | '\u{000B}'
+                | '\u{000C}'
+                | '\u{001C}'
+                | '\u{001D}'
+                | '\u{001E}'
+                | '\u{0085}'
+                | '\u{2028}'
+                | '\u{2029}'
+        )
+    })
+}
+
+/// C6: `key *blank ":" *blank value`, the key in the first column. Returns
+/// the key and the untrimmed value.
+fn split_entry(line: &str) -> Option<(&str, &str)> {
+    let bytes = line.as_bytes();
+    let start = usize::from(bytes.first() == Some(&b'.'));
+    let first = *bytes.get(start)?;
+    if !(first.is_ascii_alphabetic() || first == b'_') {
+        return None;
+    }
+    let key_len = start
+        + 1
+        + bytes[start + 1..]
+            .iter()
+            .take_while(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-'))
+            .count();
+    let (key, rest) = line.split_at(key_len);
+    let rest = rest.trim_start_matches([' ', '\t']).strip_prefix(':')?;
+    Some((key, rest))
+}
+
+/// C8 to C10: reads a trimmed value. `None` for a list without its `]`.
+fn read_value(text: &str) -> Option<Value> {
+    if let Some(after) = text.strip_prefix('[') {
+        let inner = after.strip_suffix(']')?;
+        if trim(inner).is_empty() {
+            return Some(Value::List(Vec::new()));
+        }
+        let items = inner
+            .split(',')
+            .map(|part| unquote(trim(part)).to_owned())
+            .collect();
+        return Some(Value::List(items));
+    }
+    let unquoted = unquote(text);
+    if unquoted.len() == text.len()
+        && let Some(integer) = Integer::parse(text)
+    {
+        return Some(Value::Integer(integer));
+    }
+    Some(Value::String(unquoted.to_owned()))
+}
+
+/// C9: a text of two or more characters that begins and ends with the same
+/// quote character loses both; there are no escapes.
+fn unquote(text: &str) -> &str {
+    for quote in ['"', '\''] {
+        if text.chars().count() >= 2
+            && let Some(inner) = text.strip_prefix(quote).and_then(|t| t.strip_suffix(quote))
+        {
+            return inner;
+        }
+    }
+    text
 }
 
 /// Removes every leading and trailing blank (SP or HT).

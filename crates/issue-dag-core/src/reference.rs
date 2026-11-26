@@ -68,7 +68,7 @@ fn is_name(text: &str) -> bool {
 }
 
 /// `number = %x31-39 *DIGIT`, at most [`MAX_NUMBER`] (rule L1).
-pub(crate) fn parse_number(text: &str) -> Option<u32> {
+pub fn parse_number(text: &str) -> Option<u32> {
     let bytes = text.as_bytes();
     let first = *bytes.first()?;
     if !(b'1'..=b'9').contains(&first) || !bytes.iter().all(u8::is_ascii_digit) {

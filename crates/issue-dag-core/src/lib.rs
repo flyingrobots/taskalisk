@@ -1,19 +1,14 @@
 //! The `issue-dag/2` document core.
 //!
 //! A hand-written reader for the `issue-dag/2` format: the carrier
-//! ([`parse`]), validity ([`validate`]), the decoded record ([`admit`]), and
-//! the `.blocked_by` rewrite of the edge-edit contract ([`rewrite_blocked_by`]).
+//! ([`parse`]), validity ([`validate`]), the decoded record ([`admit`]).
 //! The crate performs no I/O and has no dependencies.
 #![forbid(unsafe_code)]
 #![deny(warnings, clippy::all, clippy::pedantic, clippy::nursery)]
-// RED: the stubs leave helpers unused until the reader is written.
-#![allow(dead_code)]
-
 mod carrier;
 mod label;
 mod record;
 mod reference;
-mod rewrite;
 mod validate;
 
 use std::collections::BTreeSet;
@@ -22,7 +17,6 @@ pub use carrier::{Block, Entry, Integer, Parse, Value, parse, trim};
 pub use label::Label;
 pub use record::{Kind, MeterClaim, Record, Status, TaskType, VERSION};
 pub use reference::{IssueRef, MAX_NUMBER};
-pub use rewrite::{EdgeEdit, Refusal, Rewrite, rewrite_blocked_by};
 pub use validate::{Validation, validate};
 
 /// The judgement of one body.
