@@ -307,3 +307,133 @@ fn an_unknown_revision_is_unavailable() {
         Observed::Unavailable(_)
     ));
 }
+
+#[test]
+fn a_nested_repository_whose_git_dir_is_removed_never_reads_the_outer_one() {
+    let scratch = Scratch::new("nested");
+    let (outer, _) = fixture(&scratch);
+    let inner = outer.join("inner");
+    fs::create_dir(&inner).expect("create the inner repository");
+    git(&inner, &["init", "-q"]);
+    fs::write(inner.join("i.txt"), "i\n").expect("write");
+    git(&inner, &["add", "i.txt"]);
+    git(&inner, &["commit", "-q", "-m", "inner"]);
+    let local = GitRepository::open(&inner).expect("the inner repository");
+    assert_eq!(value(local.branch_names()), vec!["main".to_owned()]);
+
+    fs::remove_dir_all(inner.join(".git")).expect("remove the inner .git");
+    // The outer repository has `main`, FEATURE and a worktree; none of it
+    // may be answered for the inner one.
+    assert!(matches!(local.branch_names(), Observed::Unavailable(_)));
+    assert!(matches!(local.branches(), Observed::Unavailable(_)));
+    assert!(matches!(local.worktrees(), Observed::Unavailable(_)));
+    assert!(matches!(
+        local.ahead_behind(FEATURE, "main"),
+        Observed::Unavailable(_)
+    ));
+}
+
+#[test]
+fn a_subdirectory_or_git_dir_of_a_repository_is_refused() {
+    let scratch = Scratch::new("subdir");
+    let (repo, _) = fixture(&scratch);
+    let sub = repo.join("plain subdirectory");
+    fs::create_dir(&sub).expect("create a subdirectory");
+    match GitRepository::open(&sub) {
+        Err(GitError::NotTopLevel { path, top_level }) => {
+            assert_eq!(path, sub);
+            assert_eq!(top_level, repo);
+        }
+        other => panic!("expected NotTopLevel, got {other:?}"),
+    }
+    assert!(GitRepository::open(repo.join(".git")).is_err());
+}
+
+#[test]
+fn a_linked_worktree_opens_at_its_top_level() {
+    let scratch = Scratch::new("linked");
+    let (_, extra) = fixture(&scratch);
+    let local = GitRepository::open(&extra).expect("the linked worktree");
+    assert_eq!(local.path(), extra.as_path());
+    assert_eq!(value(local.worktrees()).len(), 2);
+}
+
+#[test]
+fn a_revision_that_looks_like_an_option_writes_nothing() {
+    let scratch = Scratch::new("inject");
+    let (repo, _) = fixture(&scratch);
+    let local = GitRepository::open(&repo).expect("a repository");
+    let target = scratch.path().join("x");
+    let revision = format!("--output={}", path_of(&target));
+    let before = entries(scratch.path());
+    assert!(matches!(
+        local.ahead_behind(&revision, "main"),
+        Observed::Unavailable(_)
+    ));
+    assert!(!target.exists());
+    // Read as an option, git would write `<target>...main`.
+    assert!(!scratch.path().join("x...main").exists());
+    assert_eq!(entries(scratch.path()), before);
+}
+
+fn entries(dir: &Path) -> Vec<PathBuf> {
+    let mut names: Vec<PathBuf> = fs::read_dir(dir)
+        .expect("list a directory")
+        .map(|entry| entry.expect("an entry").path())
+        .collect();
+    names.sort();
+    names
+}
+
+#[test]
+fn reads_never_write_the_index() {
+    let scratch = Scratch::new("readonly");
+    let (repo, extra) = fixture(&scratch);
+    // A changed mtime makes a refreshing status rewrite the index.
+    let past = std::time::SystemTime::UNIX_EPOCH + std::time::Duration::from_hours(438_288);
+    for tracked in [repo.join("a.txt"), extra.join("b.txt")] {
+        fs::File::options()
+            .write(true)
+            .open(&tracked)
+            .expect("open a tracked file")
+            .set_modified(past)
+            .expect("touch a tracked file");
+    }
+    let index = repo.join(".git").join("index");
+    let snapshot = || {
+        (
+            fs::read(&index).expect("read the index"),
+            fs::metadata(&index)
+                .expect("stat the index")
+                .modified()
+                .expect("the index mtime"),
+        )
+    };
+    let before = snapshot();
+    // Let a rewrite show in the mtime even on a coarse clock.
+    std::thread::sleep(std::time::Duration::from_millis(1100));
+    let local = GitRepository::open(&repo).expect("a repository");
+    let _ = value(local.branch_names());
+    let _ = value(local.branches());
+    let _ = value(local.worktrees());
+    let _ = value(local.ahead_behind(FEATURE, "main"));
+    assert_eq!(snapshot(), before);
+}
+
+#[cfg(unix)]
+#[test]
+fn a_configured_fsmonitor_is_never_run() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let scratch = Scratch::new("fsmonitor");
+    let (repo, _) = fixture(&scratch);
+    let marker = scratch.path().join("fsmonitor ran");
+    let hook = scratch.path().join("fsmonitor-hook");
+    fs::write(&hook, format!("#!/bin/sh\ntouch '{}'\n", path_of(&marker))).expect("write the hook");
+    fs::set_permissions(&hook, fs::Permissions::from_mode(0o755)).expect("make it executable");
+    git(&repo, &["config", "core.fsmonitor", &path_of(&hook)]);
+    git(&repo, &["config", "core.untrackedCache", "true"]);
+    let local = GitRepository::open(&repo).expect("a repository");
+    let _ = value(local.worktrees());
+    assert!(!marker.exists(), "status ran the configured fsmonitor");
+}

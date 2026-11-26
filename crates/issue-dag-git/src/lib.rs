@@ -1,17 +1,28 @@
 //! The git adapter: the [`LocalRepository`] port answered by running `git`.
 //!
-//! Every read runs `git -C <path>` with an argument list, never a shell,
-//! and parses a machine format: `for-each-ref` with NUL-separated fields,
+//! [`GitRepository::open`] takes the top level of a work tree and records
+//! its git directory and work tree; every read then runs
+//! `git --git-dir <dir> --work-tree <tree>` with an argument list, never a
+//! shell, and never discovers a repository again. Each read parses a
+//! machine format: `for-each-ref` with NUL-separated fields,
 //! `worktree list --porcelain -z`, `status --porcelain -z` and
-//! `rev-list --left-right --count`. The variables that would point git at
-//! another repository (`GIT_DIR`, `GIT_WORK_TREE` and the like) are removed,
-//! so a run inside a hook reads the repository it was given.
+//! `rev-list --left-right --count`.
 //!
-//! It fails closed. [`GitRepository::open`] refuses a path that is not a
-//! repository, and each `read_*` method returns a [`GitError`] when git
-//! fails or answers in a shape it cannot read; the port methods answer
-//! [`Observed::Unavailable`] with that error's text, never an empty value.
-//! The binary reports a `GitError` as `git.command_failed` and exits 2.
+//! It only reads. Every call passes `--no-optional-locks`, so `status`
+//! never rewrites the index, and turns off `core.fsmonitor` and
+//! `core.untrackedCache`, so a configured monitor command never runs. Every
+//! inherited `GIT_*` variable is removed (`GIT_DIR`, `GIT_CONFIG_*`,
+//! `GIT_CEILING_DIRECTORIES`, `GIT_NO_REPLACE_OBJECTS` and the rest), so a
+//! run inside a hook, or under a caller's injected configuration, reads the
+//! repository it was given as that repository configures it.
+//!
+//! It fails closed, in two shapes. Each `read_*` method returns a
+//! [`GitError`] when git fails or answers in a shape it cannot read; a
+//! caller that needs the kind of failure (the binary, to report
+//! `git.command_failed`) calls these. The [`LocalRepository`] port carries
+//! no kind: a port method answers [`Observed::Unavailable`] with the
+//! error's text, never an empty value, and the run that reads it is
+//! incomplete (the core's `Forge` and `LocalRepository` documentation).
 
 use core::fmt;
 use std::ffi::{OsStr, OsString};
@@ -22,17 +33,15 @@ use issue_dag_core::{
     AheadBehind, Branch, BranchScope, Checkout, LocalRepository, Observed, Worktree,
 };
 
-/// The variables that select a repository other than the one at `-C`.
-const REPOSITORY_VARIABLES: &[&str] = &[
-    "GIT_DIR",
-    "GIT_WORK_TREE",
-    "GIT_INDEX_FILE",
-    "GIT_COMMON_DIR",
-    "GIT_OBJECT_DIRECTORY",
-    "GIT_ALTERNATE_OBJECT_DIRECTORIES",
-    "GIT_NAMESPACE",
-    "GIT_PREFIX",
-    "GIT_CEILING_DIRECTORIES",
+/// The options every call starts with: take no optional lock (so `status`
+/// never rewrites the index), and run no configured file-system monitor or
+/// untracked cache (a configured `core.fsmonitor` is a command).
+const READ_ONLY_OPTIONS: &[&str] = &[
+    "--no-optional-locks",
+    "-c",
+    "core.fsmonitor=false",
+    "-c",
+    "core.untrackedCache=false",
 ];
 
 /// Why a read of the local repository failed.
@@ -44,6 +53,14 @@ pub enum GitError {
         path: PathBuf,
         /// What git said.
         stderr: String,
+    },
+    /// The path is inside a work tree but is not its top level (a
+    /// subdirectory, or the `.git` directory itself).
+    NotTopLevel {
+        /// The path given.
+        path: PathBuf,
+        /// The top level of the work tree it is in, as git reports it.
+        top_level: PathBuf,
     },
     /// `git` could not be started.
     Spawn {
@@ -76,6 +93,12 @@ impl fmt::Display for GitError {
             Self::NotARepository { path, stderr } => {
                 write!(f, "{} is not a git repository: {stderr}", path.display())
             }
+            Self::NotTopLevel { path, top_level } => write!(
+                f,
+                "{} is not the top level of a work tree; the top level is {}",
+                path.display(),
+                top_level.display()
+            ),
             Self::Spawn { command, message } => {
                 write!(f, "{command} could not be started: {message}")
             }
@@ -101,32 +124,99 @@ impl fmt::Display for GitError {
 
 impl std::error::Error for GitError {}
 
+/// Where a call points git: a directory to discover from (only to open),
+/// or a recorded git directory and work tree (every read).
+#[derive(Clone, Copy)]
+enum At<'a> {
+    Discover(&'a Path),
+    Recorded {
+        git_dir: &'a Path,
+        work_tree: &'a Path,
+    },
+}
+
 /// A local repository read through `git`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct GitRepository {
-    path: PathBuf,
+    work_tree: PathBuf,
+    git_dir: PathBuf,
 }
 
 impl GitRepository {
-    /// Opens the repository at or above `path` (`git rev-parse --git-dir`).
+    /// Opens the repository whose work tree has its top level at `path`, a
+    /// main or a linked worktree
+    /// (`git rev-parse --absolute-git-dir --show-toplevel`), and records its
+    /// git directory and work tree.
+    ///
+    /// `path` must be the top level itself. A subdirectory of a work tree,
+    /// a `.git` directory and a bare repository are refused, so a plain
+    /// directory inside some other repository never opens that one. Every
+    /// later read runs against the recorded git directory and work tree
+    /// (`--git-dir`, `--work-tree`) and never discovers again: when the
+    /// git directory is gone, the read fails; it never reads a repository
+    /// above.
     ///
     /// # Errors
     ///
-    /// [`GitError::NotARepository`] when `path` is not in a repository or
-    /// does not exist; [`GitError::Spawn`] when `git` cannot be started.
+    /// [`GitError::NotARepository`] when `path` is not in a work tree, is
+    /// in a bare repository or does not exist; [`GitError::NotTopLevel`]
+    /// when it is inside a work tree but not its top level;
+    /// [`GitError::Spawn`] when `git` cannot be started;
+    /// [`GitError::Unreadable`] when git's answer cannot be read.
     pub fn open(path: impl Into<PathBuf>) -> Result<Self, GitError> {
         let path = path.into();
-        match git(&path, &["rev-parse", "--git-dir"], None) {
-            Ok(_) => Ok(Self { path }),
-            Err(GitError::Failed { stderr, .. }) => Err(GitError::NotARepository { path, stderr }),
-            Err(other) => Err(other),
+        let at = At::Discover(&path);
+        let args = ["rev-parse", "--absolute-git-dir", "--show-toplevel"];
+        let out = match git(at, &args) {
+            Ok(out) => text(at, &args, out)?,
+            Err(GitError::Failed { stderr, .. }) => {
+                return Err(GitError::NotARepository { path, stderr });
+            }
+            Err(other) => return Err(other),
+        };
+        let unreadable = |why: String| GitError::Unreadable {
+            command: command_line(at, &args),
+            why,
+        };
+        let lines: Vec<&str> = out.lines().collect();
+        let [git_dir, top_level] = lines[..] else {
+            return Err(unreadable(format!("{} lines, not 2", lines.len())));
+        };
+        let (git_dir, top_level) = (PathBuf::from(git_dir), PathBuf::from(top_level));
+        let same = match (path.canonicalize(), top_level.canonicalize()) {
+            (Ok(given), Ok(top)) => given == top,
+            (Err(error), _) | (_, Err(error)) => {
+                return Err(unreadable(format!("a path cannot be resolved: {error}")));
+            }
+        };
+        if !same {
+            return Err(GitError::NotTopLevel { path, top_level });
         }
+        Ok(Self {
+            work_tree: top_level,
+            git_dir,
+        })
     }
 
-    /// The path the repository was opened at.
+    /// The top level of the work tree, as git reported it at
+    /// [`open`](Self::open).
     #[must_use]
     pub fn path(&self) -> &Path {
-        &self.path
+        &self.work_tree
+    }
+
+    /// The git directory recorded at [`open`](Self::open); for a linked
+    /// worktree, its own directory under the main repository's.
+    #[must_use]
+    pub fn git_dir(&self) -> &Path {
+        &self.git_dir
+    }
+
+    fn at(&self) -> At<'_> {
+        At::Recorded {
+            git_dir: &self.git_dir,
+            work_tree: &self.work_tree,
+        }
     }
 
     /// The names of the local branches, in byte order.
@@ -158,9 +248,10 @@ impl GitRepository {
             "refs/heads",
             "refs/remotes",
         ];
-        let out = text(&self.path, &args, git(&self.path, &args, None)?)?;
+        let at = self.at();
+        let out = text(at, &args, git(at, &args)?)?;
         let unreadable = |why: String| GitError::Unreadable {
-            command: command_line(&self.path, &args),
+            command: command_line(at, &args),
             why,
         };
         let mut branches = Vec::new();
@@ -199,9 +290,10 @@ impl GitRepository {
     /// status, or its output cannot be read.
     pub fn read_worktrees(&self) -> Result<Vec<Worktree>, GitError> {
         let args = ["worktree", "list", "--porcelain", "-z"];
-        let out = text(&self.path, &args, git(&self.path, &args, None)?)?;
+        let at = self.at();
+        let out = text(at, &args, git(at, &args)?)?;
         let records = parse_worktrees(&out).map_err(|why| GitError::Unreadable {
-            command: command_line(&self.path, &args),
+            command: command_line(at, &args),
             why,
         })?;
         records
@@ -244,9 +336,10 @@ impl GitRepository {
             "--end-of-options",
             range.as_str(),
         ];
-        let out = text(&self.path, &args, git(&self.path, &args, None)?)?;
+        let at = self.at();
+        let out = text(at, &args, git(at, &args)?)?;
         let unreadable = || GitError::Unreadable {
-            command: command_line(&self.path, &args),
+            command: command_line(at, &args),
             why: format!("{:?} is not two counts", out.trim_end()),
         };
         let (ahead, behind) = out.trim_end().split_once('\t').ok_or_else(unreadable)?;
@@ -353,59 +446,96 @@ fn parse_worktrees(out: &str) -> Result<Vec<Record>, String> {
     Ok(records)
 }
 
-/// Whether a worktree has changes, untracked files included. Discovery is
-/// held to the worktree itself, so a worktree whose `.git` is gone is an
-/// error, never a read of the repository above it.
+/// Whether a worktree has changes, untracked files included. The call
+/// names the worktree's own `.git` (a directory, or the file a linked
+/// worktree has) and the worktree, and never discovers: a worktree whose
+/// `.git` is gone is an error, never a read of the repository above it.
 fn is_dirty(dir: &Path) -> Result<bool, GitError> {
     let args = [
-        "--no-optional-locks",
         "status",
         "--porcelain",
         "-z",
         "--untracked-files=normal",
         "--ignore-submodules=none",
     ];
-    let ceiling = dir.parent().map(Path::as_os_str);
-    Ok(!git(dir, &args, ceiling)?.is_empty())
+    let git_dir = dir.join(".git");
+    let at = At::Recorded {
+        git_dir: &git_dir,
+        work_tree: dir,
+    };
+    Ok(!git(at, &args)?.is_empty())
 }
 
-fn command_line(dir: &Path, args: &[&str]) -> String {
-    format!("git -C {} {}", dir.display(), args.join(" "))
+fn command_line(at: At<'_>, args: &[&str]) -> String {
+    let target = match at {
+        At::Discover(dir) => format!("-C {}", dir.display()),
+        At::Recorded { git_dir, work_tree } => format!(
+            "--git-dir {} --work-tree {}",
+            git_dir.display(),
+            work_tree.display()
+        ),
+    };
+    format!("git {target} {}", args.join(" "))
 }
 
-fn text(dir: &Path, args: &[&str], bytes: Vec<u8>) -> Result<String, GitError> {
+fn text(at: At<'_>, args: &[&str], bytes: Vec<u8>) -> Result<String, GitError> {
     String::from_utf8(bytes).map_err(|_| GitError::Unreadable {
-        command: command_line(dir, args),
+        command: command_line(at, args),
         why: "the output is not UTF-8".to_owned(),
     })
 }
 
-/// Runs `git -C dir args` with no shell, no prompt, a fixed locale and no
-/// repository-selecting variables; returns its standard output.
-fn git(dir: &Path, args: &[&str], ceiling: Option<&OsStr>) -> Result<Vec<u8>, GitError> {
+/// Whether an inherited variable is git's (`GIT_DIR`, `GIT_CONFIG_*`,
+/// `GIT_CEILING_DIRECTORIES`, `GIT_NO_REPLACE_OBJECTS` and every other).
+fn is_git_variable(name: &OsStr) -> bool {
+    name.as_encoded_bytes().starts_with(b"GIT_")
+}
+
+/// The command for one call: no shell, no prompt, a fixed locale, and no
+/// inherited `GIT_*` variable, so neither a hook's environment nor a
+/// caller's `GIT_CONFIG_*` chooses the repository or its configuration.
+fn command(at: At<'_>, args: &[&str], inherited: impl IntoIterator<Item = OsString>) -> Command {
     let mut command = Command::new("git");
+    for name in inherited {
+        if is_git_variable(&name) {
+            command.env_remove(name);
+        }
+    }
+    match at {
+        At::Discover(dir) => {
+            command.arg("-C").arg(dir);
+        }
+        At::Recorded { git_dir, work_tree } => {
+            command
+                .arg("--git-dir")
+                .arg(git_dir)
+                .arg("--work-tree")
+                .arg(work_tree);
+        }
+    }
     command
-        .arg("-C")
-        .arg(dir)
+        .args(READ_ONLY_OPTIONS)
         .args(args)
         .stdin(Stdio::null())
         .env("LC_ALL", "C")
         .env("GIT_TERMINAL_PROMPT", "0");
-    for variable in REPOSITORY_VARIABLES {
-        command.env_remove(variable);
-    }
-    if let Some(ceiling) = ceiling {
-        command.env("GIT_CEILING_DIRECTORIES", OsString::from(ceiling));
-    }
-    let output = command.output().map_err(|error| GitError::Spawn {
-        command: command_line(dir, args),
-        message: error.to_string(),
-    })?;
+    command
+}
+
+/// Runs one call and returns its standard output.
+fn git(at: At<'_>, args: &[&str]) -> Result<Vec<u8>, GitError> {
+    let inherited = std::env::vars_os().map(|(name, _)| name);
+    let output = command(at, args, inherited)
+        .output()
+        .map_err(|error| GitError::Spawn {
+            command: command_line(at, args),
+            message: error.to_string(),
+        })?;
     if output.status.success() {
         Ok(output.stdout)
     } else {
         Err(GitError::Failed {
-            command: command_line(dir, args),
+            command: command_line(at, args),
             status: output.status.code(),
             stderr: String::from_utf8_lossy(&output.stderr).trim().to_owned(),
         })
@@ -414,7 +544,45 @@ fn git(dir: &Path, args: &[&str], ceiling: Option<&OsStr>) -> Result<Vec<u8>, Gi
 
 #[cfg(test)]
 mod tests {
-    use super::{Checkout, Record, parse_worktrees};
+    use std::ffi::{OsStr, OsString};
+    use std::path::Path;
+
+    use super::{At, Checkout, Record, command, parse_worktrees};
+
+    #[test]
+    fn every_inherited_git_variable_is_removed() {
+        let inherited = [
+            "GIT_DIR",
+            "GIT_CONFIG_PARAMETERS",
+            "GIT_CONFIG_COUNT",
+            "GIT_CONFIG_KEY_0",
+            "GIT_CONFIG_VALUE_0",
+            "GIT_NO_REPLACE_OBJECTS",
+            "GIT_CEILING_DIRECTORIES",
+            "GIT_TERMINAL_PROMPT",
+            "PATH",
+            "HOME",
+        ];
+        let built = command(
+            At::Discover(Path::new("/r")),
+            &["status"],
+            inherited.iter().map(OsString::from),
+        );
+        let envs: Vec<(&OsStr, Option<&OsStr>)> = built.get_envs().collect();
+        for name in &inherited[..7] {
+            assert!(
+                envs.contains(&(OsStr::new(name), None)),
+                "{name} is not removed"
+            );
+        }
+        assert!(envs.contains(&(OsStr::new("GIT_TERMINAL_PROMPT"), Some(OsStr::new("0")))));
+        assert!(envs.contains(&(OsStr::new("LC_ALL"), Some(OsStr::new("C")))));
+        assert!(
+            !envs
+                .iter()
+                .any(|(name, _)| *name == "PATH" || *name == "HOME")
+        );
+    }
 
     #[test]
     fn parses_porcelain_records_with_spaces_and_reasons() {
