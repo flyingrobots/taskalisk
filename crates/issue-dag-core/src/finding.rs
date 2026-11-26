@@ -5,33 +5,13 @@
 //!
 //! The codes are tabled on [`code`].
 
-use crate::label::Label;
+use crate::label::{self, Label};
 use crate::reference::IssueRef;
 use crate::{Judgement, admit};
 
-/// Every label a document judgement can carry, in the order of its text.
-/// Each label stands at its position (checked when the crate compiles).
-pub const LABELS: [Label; 19] = [
-    Label::C4,
-    Label::C6,
-    Label::C7,
-    Label::C8,
-    Label::L1,
-    Label::L2,
-    Label::L3,
-    Label::L4,
-    Label::P3,
-    Label::V1,
-    Label::V10,
-    Label::V2,
-    Label::V3,
-    Label::V4,
-    Label::V5,
-    Label::V6,
-    Label::V7,
-    Label::V8,
-    Label::X1,
-];
+/// Every label a document judgement can carry, once each, in the order of
+/// its text. Declared with [`Label`] itself, so no label can be missing.
+pub const LABELS: [Label; label::VARIANTS] = label::ALL;
 
 /// How much a finding matters.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -71,44 +51,6 @@ pub struct Finding {
     /// Fixed text for the code. It may name a key, never a value or a line.
     pub message: &'static str,
 }
-
-/// The index of a label in [`LABELS`]. The match is exhaustive, so a new
-/// label cannot be added without a place in the list.
-const fn position(label: Label) -> usize {
-    match label {
-        Label::C4 => 0,
-        Label::C6 => 1,
-        Label::C7 => 2,
-        Label::C8 => 3,
-        Label::L1 => 4,
-        Label::L2 => 5,
-        Label::L3 => 6,
-        Label::L4 => 7,
-        Label::P3 => 8,
-        Label::V1 => 9,
-        Label::V10 => 10,
-        Label::V2 => 11,
-        Label::V3 => 12,
-        Label::V4 => 13,
-        Label::V5 => 14,
-        Label::V6 => 15,
-        Label::V7 => 16,
-        Label::V8 => 17,
-        Label::X1 => 18,
-    }
-}
-
-// LABELS holds each label at its position.
-const _: () = {
-    let mut i = 0;
-    while i < LABELS.len() {
-        assert!(
-            position(LABELS[i]) == i,
-            "LABELS is out of step with position"
-        );
-        i += 1;
-    }
-};
 
 /// The stable code of a label.
 ///
@@ -246,19 +188,9 @@ fn from_labels<'a>(
 
 #[cfg(test)]
 mod tests {
-    use super::{LABELS, Severity, from_labels, position};
+    use super::{Severity, from_labels};
     use crate::label::Label;
     use crate::reference::IssueRef;
-
-    /// LABELS lists every label once, in the order `position` gives; the
-    /// match in `position` is exhaustive, so a new label must be placed.
-    #[test]
-    fn labels_lists_every_label_at_its_position() {
-        for (i, label) in LABELS.iter().enumerate() {
-            assert_eq!(position(*label), i, "{label}");
-        }
-        assert_eq!(position(Label::X1) + 1, LABELS.len());
-    }
 
     /// Label order is not code order: `version.P3` sits between `format.L4`
     /// and `format.V1` as a label, after every `format.` code as a code.

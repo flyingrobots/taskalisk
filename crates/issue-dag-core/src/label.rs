@@ -2,12 +2,40 @@
 
 use core::fmt;
 
-/// The label of a violation or a warning, as format rule V12 assigns it.
-///
-/// Every label is the label of a normative statement of the specification;
-/// [`Label::as_str`] gives it as written there.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum Label {
+/// Declares [`Label`], its text, its list [`ALL`] and the count
+/// [`VARIANTS`] from one list, so a variant cannot exist without its entry.
+/// The list is written in the order of the labels' text, which is the
+/// derived [`Ord`].
+macro_rules! labels {
+    ($($(#[doc = $doc:literal])* $name:ident,)+) => {
+        /// The label of a violation or a warning, as format rule V12 assigns it.
+        ///
+        /// Every label is the label of a normative statement of the specification;
+        /// [`Label::as_str`] gives it as written there.
+        #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+        pub enum Label {
+            $($(#[doc = $doc])* $name,)+
+        }
+
+        impl Label {
+            /// The label as the specification writes it, such as `"V5"`.
+            #[must_use]
+            pub const fn as_str(self) -> &'static str {
+                match self {
+                    $(Self::$name => stringify!($name),)+
+                }
+            }
+        }
+
+        /// The number of labels.
+        pub const VARIANTS: usize = [$(stringify!($name)),+].len();
+
+        /// Every label, once each, in declaration order.
+        pub const ALL: [Label; VARIANTS] = [$(Label::$name),+];
+    };
+}
+
+labels! {
     /// C4: a line break the carrier does not allow.
     C4,
     /// C6: a line that is not an entry line.
@@ -46,34 +74,6 @@ pub enum Label {
     V8,
     /// X1: a `.id` that is not the address of the issue (profile rule X1).
     X1,
-}
-
-impl Label {
-    /// The label as the specification writes it, such as `"V5"`.
-    #[must_use]
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::C4 => "C4",
-            Self::C6 => "C6",
-            Self::C7 => "C7",
-            Self::C8 => "C8",
-            Self::L1 => "L1",
-            Self::L2 => "L2",
-            Self::L3 => "L3",
-            Self::L4 => "L4",
-            Self::P3 => "P3",
-            Self::V1 => "V1",
-            Self::V2 => "V2",
-            Self::V3 => "V3",
-            Self::V4 => "V4",
-            Self::V5 => "V5",
-            Self::V6 => "V6",
-            Self::V7 => "V7",
-            Self::V8 => "V8",
-            Self::V10 => "V10",
-            Self::X1 => "X1",
-        }
-    }
 }
 
 impl fmt::Display for Label {
