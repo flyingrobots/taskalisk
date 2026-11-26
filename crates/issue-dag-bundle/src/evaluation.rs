@@ -140,6 +140,17 @@ impl EvaluationRecord {
         &self.value["result"]
     }
 
+    /// The evaluator the record names.
+    #[must_use]
+    pub fn evaluator(&self) -> Evaluator {
+        let e = &self.value["evaluator"];
+        let field = |k: &str| e[k].as_str().unwrap_or_default().to_owned();
+        Evaluator {
+            name: field("name"),
+            version: field("version"),
+        }
+    }
+
     fn member(&self, name: &str) -> &Value {
         &self.value[name]
     }
@@ -186,6 +197,25 @@ impl fmt::Display for EvaluationError {
 
 impl std::error::Error for EvaluationError {}
 
+/// The evaluator that made a record and the one that replayed it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Evaluators {
+    /// The evaluator the record names.
+    pub recorded: Evaluator,
+    /// The evaluator that planned again.
+    pub replaying: Evaluator,
+}
+
+impl Evaluators {
+    /// Whether the replaying evaluator is not the recorded one, by name or
+    /// version. A difference in the result may then be the evaluator's,
+    /// not the input's.
+    #[must_use]
+    pub fn changed(&self) -> bool {
+        self.recorded != self.replaying
+    }
+}
+
 /// The outcome of replaying a record.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Replay {
@@ -193,6 +223,8 @@ pub enum Replay {
     Reproduced {
         /// The result, as compact JSON.
         result: String,
+        /// The recorded and the replaying evaluator.
+        evaluators: Evaluators,
     },
     /// The plan made again differs from the recorded result.
     Differs {
@@ -200,6 +232,9 @@ pub enum Replay {
         recorded: String,
         /// The result made again, as compact JSON.
         recomputed: String,
+        /// The recorded and the replaying evaluator, so that a difference
+        /// shows whether the evaluator changed.
+        evaluators: Evaluators,
     },
     /// The record does not retain the complete, lossless input of its run,
     /// or names a format or profile this evaluator does not implement. The
@@ -373,7 +408,10 @@ fn not_observed(o: &Observations) -> Value {
 /// [`BundleError`] when the text is not a record, or when the record
 /// contradicts the bundle it retains: its formats, profile, discovery scope
 /// or facts not observed are not the bundle's.
-pub fn replay(record_text: &str) -> Read<Replay> {
+///
+/// `evaluator` is the evaluator replaying; a result that is reproduced
+/// or differs reports it beside the one the record names.
+pub fn replay(record_text: &str, evaluator: &Evaluator) -> Read<Replay> {
     let record = EvaluationRecord::read(record_text)?;
     let retained = match slot(record.member("observations"), "observations", |v, _| {
         Ok(v.clone())
@@ -436,12 +474,20 @@ pub fn replay(record_text: &str) -> Read<Replay> {
     let recomputed =
         Value::Object(outcome_json(&outcome, &bundle.parameters.capacities)).to_string();
     let recorded = record.result().to_string();
+    let evaluators = Evaluators {
+        recorded: record.evaluator(),
+        replaying: evaluator.clone(),
+    };
     Ok(if recorded == recomputed {
-        Replay::Reproduced { result: recomputed }
+        Replay::Reproduced {
+            result: recomputed,
+            evaluators,
+        }
     } else {
         Replay::Differs {
             recorded,
             recomputed,
+            evaluators,
         }
     })
 }

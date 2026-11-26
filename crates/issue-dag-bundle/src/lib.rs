@@ -11,8 +11,8 @@ mod result;
 mod strict;
 
 pub use evaluation::{
-    EvaluationError, EvaluationRecord, Evaluator, RECORD_VERSION, Replay, evaluate, replay,
-    unretained,
+    EvaluationError, EvaluationRecord, Evaluator, Evaluators, RECORD_VERSION, Replay, evaluate,
+    replay, unretained,
 };
 pub use result::{in_result_order, outcome_json};
 

@@ -130,7 +130,8 @@ schema version under `Unreleased` is a draft and may change in place.
   them. A record is compact JSON with its members in ascending order. `evaluate` plans a bundle and
   records it; `unretained` records a run that kept no bundle, the hook for the binary's live `plan`
   (#31). `replay` takes no forge, so it plans only through `RecordedForge` over the retained bundle,
-  and reports the result reproduced or differing, byte for byte; when the bundle is not retained,
+  and reports the result reproduced or differing, byte for byte, with the recorded and the replaying
+  evaluator, so a difference shows whether the evaluator changed; when the bundle is not retained,
   is not a bundle, lacks a slot the run reads, or names a format or profile this evaluator does not
   implement, it reports replay unavailable and plans nothing. A record that contradicts its own
   bundle is refused. Every graph case of the corpus replays from its record to the same bytes. The
