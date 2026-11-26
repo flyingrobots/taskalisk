@@ -895,7 +895,11 @@ fn the_titles_and_urls_read_are_kept_to_be_shown_without_another_query() {
     // Each open pull request's URL, by number, from `gh pr list`.
     assert_eq!(
         shown.pull_request_urls,
-        BTreeMap::from([(10, "u".to_owned()), (11, "u".to_owned()), (12, "u".to_owned())])
+        BTreeMap::from([
+            (10, "u".to_owned()),
+            (11, "u".to_owned()),
+            (12, "u".to_owned())
+        ])
     );
 }
 
@@ -910,8 +914,14 @@ fn a_pull_request_url_is_shown_only_never_observed() {
     odd["prs"][0]["url"] = json!(7);
     let fake = Fake::new(&odd);
     let forge = fake.forge("o/r");
-    assert!(matches!(forge.home_open_pull_requests(), Ok(Observed::Value(_))));
-    assert!(!forge.shown().pull_request_urls.contains_key(&10), "a URL that is not text is not shown");
+    assert!(matches!(
+        forge.home_open_pull_requests(),
+        Ok(Observed::Value(_))
+    ));
+    assert!(
+        !forge.shown().pull_request_urls.contains_key(&10),
+        "a URL that is not text is not shown"
+    );
 }
 
 #[test]

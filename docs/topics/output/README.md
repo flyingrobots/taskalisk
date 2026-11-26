@@ -327,8 +327,7 @@ It differs from the Python in these ways, each tested in `crates/taskalisk/tests
   ignored. A flag's value may follow `=`. `--help` describes `plan` with the schemas of the lines
   it writes and of `parley.error` and `parley.startup.failed` (copies of the writer's, held equal
   by `tests/test_binary_schemas.py`).
-- **Gaps in the lines.** A linked pull request has no `url`: the gh adapter does not ask
-  `gh pr list` for it, and the renderer never makes one up (the schema allows its absence). An
+- **Gaps in the lines.** An
   `issue.untrusted` or `pull_request.untrusted` finding lacks its message and the trust gate's
   reasons, which the core does not keep yet (#46); those lines do not validate until it does. A
   frontmatter finding's message is the core's fixed text (see `artifact_hash` above).
@@ -342,10 +341,22 @@ It differs from the Python in these ways, each tested in `crates/taskalisk/tests
   (taskalisk-evaluation/1)`, in `detail.record`. A live run's observation bundle is not retained,
   so the record's `observations` and `not_observed` are unavailable and its replay is
   unavailable, until #59 captures the bundle. The record holds no issue body or title.
-- **Not ported from the writer.** The state-directory fallback (a `.parley` that cannot be written
-  is `startup.receipt_unwritable`, exit 3), the relocation when `.parley/.gitignore` is a user's
-  file (it is created when absent and otherwise left alone), the capture of stray output, the
-  redaction of a secret inside an object key, `--dry-run` and `--schema`.
+- **Refused where the Python relocates.** The binary has no state-directory fallback; each case is
+  a startup failure, exit 3, with no receipt. A `.parley` that cannot be written is
+  `startup.receipt_unwritable`. A receipt path that would carry a declared secret's value (the
+  working directory's path holds it) is `startup.secret_in_path`. A `.parley/.gitignore` that
+  would let `git add` stage a receipt is `startup.receipt_stageable`: one with no line `*`, or with
+  any negation (`!`), which the binary does not evaluate and so counts as one that can re-include
+  `receipts/`. The file is the user's and is left alone; the binary creates it, holding `*`, only
+  when it is absent.
+- **Redaction.** A declared secret's value is replaced by `[redacted]` in every string of every
+  line, `resolved` included: the head records the argument indexes, the JSON Pointers into
+  `resolved` and the variable names in `redacted`, and `inv` is computed over the redacted
+  `resolved`, as the Python writer does. A secret inside an object key is not redacted.
+- **Symlinks are followed**, as the Python writer follows them: `.parley`, `receipts/` and `--repo`
+  may be links. Every file the binary writes is created new (`O_EXCL`), so it never overwrites a
+  file a link points at.
+- **Not ported from the writer.** The capture of stray output, `--dry-run` and `--schema`.
 
 ## Conformance
 

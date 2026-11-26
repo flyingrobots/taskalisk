@@ -52,6 +52,10 @@ pub struct Shown {
     pub titles: BTreeMap<IssueRef, String>,
     /// The web URL (`html_url`) of each issue read.
     pub urls: BTreeMap<IssueRef, String>,
+    /// The URL of each open pull request of the home repository, by
+    /// number, as `gh pr list` gave it. Never in the observations, so the
+    /// bundle and the corpus digest do not change.
+    pub pull_request_urls: BTreeMap<u64, String>,
 }
 
 impl Shown {
@@ -253,11 +257,20 @@ impl Forge for GhForge {
     fn home_open_pull_requests(&self) -> Lookup<Vec<PullRequest>> {
         let cached = self.read.borrow().home_open_pull_requests.clone();
         let slot = cached.unwrap_or_else(|| {
-            self.settle(read::home_open_pull_requests(
-                &self.runner,
-                &self.home,
-                self.limits,
-            ))
+            let read =
+                read::home_open_pull_requests(&self.runner, &self.home, self.limits).map(|pulls| {
+                    let mut shown = self.shown.borrow_mut();
+                    pulls
+                        .into_iter()
+                        .map(|(pull, url)| {
+                            if let Some(url) = url {
+                                shown.pull_request_urls.insert(pull.number, url);
+                            }
+                            pull
+                        })
+                        .collect()
+                });
+            self.settle(read)
         });
         self.read.borrow_mut().home_open_pull_requests = Some(slot.clone());
         Ok(slot)

@@ -312,8 +312,33 @@ impl<'w> Run<'w> {
             ),
             remedy: "make .parley writable, or run from a writable directory".to_owned(),
         };
+        // Every path a line names is under the receipt directory; one that
+        // carries a declared secret cannot be printed (the Python writer
+        // relocates first, and refuses only when every location carries it).
+        let shown = receipt_dir.to_string_lossy();
+        if start.secrets.iter().any(|s| shown.contains(s.as_str())) {
+            return Err(StartupFailure {
+                code: "startup.secret_in_path",
+                problem: format!(
+                    "the receipt path {shown} would carry a declared secret value, so no line can name it"
+                ),
+                remedy: "run from a directory whose path does not contain the secret".to_owned(),
+            });
+        }
+        fs::create_dir_all(&parley).map_err(|e| unwritable(&e))?;
+        if let Some(why) = hygiene(&parley).map_err(|e| unwritable(&e))? {
+            return Err(StartupFailure {
+                code: "startup.receipt_stageable",
+                problem: format!("{why}; git add would stage a receipt"),
+                remedy:
+                    "make .parley/.gitignore the one line *, or remove it so the writer creates it"
+                        .to_owned(),
+            });
+        }
         fs::create_dir_all(&receipt_dir).map_err(|e| unwritable(&e))?;
-        hygiene(&parley).map_err(|e| unwritable(&e))?;
+        let mut resolved = start.resolved;
+        let mut resolved_found = Vec::new();
+        scrub(&mut resolved, &start.secrets, "", &mut resolved_found);
         let mut id = ulid(now_ms());
         for _ in 0..16 {
             if !start.secrets.iter().any(|s| id.contains(s.as_str())) {
@@ -333,7 +358,7 @@ impl<'w> Run<'w> {
             command: start.command.to_owned(),
             id,
             seq: 0,
-            resolved: start.resolved,
+            resolved,
             inputs: start.inputs,
             stdout,
             stderr,
@@ -364,6 +389,7 @@ impl<'w> Run<'w> {
             &start.argv,
             start.effects,
             &start.secret_names,
+            &resolved_found,
         );
         run.retain(start.tool, start.retention);
         Ok(run)
@@ -390,6 +416,7 @@ impl<'w> Run<'w> {
         argv: &[String],
         effects: Value,
         secret_names: &[String],
+        resolved_found: &[String],
     ) {
         let mut effects = effects;
         effects["bookkeeping"] = self.bookkeeping.clone();
@@ -412,6 +439,11 @@ impl<'w> Run<'w> {
                 .filter_map(|p| p.trim_start_matches('/').parse().ok())
                 .collect();
             redacted.insert("argv".into(), json!(indexes));
+        }
+        if !resolved_found.is_empty() {
+            // Pointers into the already-scrubbed `resolved`, as the Python
+            // writer records them.
+            redacted.insert("resolved".into(), json!(resolved_found));
         }
         if !secret_names.is_empty() {
             redacted.insert("env".into(), json!(secret_names));
@@ -807,13 +839,34 @@ fn write(sink: &mut dyn Write, text: &str) -> bool {
 
 /// `.parley/.gitignore` holding `*`, created when absent and never
 /// overwritten (spec 5.2).
-fn hygiene(parley: &Path) -> std::io::Result<()> {
+///
+/// `Some(why)` when the file is a user's that would let git stage a
+/// receipt: it has no line `*`, or it has a negation (`!`), which this
+/// writer does not evaluate and so counts as one that can re-include
+/// `receipts/`. The file is then left alone and the run refused, where the
+/// Python writer relocates the receipt to the state directory.
+fn hygiene(parley: &Path) -> std::io::Result<Option<String>> {
     let path = parley.join(".gitignore");
     match OpenOptions::new().write(true).create_new(true).open(&path) {
-        Ok(mut file) => file.write_all(b"*\n"),
-        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => Ok(()),
-        Err(e) => Err(e),
+        Ok(mut file) => return file.write_all(b"*\n").map(|()| None),
+        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
+        Err(e) => return Err(e),
     }
+    let text = fs::read_to_string(&path)?;
+    let lines: Vec<&str> = text.lines().map(|l| l.trim_end_matches('\r')).collect();
+    Ok(if lines.contains(&"*") {
+        lines.iter().find(|l| l.starts_with('!')).map(|negation| {
+            format!(
+                "{} has a negation, {negation}, that can re-include receipts/",
+                path.display()
+            )
+        })
+    } else {
+        Some(format!(
+            "{} exists without a line consisting of *",
+            path.display()
+        ))
+    })
 }
 
 fn first_line(path: &Path) -> Option<String> {

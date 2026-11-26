@@ -321,13 +321,20 @@ schema version under `Unreleased` is a draft and may change in place.
   and no plan; a cycle, an unresolved prerequisite or invalid frontmatter exits 2 after the plan's
   lines; a sink failure exits 4. Every plan records its evaluation (`taskalisk-evaluation/1`, from
   `issue-dag-bundle`'s `unretained`) as a receipt step; the live bundle is not retained, so its
-  replay is unavailable until #59. Against `tests/fake_gh.py` its result lines equal the Python's
-  on the same backlog but for two gaps: a linked pull request carries no `url`, because the gh
-  adapter does not ask `gh pr list` for one, and an untrusted issue's or pull request's finding
-  lacks the trust gate's reasons (#46), so those lines do not validate yet. A live run on this
+  replay is unavailable until #59. A declared secret's value is redacted from `resolved` too,
+  before the head and `inv`, with its pointers in `redacted.resolved`. Where the Python writer
+  relocates a receipt, the binary refuses to start (exit 3): `startup.secret_in_path` when the
+  working directory's path holds a token's value, `startup.receipt_stageable` when a user's
+  `.parley/.gitignore` has no line `*` or has a negation. A plan the core makes while the gh
+  adapter recorded a failed read exits 2 with the failures and no plan. Against
+  `tests/fake_gh.py` its result lines equal the Python's on the same backlog but for one gap: an
+  untrusted issue's or pull request's finding lacks the trust gate's reasons (#46), so those lines
+  do not validate yet. A live run on this
   repository's backlog (`crates/taskalisk/tests/live.rs`, opt-in) gives the Python's outcome,
   frontier, batch and metrics, with no untrusted issue. `issue-dag-gh` now keeps each issue's title
-  and URL from the answers it already has (`GhForge::shown`), runs `gh` in a given directory
+  and URL from the answers it already has, and each open pull request's URL, now asked of
+  `gh pr list` (`url` joins its `--json` fields), in `GhForge::shown`; the URL is shown only,
+  never in `PullRequest`, so the bundle format and the corpus digest do not change. It runs `gh` in a given directory
   (`current_dir`), and resolves a directory's repository (`repository_of`). The skill still runs
   the Python.
 

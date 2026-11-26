@@ -21,7 +21,8 @@ pub const EDIT_HISTORY_QUERY: &str = "query($owner:String!,$name:String!,$number
 pub const CODEOWNERS_PATHS: [&str; 3] = [".github/CODEOWNERS", "CODEOWNERS", "docs/CODEOWNERS"];
 
 /// The fields `gh pr list` is asked for.
-const PULL_REQUEST_FIELDS: &str = "number,isDraft,closingIssuesReferences,author,isCrossRepository";
+const PULL_REQUEST_FIELDS: &str =
+    "number,isDraft,closingIssuesReferences,author,isCrossRepository,url";
 
 fn args(items: &[&str]) -> Vec<String> {
     items.iter().map(|item| (*item).to_owned()).collect()
@@ -168,12 +169,14 @@ pub fn home_open_issues(
     Ok(issues)
 }
 
-/// The open pull requests of `home` (bundle rule OB7).
+/// The open pull requests of `home` (bundle rule OB7), each with its URL
+/// when `gh` gave one as text: shown only, never observed, so it is not
+/// part of [`PullRequest`] or of a bundle.
 pub fn home_open_pull_requests(
     runner: &Runner,
     home: &Repo,
     limits: Limits,
-) -> Result<Vec<PullRequest>, GhError> {
+) -> Result<Vec<(PullRequest, Option<String>)>, GhError> {
     let source = "gh pr list";
     let limit = limits.pull_requests.to_string();
     let out = runner.run_strict(
@@ -203,7 +206,11 @@ pub fn home_open_pull_requests(
     }
     items
         .iter()
-        .map(|item| pull_request(source, home, object(source, item, "a pull request")?))
+        .map(|item| {
+            let item = object(source, item, "a pull request")?;
+            let url = item.get("url").and_then(Value::as_str).map(str::to_owned);
+            Ok((pull_request(source, home, item)?, url))
+        })
         .collect()
 }
 

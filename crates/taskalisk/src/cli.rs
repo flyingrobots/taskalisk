@@ -644,6 +644,7 @@ fn display(
     let mut display = Display {
         titles: shown.titles,
         urls: shown.urls,
+        pull_request_urls: shown.pull_request_urls,
         ..Display::default()
     };
     let home = &parameters.home;
@@ -844,7 +845,26 @@ fn plan_live(run: &mut Run<'_>, arguments: &Arguments, repo_dir: &Path) {
         }
     };
     record(run, &parameters, &outcome);
-    match &outcome {
+    conclude(run, &parameters, &outcome, &failures, &display);
+}
+
+/// The lines of an outcome: a plan's results and errors, or the errors of
+/// a run that has no plan. A plan the core made while the gh adapter
+/// recorded a failed read is not trusted: the failures are reported and no
+/// plan is written (fail closed).
+fn conclude(
+    run: &mut Run<'_>,
+    parameters: &Parameters,
+    outcome: &Outcome,
+    failures: &[GhError],
+    display: &Display,
+) {
+    match outcome {
+        Outcome::Invalid { .. } | Outcome::Planned { .. } if !failures.is_empty() => {
+            for failure in failures {
+                Failure::gh(failure).report(run);
+            }
+        }
         Outcome::Rejected(rejection) => reject(run, rejection),
         Outcome::Incomplete { unavailable } => {
             if failures.is_empty() {
@@ -856,12 +876,12 @@ fn plan_live(run: &mut Run<'_>, arguments: &Arguments, repo_dir: &Path) {
                     Some(json!({"source": "gh", "error": unavailable, "phase": "discovery"})),
                 );
             }
-            for failure in &failures {
+            for failure in failures {
                 Failure::gh(failure).report(run);
             }
         }
         Outcome::Invalid { .. } | Outcome::Planned { .. } => {
-            match render::lines(&parameters, &outcome, Some(&display)) {
+            match render::lines(parameters, outcome, Some(display)) {
                 Ok(lines) => {
                     for line in &lines {
                         run.result(line.clone());
@@ -954,7 +974,7 @@ mod tests {
         std::fs::create_dir_all(&dir).expect("a directory");
         let home = Repo::parse("o/r").expect("a repository");
         let parameters = Parameters {
-            home: home.clone(),
+            home,
             roots: Vec::new(),
             read_scope: ReadScope {
                 owners: BTreeSet::from(["o".to_owned()]),
@@ -983,7 +1003,13 @@ mod tests {
             retention: 50,
         };
         let mut run = Run::start(start, &mut out, &mut err).expect("a run");
-        conclude(&mut run, &parameters, outcome, failures, &Display::default());
+        conclude(
+            &mut run,
+            &parameters,
+            outcome,
+            failures,
+            &Display::default(),
+        );
         let status = run.end();
         let _ = std::fs::remove_dir_all(&dir);
         (status, String::from_utf8(out).expect("UTF-8"))
@@ -1004,7 +1030,10 @@ mod tests {
         };
         let (status, out) = concluded(&planned, &[failed]);
         assert_eq!(status, 2, "{out}");
-        assert!(!out.contains("\"taskalisk.plan\""), "no plan from a failed read: {out}");
+        assert!(
+            !out.contains("\"taskalisk.plan\""),
+            "no plan from a failed read: {out}"
+        );
     }
 
     fn strings(items: &[&str]) -> Vec<String> {

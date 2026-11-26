@@ -786,7 +786,13 @@ fn a_token_given_as_a_trusted_login_is_redacted_from_the_question() {
     let run = with_token(
         &fixture,
         &fixture.dir.join("trust"),
-        &["plan", "--repo", repo.to_str().expect("UTF-8"), "--trust", TOKEN],
+        &[
+            "plan",
+            "--repo",
+            repo.to_str().expect("UTF-8"),
+            "--trust",
+            TOKEN,
+        ],
     );
     assert_eq!(run.status(), 0, "{}", run.explain());
     assert_no_token(&run);
@@ -807,12 +813,21 @@ fn a_token_inside_a_root_is_redacted_from_the_question_and_the_error() {
     let run = with_token(
         &fixture,
         &fixture.dir.join("root"),
-        &["plan", "--repo", repo.to_str().expect("UTF-8"), "--root", &root],
+        &[
+            "plan",
+            "--repo",
+            repo.to_str().expect("UTF-8"),
+            "--root",
+            &root,
+        ],
     );
     assert_eq!(run.status(), 2, "{}", run.explain());
     assert_no_token(&run);
     assert!(redacted_resolved(&run).contains(&json!("/question/roots/0")));
-    assert_eq!(of(&run.stderr(), "parley.error")[0]["code"], "root.out_of_scope");
+    assert_eq!(
+        of(&run.stderr(), "parley.error")[0]["code"],
+        "root.out_of_scope"
+    );
 }
 
 #[test]
@@ -822,10 +837,28 @@ fn a_token_inside_the_repository_path_is_redacted_from_the_question() {
     fs::create_dir_all(&repo).expect("a directory");
     for args in [
         &["init", "-q", "-b", "main"][..],
-        &["-c", "commit.gpgsign=false", "-c", "user.name=F", "-c", "user.email=f@example.invalid",
-          "commit", "-q", "--allow-empty", "-m", "base"],
+        &[
+            "-c",
+            "commit.gpgsign=false",
+            "-c",
+            "user.name=F",
+            "-c",
+            "user.email=f@example.invalid",
+            "commit",
+            "-q",
+            "--allow-empty",
+            "-m",
+            "base",
+        ],
     ] {
-        assert!(Command::new("git").args(args).current_dir(&repo).status().expect("git").success());
+        assert!(
+            Command::new("git")
+                .args(args)
+                .current_dir(&repo)
+                .status()
+                .expect("git")
+                .success()
+        );
     }
     let run = with_token(
         &fixture,
@@ -860,7 +893,10 @@ fn a_token_in_the_working_directory_refuses_the_run() {
 fn a_parley_directory_git_would_stage_refuses_the_run() {
     let fixture = Fixture::new("plan_state()");
     let repo = fixture.repo();
-    for (n, gitignore) in ["receipts/old.jsonl\n", "*\n!receipts/\n", ""].iter().enumerate() {
+    for (n, gitignore) in ["receipts/old.jsonl\n", "*\n!receipts/\n", ""]
+        .iter()
+        .enumerate()
+    {
         let cwd = fixture.dir.join(format!("stageable-{n}"));
         fs::create_dir_all(cwd.join(".parley")).expect("a directory");
         fs::write(cwd.join(".parley/.gitignore"), gitignore).expect("a .gitignore");
