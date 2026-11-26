@@ -108,6 +108,14 @@ mod tests {
         Label::X1,
     ];
 
+    /// The test list and the crate's list hold the same labels.
+    #[test]
+    fn all_is_the_crate_list() {
+        let mut sorted = ALL;
+        sorted.sort_unstable();
+        assert_eq!(sorted, crate::LABELS);
+    }
+
     /// A set of labels iterates in the ascending order corpus rule CC5 writes
     /// them in: the order of their text, so `V10` comes before `V2`.
     #[test]

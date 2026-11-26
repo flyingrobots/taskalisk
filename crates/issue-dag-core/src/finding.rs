@@ -194,3 +194,30 @@ pub fn findings(judgement: &Judgement, address: &IssueRef) -> Vec<Finding> {
     found.sort();
     found
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{LABELS, Severity, from_labels, position};
+    use crate::label::Label;
+    use crate::reference::IssueRef;
+
+    /// LABELS lists every label once, in the order `position` gives; the
+    /// match in `position` is exhaustive, so a new label must be placed.
+    #[test]
+    fn labels_lists_every_label_at_its_position() {
+        for (i, label) in LABELS.iter().enumerate() {
+            assert_eq!(position(*label), i, "{label}");
+        }
+        assert_eq!(position(Label::X1) + 1, LABELS.len());
+    }
+
+    /// Label order is not code order: `version.P3` sits between `format.L4`
+    /// and `format.V1` as a label, after every `format.` code as a code.
+    #[test]
+    fn findings_come_out_in_code_text_order() {
+        let subject = IssueRef::parse("o/r#1").expect("a reference");
+        let found = from_labels(&subject, &[Label::P3, Label::V1], Severity::Error);
+        let codes: Vec<&str> = found.iter().map(|f| f.code).collect();
+        assert_eq!(codes, ["format.V1", "version.P3"]);
+    }
+}

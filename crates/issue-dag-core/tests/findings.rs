@@ -8,9 +8,7 @@
 use std::fs;
 use std::path::Path;
 
-use issue_dag_core::{
-    Finding, IssueRef, Judgement, LABELS, Label, Severity, admit, code, findings,
-};
+use issue_dag_core::{Finding, IssueRef, LABELS, Label, Severity, code, findings};
 
 /// Marker text placed in the values of every fixture.
 const MARK: &str = "ZQXMARK";
@@ -181,8 +179,7 @@ fn fixtures() -> Vec<Fixture> {
 }
 
 fn judge(body: &str) -> Vec<Finding> {
-    let address = address();
-    findings(&admit(body, Some(&address)), &address)
+    findings(body, &address())
 }
 
 fn codes(found: &[Finding]) -> Vec<&'static str> {
@@ -303,14 +300,11 @@ fn findings_of_several_documents_sort_by_subject_then_code() {
     let one = address();
     let two = IssueRef::parse("o/r#2").expect("a reference");
     let mut all = findings(
-        &admit(
-            &task(&[
-                (".id", Some(".id: o/r#2")),
-                (".status", Some(".status: x")),
-                (".kind", None),
-            ]),
-            Some(&two),
-        ),
+        &task(&[
+            (".id", Some(".id: o/r#2")),
+            (".status", Some(".status: x")),
+            (".kind", None),
+        ]),
         &two,
     );
     all.extend(judge(&task(&[
@@ -341,18 +335,19 @@ fn two_runs_give_the_same_report() {
 }
 
 #[test]
-fn the_subject_is_the_id_of_a_valid_document_and_the_address_otherwise() {
-    // Valid, judged without the address: the subject is the `.id`.
-    let body = task(&[
-        (".id", Some(".id: O/R#5")),
+fn the_subject_is_always_the_address() {
+    // Valid: the subject is the address the caller named.
+    let found = judge(&task(&[
+        (".id", Some(".id: O/R#1")),
         (".size_hours", Some(".size_hours: 9")),
-    ]);
-    let judgement = admit(&body, None);
-    assert!(matches!(judgement, Judgement::Valid { .. }));
-    let found = findings(&judgement, &address());
-    assert_eq!(found.len(), 1);
-    assert_eq!(found[0].subject.to_string(), "o/r#5");
-    // Invalid: `.id` may be the fault, so the subject is the address.
+    ]));
+    assert_eq!(codes(&found), ["format.V10"]);
+    assert_eq!(found[0].subject, address());
+    // A `.id` naming another issue: X1 runs, filed under the address.
+    let found = judge(&task(&[(".id", Some(".id: o/r#5"))]));
+    assert_eq!(codes(&found), ["profile.X1"]);
+    assert_eq!(found[0].subject, address());
+    // Invalid `.id`: the subject is the address.
     let found = judge(&task(&[(".id", Some(".id: ZQXMARK"))]));
     assert_eq!(codes(&found), ["format.L1"]);
     assert_eq!(found[0].subject, address());
