@@ -187,7 +187,12 @@ state and the SHA-256 of its title and body, never the text; a body never
 enters a receipt. The receipt also copies every result line, so it holds the
 titles of trusted issues, as stdout does. An untrusted blocker appears only
 as the placeholder `(untrusted issue)` with its reference, so a dependent's
-blocked state stays visible.
+blocked state stays visible. The Rust binary's `plan --capture-bundle`
+(flyingrobots/taskalisk#59) writes the observation bundle, which does hold
+the bodies of trusted issues, to a local file beside the receipt under
+`.parley/.gitignore`, with declared secrets redacted; an untrusted issue's
+body is never read (C15), so it is never in a bundle. Tested in
+`crates/taskalisk/tests/replay.rs`.
 
 Inventory applies no trust gate. It is the read-only listing an agent takes
 before choosing work (the skill's Workflow step 1), and it lists every open

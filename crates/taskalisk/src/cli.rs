@@ -14,6 +14,14 @@
 //! flag of the Python's, and every other command, is refused before the run
 //! starts (exit 3), never ignored.
 //!
+//! Its own flags capture and replay a plan's observations
+//! (flyingrobots/taskalisk#59, [`crate::replay`]): `--capture-bundle`
+//! saves the bundle a live plan was made from; `--from-bundle FILE` and
+//! `--from-record FILE` plan from a bundle or an evaluation record, as
+//! `--from-github` plans from GitHub, with no `gh` or `git` read; and
+//! `--offline` disables those reads, so that a run with no recorded source
+//! is an error (exit 2) rather than a live read.
+//!
 //! Exit statuses: 0 success, 2 a reported error, 3 a usage error, 4 an
 //! output or receipt sink failure.
 
@@ -24,16 +32,17 @@ use std::path::{Component, Path, PathBuf};
 
 use issue_dag_bundle::{Evaluator, unretained};
 use issue_dag_core::{
-    Identity, IssueRef, IssueState, Observations, Observed, Outcome, Parameters, ReadScope,
-    Rejection, Repo, TRUST_POLICY, TrustParameters, codeowners_persons, is_name, plan,
+    Identity, IssueRef, IssueState, NotFound, Observations, Observed, Outcome, Parameters,
+    ReadScope, Rejection, Repo, TRUST_POLICY, TrustParameters, codeowners_persons, is_name, plan,
 };
-use issue_dag_gh::{GhError, GhForge, repository_of};
+use issue_dag_gh::{GhError, GhForge, Shown, repository_of};
 use issue_dag_git::{GitError, GitRepository};
 use serde_json::{Value, json};
 
 use crate::edit;
 use crate::parley::{self, Run, Start, StartupFailure, schemas};
 use crate::render::{self, Display};
+use crate::replay::{self, Source};
 use crate::{human, sha256};
 
 /// The tool's name in every line and receipt: the Python's, because this
@@ -75,6 +84,21 @@ const VALUE_FLAGS: [&str; 12] = [
     "--trust",
     "--trust-owner",
     "--trust-repo",
+];
+/// This binary's own flags that take a value: the recorded sources of a
+/// replay (flyingrobots/taskalisk#59). The Python has none.
+const OWN_VALUE_FLAGS: [&str; 2] = ["--from-bundle", "--from-record"];
+/// The flags whose values a bundle already records, refused in a replay.
+const ANSWERED_BY_THE_BUNDLE: [&str; 9] = [
+    "--repo",
+    "--root",
+    "--sem-capacity",
+    "--trust",
+    "--trust-owner",
+    "--trust-repo",
+    "--trust-codeowners",
+    "--from-github",
+    "--capture-bundle",
 ];
 /// The Python's flags this binary refuses: the core or the binary cannot
 /// honour them yet.
@@ -160,6 +184,23 @@ pub(crate) struct Arguments {
     pub(crate) edge: Option<edit::Request>,
     /// `--reason`, recorded with an edit.
     pub(crate) reason: Option<String>,
+    /// `--from-bundle` or `--from-record`, and its file.
+    replay: Option<(Source, String)>,
+    /// The flags given, by name: `--capture-bundle` and `--offline` are read
+    /// from here, and a replay refuses those its bundle answers.
+    given: BTreeSet<String>,
+}
+
+impl Arguments {
+    /// `--capture-bundle`: save the bundle a live plan was made from.
+    fn capture_bundle(&self) -> bool {
+        self.given.contains("--capture-bundle")
+    }
+
+    /// `--offline`: no `gh` or `git` read.
+    fn offline(&self) -> bool {
+        self.given.contains("--offline")
+    }
 }
 
 fn usage(problem: impl Into<String>) -> StartupFailure {
@@ -196,11 +237,8 @@ fn command(args: &[String]) -> (Option<String>, Vec<String>, bool) {
     while i < args.len() {
         let (flag, value) = split(&args[i]);
         if flag.starts_with('-') {
-            i += if VALUE_FLAGS.contains(&flag) && value.is_none() {
-                2
-            } else {
-                1
-            };
+            let takes_value = VALUE_FLAGS.contains(&flag) || OWN_VALUE_FLAGS.contains(&flag);
+            i += if takes_value && value.is_none() { 2 } else { 1 };
             continue;
         }
         if COMMANDS.contains(&flag) {
@@ -213,7 +251,7 @@ fn command(args: &[String]) -> (Option<String>, Vec<String>, bool) {
     let has = |name: &str| args.iter().any(|a| split(a).0 == name);
     let inferred = if has("--add-edge") || has("--remove-edge") {
         "edit"
-    } else if has("--from-github") {
+    } else if has("--from-github") || OWN_VALUE_FLAGS.iter().any(|f| has(f)) {
         "plan"
     } else if has("--verify-dag") {
         "verify"
@@ -260,14 +298,18 @@ fn parse(raw: &[String]) -> Result<Arguments, StartupFailure> {
         if REFUSED.contains(&flag) {
             return Err(unsupported(flag));
         }
-        if matches!(flag, "--from-github" | "--trust-codeowners") {
+        parsed.given.insert(flag.to_owned());
+        if matches!(
+            flag,
+            "--from-github" | "--trust-codeowners" | "--capture-bundle" | "--offline"
+        ) {
             if inline.is_some() {
                 return Err(usage(format!("{flag} takes no value")));
             }
             parsed.trust_codeowners |= flag == "--trust-codeowners";
             continue;
         }
-        if !VALUE_FLAGS.contains(&flag) {
+        if !VALUE_FLAGS.contains(&flag) && !OWN_VALUE_FLAGS.contains(&flag) {
             return Err(usage(if flag.starts_with('-') {
                 format!("unrecognized argument {flag}; every flag is spelled in full")
             } else {
@@ -292,6 +334,8 @@ fn parse(raw: &[String]) -> Result<Arguments, StartupFailure> {
             "--trust-owner" => parsed.trust_owners.push(value),
             "--add-edge" | "--remove-edge" => edges.push((flag == "--add-edge", value)),
             "--reason" => parsed.reason = Some(value),
+            "--from-bundle" => parsed.replay = Some((Source::Bundle, value)),
+            "--from-record" => parsed.replay = Some((Source::Record, value)),
             _ => parsed.trust_repos.push(value),
         }
     }
@@ -306,6 +350,7 @@ fn parse(raw: &[String]) -> Result<Arguments, StartupFailure> {
     if parsed.command == "edit" {
         parsed.edge = Some(edit::Request::parse(&edges).map_err(usage)?);
     }
+    contradictions(&parsed, &rest)?;
     if capacities(&parsed.capacities).is_none() {
         return Err(usage("--sem-capacity takes name=N with N >= 1"));
     }
@@ -322,6 +367,43 @@ fn parse(raw: &[String]) -> Result<Arguments, StartupFailure> {
         )));
     }
     Ok(parsed)
+}
+
+/// The capture and replay flags that contradict each other or the run
+/// parameters a recorded bundle already holds (flyingrobots/taskalisk#59).
+fn contradictions(parsed: &Arguments, rest: &[String]) -> Result<(), StartupFailure> {
+    if parsed.command == "edit"
+        && (parsed.replay.is_some() || parsed.offline() || parsed.capture_bundle())
+    {
+        return Err(usage(
+            "--from-bundle, --from-record, --offline and --capture-bundle belong to plan: an edit reads GitHub live and writes once",
+        ));
+    }
+    let sources = rest
+        .iter()
+        .filter(|a| OWN_VALUE_FLAGS.contains(&split(a).0))
+        .count();
+    if sources > 1 {
+        return Err(usage(
+            "give one recorded source: one --from-bundle or one --from-record",
+        ));
+    }
+    if let Some((source, _)) = &parsed.replay
+        && let Some(flag) = ANSWERED_BY_THE_BUNDLE
+            .iter()
+            .find(|f| parsed.given.contains(**f))
+    {
+        return Err(usage(format!(
+            "{flag} cannot be given with {}: the recorded bundle holds the run's repository, roots, trust and capacities, and a replay reads nothing live",
+            source.flag()
+        )));
+    }
+    if parsed.offline() && parsed.capture_bundle() {
+        return Err(usage(
+            "--capture-bundle captures a live read, which --offline disables",
+        ));
+    }
+    Ok(())
 }
 
 /// `name=N` with `N >= 1`, each; `None` when one is not.
@@ -371,15 +453,24 @@ pub fn main(args: &[OsString], cwd: &Path, stdout: &mut dyn Write, stderr: &mut 
         }
     };
     let repo_dir = cwd.join(arguments.repo.as_deref().unwrap_or("."));
-    let resolved = if arguments.writer.help {
-        json!({"discovery": "help", "command": arguments.command})
-    } else {
-        resolved(&arguments, cwd, &repo_dir)
+    let recorded = arguments
+        .replay
+        .as_ref()
+        .map(|(source, file)| (*source, cwd.join(file)));
+    let resolved = match &recorded {
+        _ if arguments.writer.help => {
+            json!({"discovery": "help", "command": arguments.command})
+        }
+        Some((source, file)) => json!({
+            "command": "plan",
+            "question": {source.flag().trim_start_matches("--from-"): relative(file, cwd)},
+        }),
+        None => resolved(&arguments, cwd, &repo_dir),
     };
-    let inputs = if arguments.writer.help {
-        Vec::new()
-    } else {
-        vec![json!({"path": OBSERVATIONS_INPUT, "role": "observations"})]
+    let inputs = match &recorded {
+        _ if arguments.writer.help => Vec::new(),
+        Some((_, file)) => vec![json!({"path": relative(file, cwd), "role": "observations"})],
+        None => vec![json!({"path": OBSERVATIONS_INPUT, "role": "observations"})],
     };
     let start = Start {
         tool: TOOL,
@@ -391,7 +482,7 @@ pub fn main(args: &[OsString], cwd: &Path, stdout: &mut dyn Write, stderr: &mut 
             .collect(),
         resolved,
         inputs,
-        effects: effects(arguments.command),
+        effects: effects(&arguments, cwd),
         secrets: secrets.clone(),
         secret_names,
         human: arguments
@@ -416,19 +507,50 @@ pub fn main(args: &[OsString], cwd: &Path, stdout: &mut dyn Write, stderr: &mut 
                 None,
             );
         }
-        match &arguments.edge {
-            Some(request) => edit::edit_live(&mut run, &arguments, request, &repo_dir),
-            None => plan_live(&mut run, &arguments, &repo_dir),
+        match recorded {
+            Some((source, file)) => replay::replay(&mut run, source, &file),
+            None if arguments.offline() => run.error(
+                "plan.reads_disabled",
+                "--offline disables the gh and git reads, and no recorded source was given",
+                Some("add --from-bundle FILE or --from-record FILE, or drop --offline to read GitHub"),
+                Some(false),
+                Some(json!({"phase": "discovery"})),
+            ),
+            None => match &arguments.edge {
+                Some(request) => edit::edit_live(&mut run, &arguments, request, &repo_dir),
+                None => plan_live(&mut run, &arguments, &repo_dir),
+            },
         }
     }
     run.end()
 }
 
-fn effects(command: &str) -> Value {
-    if command == "edit" {
+/// What the run reads and writes: a live plan reads GitHub and git, and
+/// with `--capture-bundle` writes its bundle and record beside the receipt;
+/// a replay reads its file alone, and `--offline` reads nothing.
+fn effects(arguments: &Arguments, cwd: &Path) -> Value {
+    if arguments.command == "edit" {
         return edit::effects(&READS);
     }
-    json!({"reads": READS, "writes": [], "network": true, "idempotent": true})
+    match &arguments.replay {
+        Some((_, file)) => json!({
+            "reads": [relative(&cwd.join(file), cwd)], "writes": [], "network": false, "idempotent": true,
+        }),
+        None if arguments.offline() => {
+            json!({"reads": [], "writes": [], "network": false, "idempotent": true})
+        }
+        None => {
+            let writes: &[&str] = if arguments.capture_bundle() {
+                &[
+                    ".parley/receipts/<run>/bundle.json",
+                    ".parley/receipts/<run>/evaluation.json",
+                ]
+            } else {
+                &[]
+            };
+            json!({"reads": READS, "writes": writes, "network": true, "idempotent": true})
+        }
+    }
 }
 
 /// The resolved question: what the run was asked, with no clock, path
@@ -513,7 +635,11 @@ fn help(run: &mut Run<'_>, command: &str) {
             json!({"id": id, "version": version})
         })
         .collect();
-    let mut effects = effects(command);
+    let mut effects = if command == "edit" {
+        edit::effects(&READS)
+    } else {
+        effects(&Arguments::default(), Path::new("."))
+    };
     effects["bookkeeping"] = run.bookkeeping();
     run.describe(
         json!({"event": "command", "name": command,
@@ -626,7 +752,7 @@ pub(crate) fn one_sentence(text: &str) -> String {
 }
 
 /// The home directory written as `~`, as 1.x shows it.
-fn home_as_tilde(text: &str) -> String {
+pub(crate) fn home_as_tilde(text: &str) -> String {
     match std::env::var("HOME") {
         Ok(home) if !home.is_empty() && home != "/" => text.replace(&home, "~"),
         _ => text.to_owned(),
@@ -681,12 +807,11 @@ fn codeowners_teams(text: &str) -> Vec<String> {
 /// The display input (decision D13): what the adapters read beside the
 /// observations, only to show it.
 pub(crate) fn display(
-    forge: &GhForge,
+    shown: Shown,
     observations: &Observations,
     parameters: &Parameters,
     branches: &[String],
 ) -> Display {
-    let shown = forge.shown();
     let mut display = Display {
         titles: shown.titles,
         urls: shown.urls,
@@ -872,7 +997,7 @@ fn plan_live(run: &mut Run<'_>, arguments: &Arguments, repo_dir: &Path) {
             None,
         );
     }
-    let display = display(&forge, &observations, &parameters, &branches);
+    let display = display(forge.shown(), &observations, &parameters, &branches);
     if failures.is_empty() {
         observed(run, &observations, &display);
     }
@@ -890,8 +1015,61 @@ fn plan_live(run: &mut Run<'_>, arguments: &Arguments, repo_dir: &Path) {
             return;
         }
     };
-    record(run, &parameters, &outcome);
+    if arguments.capture_bundle() {
+        replay::capture(run, &parameters, &observations);
+    } else {
+        record(run, &parameters, &outcome);
+    }
     conclude(run, &parameters, &outcome, &failures, &display);
+}
+
+/// A reference that resolves to nothing, for the recorded reason (profile
+/// rules D11 to D13), read from `source`. The catalogued code `profile.D11`
+/// has an upper-case letter, which a parley.error code may not, so the code
+/// is `issue.not_found` and the rule is in the detail.
+pub(crate) fn not_found(run: &mut Run<'_>, unavailable: &str, cause: NotFound, source: &str) {
+    let reference = unavailable
+        .split_whitespace()
+        .find_map(IssueRef::parse)
+        .map(|r| r.to_string());
+    run.error(
+        "issue.not_found",
+        &one_sentence(unavailable),
+        Some("fix the reference: its owner, repository or number names nothing gh can see"),
+        Some(false),
+        Some(json!({
+            "rule": cause.label(),
+            "not_found": cause.as_str(),
+            "reference": reference,
+            "source": source,
+            "error": unavailable,
+            "phase": "discovery",
+        })),
+    );
+}
+
+/// The result lines of a plan and the errors its `error_codes` call for.
+pub(crate) fn results(
+    run: &mut Run<'_>,
+    parameters: &Parameters,
+    outcome: &Outcome,
+    display: &Display,
+) {
+    match render::lines(parameters, outcome, Some(display)) {
+        Ok(lines) => {
+            for line in &lines {
+                run.result(line.clone());
+            }
+            plan_errors(run, &lines);
+        }
+        Err(why) => run.error(
+            "plan.not_rendered",
+            &format!("the plan could not be rendered: {why:?}"),
+            Some("report this defect with the receipt"),
+            Some(false),
+            None,
+        ),
+    }
 }
 
 /// The lines of an outcome: a plan's results and errors, or the errors of
@@ -916,28 +1094,7 @@ pub(crate) fn conclude(
             unavailable,
             cause: Some(cause),
         } => {
-            // A reference that resolves to nothing, for the recorded reason
-            // (profile rules D11 to D13). The catalogued code `profile.D11`
-            // has an upper-case letter, which a parley.error code may not, so
-            // the code is `issue.not_found` and the rule is in the detail.
-            let reference = unavailable
-                .split_whitespace()
-                .find_map(IssueRef::parse)
-                .map(|r| r.to_string());
-            run.error(
-                "issue.not_found",
-                &one_sentence(unavailable),
-                Some("fix the reference: its owner, repository or number names nothing gh can see"),
-                Some(false),
-                Some(json!({
-                    "rule": cause.label(),
-                    "not_found": cause.as_str(),
-                    "reference": reference,
-                    "source": "gh",
-                    "error": unavailable,
-                    "phase": "discovery",
-                })),
-            );
+            not_found(run, unavailable, *cause, "gh");
             for failure in failures {
                 Failure::gh(failure).report(run);
             }
@@ -960,29 +1117,17 @@ pub(crate) fn conclude(
             }
         }
         Outcome::Invalid { .. } | Outcome::Planned { .. } => {
-            match render::lines(parameters, outcome, Some(display)) {
-                Ok(lines) => {
-                    for line in &lines {
-                        run.result(line.clone());
-                    }
-                    plan_errors(run, &lines);
-                }
-                Err(why) => run.error(
-                    "plan.not_rendered",
-                    &format!("the plan could not be rendered: {why:?}"),
-                    Some("report this defect with the receipt"),
-                    Some(false),
-                    None,
-                ),
-            }
+            results(run, parameters, outcome, display);
         }
     }
 }
 
 /// The evaluation record of the run (flyingrobots/taskalisk#30), as a
 /// receipt step: the formats, the profile, the evaluator, the discovery
-/// scope and the result. A live run's bundle is not retained, so its replay
-/// is unavailable until flyingrobots/taskalisk#59 captures it.
+/// scope and the result. Without `--capture-bundle` the bundle is not
+/// retained, so its replay is unavailable; with it, the retained record is
+/// written beside the receipt instead ([`replay::capture`]), because it
+/// holds issue bodies, which a receipt never does.
 pub(crate) fn record(run: &mut Run<'_>, parameters: &Parameters, outcome: &Outcome) {
     let record = unretained(
         parameters,
@@ -991,7 +1136,7 @@ pub(crate) fn record(run: &mut Run<'_>, parameters: &Parameters, outcome: &Outco
             name: TOOL.to_owned(),
             version: VERSION.to_owned(),
         },
-        "a live run's observation bundle is not captured until flyingrobots/taskalisk#59",
+        "the observation bundle was not captured; plan --capture-bundle captures it (flyingrobots/taskalisk#59)",
     );
     let value: Value = serde_json::from_str(&record.to_json()).unwrap_or(Value::Null);
     run.step(

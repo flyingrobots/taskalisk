@@ -15,4 +15,5 @@ mod edit;
 mod human;
 pub mod parley;
 pub mod render;
+mod replay;
 mod sha256;

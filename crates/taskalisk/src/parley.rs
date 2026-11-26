@@ -578,6 +578,47 @@ impl<'w> Run<'w> {
         self.error_reported = true;
     }
 
+    /// Replaces every declared secret's value in every string of `value`,
+    /// as each line is scrubbed, and returns the JSON Pointer of each
+    /// string it changed.
+    pub fn redact(&self, value: &mut Value) -> Vec<String> {
+        let mut found = Vec::new();
+        scrub(value, &self.secrets, "", &mut found);
+        found
+    }
+
+    /// Stores `text` as `name` in the run's own directory beside its
+    /// receipt, `.parley/receipts/<run>/`, where its sidecars go, so that
+    /// retention deletes it with the receipt and `.parley/.gitignore` keeps
+    /// it out of git. The file is created new, never overwritten. Returns
+    /// its path relative to the receipt directory, as a sidecar's is
+    /// written.
+    ///
+    /// Redact `text` first ([`Run::redact`]).
+    ///
+    /// # Errors
+    ///
+    /// The I/O error when it cannot be written, or an `InvalidData` error,
+    /// with nothing written, when `text` still holds a declared secret's
+    /// value (inside an object key, which [`Run::redact`] does not reach).
+    pub fn store(&self, name: &str, text: &str) -> std::io::Result<String> {
+        if self.secrets.iter().any(|s| text.contains(s.as_str())) {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "a declared secret's value is in an object key, which is not redacted",
+            ));
+        }
+        let rel = format!("{}/{name}", self.id);
+        fs::create_dir_all(self.receipt_dir.join(&self.id))?;
+        let mut file = OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(self.receipt_dir.join(&rel))?;
+        file.write_all(text.as_bytes())?;
+        file.flush()?;
+        Ok(rel)
+    }
+
     /// Supplies the bytes of the declared input, whose digest the receipt
     /// carries and `inv` covers.
     pub fn input(&mut self, data: &str) {

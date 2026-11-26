@@ -214,7 +214,7 @@ pub fn edit_live(
     let outcome = plan(&parameters, &proposed);
     let failures = forge.failures();
     let observations = forge.observations();
-    let display = cli::display(&forge, &observations, &parameters, &branches);
+    let display = cli::display(forge.shown(), &observations, &parameters, &branches);
     if failures.is_empty() {
         cli::observed(run, &observations, &display);
     }

@@ -48,7 +48,9 @@ pub use observation::{
     Actor, Body, CodeownersFile, Issue, IssueState, Lookup, Missing, NotFound, Observed,
     Parameters, PullRequest, ReadScope, Repo, TRUST_POLICY, TrustParameters,
 };
-pub use plan::{Edge, Graph, LinkedPullRequest, Node, NodeStatus, Outcome, Rejection, plan};
+pub use plan::{
+    Discovered, Edge, Graph, LinkedPullRequest, Node, NodeStatus, Outcome, Rejection, plan,
+};
 pub use plan_warning::{
     DENSITY_BAND, PLAN_WARNINGS, PlanDetail, PlanWarning, edge_density, plan_warnings,
 };

@@ -22,14 +22,15 @@
 //! are left out, never made up. The plan line's `artifact_hash` digests
 //! the document the renderer emits (see [`lines`]).
 //!
-//! These are not rendered with or without a display input:
+//! The message and every detail but the id or number of an
+//! `issue.untrusted` or `pull_request.untrusted` finding are not rendered
+//! with or without a display input: they are the trust gate's reasons
+//! (flyingrobots/taskalisk#46).
 //!
-//! - the message and every detail but the id or number of an
-//!   `issue.untrusted` or `pull_request.untrusted` finding: the trust
-//!   gate's reasons (flyingrobots/taskalisk#46);
-//! - the findings about what discovery read, for a run whose edges form a
-//!   cycle or name an unknown prerequisite: the core reports no graph for
-//!   it, rule F3 (flyingrobots/taskalisk#44).
+//! The findings about what discovery read come from the core's
+//! [`Discovered`], so a run whose edges form a cycle or name an unknown
+//! prerequisite, which reports no graph (rule F3), still lists them
+//! (decision D13, flyingrobots/taskalisk#44).
 //!
 //! A `frontmatter.violation` or `frontmatter.warning` carries the core's
 //! fixed message for its rule, one line per rule.
@@ -38,8 +39,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
 
 use issue_dag_core::{
-    Batch, DENSITY_BAND, Edge, Finding, Graph, Identity, IssueRef, NodeStatus, Outcome, Parameters,
-    Ranking, Severity, Skip, Terms, edge_density, rank, select,
+    Batch, DENSITY_BAND, Discovered, Edge, Finding, Graph, Identity, IssueRef, NodeStatus, Outcome,
+    Parameters, Ranking, Severity, Skip, Terms, edge_density, rank, select,
 };
 use serde_json::{Map, Value, json};
 
@@ -117,15 +118,20 @@ pub fn lines(
     outcome: &Outcome,
     display: Option<&Display>,
 ) -> Result<Vec<Value>, NotRendered> {
-    let (findings, graph, unknown) = match outcome {
+    let planned;
+    let (findings, graph, unknown, discovered) = match outcome {
         Outcome::Rejected(_) => return Err(NotRendered::Rejected),
         Outcome::Incomplete { .. } => return Err(NotRendered::Incomplete),
         Outcome::Invalid {
             findings,
             graph,
             unknown,
-        } => (findings, graph.as_ref(), unknown.as_slice()),
-        Outcome::Planned { findings, graph } => (findings, Some(graph), &[][..]),
+            discovered,
+        } => (findings, graph.as_ref(), unknown.as_slice(), discovered),
+        Outcome::Planned { findings, graph } => {
+            planned = graph.discovered();
+            (findings, Some(graph), &[][..], &planned)
+        }
     };
     let report = Report::of(findings, unknown);
     let shown = Shown { display };
@@ -137,7 +143,9 @@ pub fn lines(
         }
         None => None,
     };
-    let discovery = graph.map(|g| Discovery::of(g, &shown));
+    // Decision D13: what discovery read, whether or not the graph is
+    // reported.
+    let discovery = Discovery::of(discovered, &shown);
 
     let mut plan = plan_line(parameters, &report, compiled.as_ref(), display);
     let mut out = Vec::new();
@@ -148,13 +156,9 @@ pub fn lines(
         out.extend(c.wave_lines());
         out.extend(c.edge_lines());
     }
-    out.extend(finding_lines(
-        &report,
-        discovery.as_ref(),
-        compiled.as_ref(),
-    ));
+    out.extend(finding_lines(&report, &discovery, compiled.as_ref()));
 
-    let document = document(&plan, &report, discovery.as_ref(), compiled.as_ref());
+    let document = document(&plan, &report, &discovery, compiled.as_ref());
     plan["artifact_hash"] = json!(sha256::hex(canonical(&document).as_bytes()));
     out.insert(0, plan);
     Ok(out)
@@ -211,9 +215,12 @@ impl Shown<'_> {
         }
     }
 
+    /// Adds an issue's URL to an object, when a display input is given:
+    /// null when it holds none, such as a replay's, whose bundle records no
+    /// URL (bundle rule OB12).
     fn url(&self, fields: &mut Map<String, Value>, id: &IssueRef) {
-        if let Some(url) = self.get(|d| &d.urls, id) {
-            fields.insert("url".into(), json!(url));
+        if self.display.is_some() {
+            fields.insert("url".into(), json!(self.get(|d| &d.urls, id)));
         }
     }
 }
@@ -743,9 +750,9 @@ impl<'a> Compiled<'a> {
 
 /// The 1.x result's `source`: the plan line's, and what discovery read
 /// (none when the run reports no graph).
-fn document_source(plan: &Value, discovery: Option<&Discovery>) -> Value {
+fn document_source(plan: &Value, discovery: &Discovery) -> Value {
     let mut source = object(plan["source"].clone());
-    let list = |pick: fn(&Discovery) -> &Vec<Value>| json!(discovery.map_or(&Vec::new(), pick));
+    let list = |pick: fn(&Discovery) -> &Vec<Value>| json!(pick(discovery));
     source.insert("containers_excluded".into(), list(|d| &d.containers));
     source.insert("unmodeled_open_issues".into(), list(|d| &d.unmodeled));
     source.insert("untrusted_issues".into(), list(|d| &d.untrusted));
@@ -784,7 +791,7 @@ fn document_frontmatter(report: &Report) -> Value {
 fn document(
     plan: &Value,
     report: &Report,
-    discovery: Option<&Discovery>,
+    discovery: &Discovery,
     compiled: Option<&Compiled>,
 ) -> Value {
     let source = document_source(plan, discovery);
@@ -914,8 +921,8 @@ impl Discovery {
     /// issues in (`Graph::visit_order`); not-planned prerequisites by task
     /// read, then in its `.blocked_by` order (`Graph::not_planned_order`);
     /// untrusted pull requests in the order they were observed.
-    fn of<'a>(graph: &'a Graph, shown: &Shown) -> Self {
-        let position: BTreeMap<&IssueRef, usize> = graph
+    fn of<'a>(found: &'a Discovered, shown: &Shown) -> Self {
+        let position: BTreeMap<&IssueRef, usize> = found
             .visit_order
             .iter()
             .enumerate()
@@ -926,7 +933,7 @@ impl Discovery {
             ids.sort_by_key(|id| read(id));
             ids
         };
-        let containers = in_order(graph.containers.keys().collect())
+        let containers = in_order(found.containers.keys().collect())
             .into_iter()
             .map(|id| {
                 let mut c = object(json!({"id": id.to_string(), "number": id.number()}));
@@ -934,7 +941,7 @@ impl Discovery {
                 Value::Object(c)
             })
             .collect();
-        let unmodeled = in_order(graph.unmodeled.iter().collect())
+        let unmodeled = in_order(found.unmodeled.iter().collect())
             .into_iter()
             .map(|id| {
                 let mut u = object(json!({"id": id.to_string()}));
@@ -943,17 +950,17 @@ impl Discovery {
                 Value::Object(u)
             })
             .collect();
-        let untrusted = in_order(graph.untrusted.iter().collect())
+        let untrusted = in_order(found.untrusted.iter().collect())
             .into_iter()
             .map(|id| json!({"id": id.to_string()}))
             .collect();
-        let untrusted_pull_requests = graph
+        let untrusted_pull_requests = found
             .untrusted_pull_request_order
             .iter()
             .map(|n| json!({"number": n}))
             .collect();
-        let opaque_ids = graph
-            .nodes
+        let opaque_ids = found
+            .opaque
             .iter()
             .filter(|(_, n)| n.opaque && !n.untrusted)
             .map(|(id, _)| id)
@@ -961,7 +968,7 @@ impl Discovery {
         let opaque = in_order(opaque_ids)
             .into_iter()
             .map(|id| {
-                let node = &graph.nodes[id];
+                let node = &found.opaque[id];
                 // Every document that names it, containers included, in the
                 // order discovery read them, as 1.x lists them.
                 let referenced_by = texts(&node.named_by);
@@ -974,13 +981,13 @@ impl Discovery {
                 Value::Object(o)
             })
             .collect();
-        let not_planned = graph
+        let not_planned = found
             .not_planned_order
             .iter()
             .map(|e| {
                 let mut n =
                     object(json!({"parent": e.from.to_string(), "child": e.to.to_string()}));
-                let untrusted = graph.nodes.get(&e.from).is_some_and(|n| n.untrusted);
+                let untrusted = found.untrusted.contains(&e.from);
                 shown.title(&mut n, &e.from, untrusted);
                 Value::Object(n)
             })
@@ -1023,13 +1030,10 @@ fn field(value: &Value, key: &str) -> String {
 /// Every finding, in the 1.x order of codes.
 fn finding_lines(
     report: &Report,
-    discovery: Option<&Discovery>,
+    discovery: &Discovery,
     compiled: Option<&Compiled>,
 ) -> Vec<Value> {
-    let mut out = Vec::new();
-    if let Some(d) = discovery {
-        out.extend(discovery_findings(d));
-    }
+    let mut out = discovery_findings(discovery);
     for (code, list) in [
         ("frontmatter.violation", &report.violations),
         ("frontmatter.warning", &report.warnings),

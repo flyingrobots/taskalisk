@@ -135,7 +135,49 @@ pub struct Graph {
     pub not_planned_order: Vec<Edge>,
 }
 
+/// What discovery read (rules D3 to D9) and the lists rule W1 makes of it,
+/// which do not depend on the edges: an invalid run reports them whether or
+/// not it reports its graph (rule F3, decision D13).
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Discovered {
+    /// Every reference the closure visited, in the order it read them.
+    pub visit_order: Vec<IssueRef>,
+    /// The containers, with their children in written order.
+    pub containers: BTreeMap<IssueRef, Vec<IssueRef>>,
+    /// The unmodeled issues (rule D7).
+    pub unmodeled: BTreeSet<IssueRef>,
+    /// Every issue that is not admitted (rule D6).
+    pub untrusted: BTreeSet<IssueRef>,
+    /// The numbers of the pull requests that close an issue and are not
+    /// admitted, in the order observed (rule AD9).
+    pub untrusted_pull_request_order: Vec<u64>,
+    /// The opaque nodes (rules D6, D7), untrusted ones included.
+    pub opaque: BTreeMap<IssueRef, Node>,
+    /// The satisfied edges whose prerequisite was closed as `not_planned`,
+    /// in the order of [`Graph::not_planned_order`].
+    pub not_planned_order: Vec<Edge>,
+}
+
 impl Graph {
+    /// What discovery read, as an invalid run reports it.
+    #[must_use]
+    pub fn discovered(&self) -> Discovered {
+        Discovered {
+            visit_order: self.visit_order.clone(),
+            containers: self.containers.clone(),
+            unmodeled: self.unmodeled.clone(),
+            untrusted: self.untrusted.clone(),
+            untrusted_pull_request_order: self.untrusted_pull_request_order.clone(),
+            opaque: self
+                .nodes
+                .iter()
+                .filter(|(_, n)| n.opaque)
+                .map(|(id, n)| (id.clone(), n.clone()))
+                .collect(),
+            not_planned_order: self.not_planned_order.clone(),
+        }
+    }
+
     /// The dispatchable subset of the ready set (rule Q2).
     #[must_use]
     pub fn dispatchable(&self) -> BTreeSet<IssueRef> {
@@ -187,6 +229,9 @@ pub enum Outcome {
         /// that names it: by task in the order the closure read them, then
         /// in the task's `.blocked_by` order, the order a report lists them.
         unknown: Vec<Edge>,
+        /// What discovery read, reported with or without the graph
+        /// (decision D13); with it, it is [`Graph::discovered`].
+        discovered: Discovered,
     },
     /// A plan.
     Planned {
@@ -811,6 +856,7 @@ impl<'c> Assembly<'c> {
         if findings.iter().any(|f| f.severity() == Severity::Error) {
             Outcome::Invalid {
                 findings,
+                discovered: graph.discovered(),
                 graph: (!unresolved).then_some(graph),
                 unknown: self.unknown,
             }

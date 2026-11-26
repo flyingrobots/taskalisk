@@ -29,6 +29,36 @@ schema version under `Unreleased` is a draft and may change in place.
   it (`patch_lost`). The optimistic concurrency limit (E8) is stated in the skill, the output
   contract and the threat model (T13). The Python script is unchanged.
 
+- **Capture an observation bundle and replan from it offline** (flyingrobots/taskalisk#59). The
+  Rust binary's `plan --capture-bundle` (off by default) writes the `issue-dag-observations/1`
+  bundle a live plan was made from, and its retained `taskalisk-evaluation/1` record, to
+  `.parley/receipts/<run>/bundle.json` and `evaluation.json`, beside the receipt, gitignored and
+  retained with it, every declared secret redacted. `plan --from-bundle FILE` and
+  `plan --from-record FILE` replan with no `gh` or `git` read (the record through
+  `issue-dag-bundle::replay`, decision D14); `--offline` disables those reads, and without a
+  recorded source exits 2 (`plan.reads_disabled`). A missing slot is `bundle.incomplete` (OB5),
+  an unavailable one `observation.unavailable`; neither is read as empty. `issue-dag-bundle` gains
+  `dump`, the inverse of `load`, which writes every corpus bundle back to the same JSON. A replayed
+  node's title is `(title not recorded in the bundle)` and its URL null, because a bundle holds no
+  display (OB12); the renderer now writes `url: null` for a shown issue whose URL is unknown
+  rather than leaving the required member out. `tests/fixtures/bundles/` holds a bundle of
+  flyingrobots/taskalisk and the result it planned to. See `docs/topics/output/README.md`, *The
+  Rust binary*.
+
+- **An invalid run reports what discovery read** (flyingrobots/taskalisk#44). Under decision D13 a
+  run whose edges form a cycle or name an unknown prerequisite, which reports no graph (profile
+  rule F3), still reports its containers, unmodeled, untrusted and opaque issues, untrusted pull
+  requests and not-planned prerequisites: `issue-dag-core` gains `Discovered`, carried by
+  `Outcome::Invalid::discovered` and given by `Graph::discovered`, and the Rust renderer lists
+  them as the Python does. This closes the renderer's gap for such runs: the parity test no longer
+  leaves their discovery findings out, and a cyclic run's `artifact_hash` now equals the Python's,
+  in 87 of the 171 cases. Four capture variants reach a three-issue cycle beside an unmodeled
+  issue, a cycle beside not-planned prerequisites read out of order, and an unknown prerequisite
+  beside a stranger's pull request and beside untrusted issues. New core tests keep and break each
+  cross-document rule (X1, X2, X3) and G4; a three-issue cycle gives each of its issues a G4
+  finding (F5). The renderer's intended difference stays: with an unknown prerequisite and a cycle
+  together, the 1.x document names no cyclic node.
+
 - **Which part of a reference could not be found** (flyingrobots/taskalisk#126). The vendored
   issue-dag specification (flyingrobots/issue-dag#9) adds bundle rule OB17: an unavailable issue
   slot may record `not_found` (`owner`, `repository` or `number`) beside its free-text reason, and

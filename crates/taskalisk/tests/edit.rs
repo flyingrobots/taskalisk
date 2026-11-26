@@ -519,6 +519,9 @@ fn edit_arguments_are_checked_before_the_run_starts() {
             "o/r#1->o/r#5",
         ],
         &[],
+        &["--add-edge", "o/r#1->o/r#5", "--offline"],
+        &["--add-edge", "o/r#1->o/r#5", "--capture-bundle"],
+        &["--add-edge", "o/r#1->o/r#5", "--from-bundle", "b.json"],
     ] {
         let run = fixture.run(args);
         assert_eq!(run.status(), 3, "{args:?}: {}", run.describe());
