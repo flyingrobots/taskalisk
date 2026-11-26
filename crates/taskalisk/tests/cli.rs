@@ -420,17 +420,18 @@ fn the_plan_matches_the_python_on_the_same_backlog() {
     let python = fixture.python(&["--sem-capacity", "gpu=1"]);
     assert_eq!(rust.status(), 0, "{}", rust.explain());
     assert_eq!(python.status(), 0, "{}", python.explain());
-    // A linked pull request's URL is not read by the gh adapter (it asks
-    // `gh pr list` for no `url`), so it is left out, never made up.
-    let strip = |line: &Value| {
-        let mut p = payload(line, &["artifact_hash"]);
-        if let Some(Value::Array(pulls)) = p.get_mut("linked_open_prs") {
-            for pull in pulls {
-                pull.as_object_mut().expect("a pull request").remove("url");
-            }
-        }
-        p
-    };
+    // A linked pull request carries its URL, from `gh pr list`.
+    let linked = rust
+        .stdout()
+        .iter()
+        .find(|l| l["id"] == "flyingrobots/geordi#3")
+        .expect("geordi#3")["linked_open_prs"]
+        .clone();
+    assert_eq!(
+        linked[0]["url"],
+        "https://github.com/flyingrobots/geordi/pull/8"
+    );
+    let strip = |line: &Value| payload(line, &["artifact_hash"]);
     let results = |run: &Run| -> Vec<Map<String, Value>> {
         run.stdout()
             .iter()
@@ -730,4 +731,172 @@ fn a_secret_in_the_environment_never_reaches_a_line() {
     assert!(String::from_utf8_lossy(&run.output.stderr).contains("[redacted]"));
     let head = &run.receipt()[0];
     assert_eq!(head["redacted"]["env"], json!(["GH_TOKEN"]));
+}
+
+/// A token value the gh adapter never sees, so only the writer's redaction
+/// can keep it out of a line. Lower case, as a login is normalised.
+const TOKEN: &str = "zz9tok0123";
+
+/// The binary with `GH_TOKEN` set to [`TOKEN`], from `cwd`.
+fn with_token(fixture: &Fixture, cwd: &Path, args: &[&str]) -> Run {
+    fs::create_dir_all(cwd).expect("the working directory");
+    let output = fixture
+        .command(Path::new(env!("CARGO_BIN_EXE_taskalisk")), cwd)
+        .env("GH_TOKEN", TOKEN)
+        .args(args)
+        .output()
+        .expect("the binary runs");
+    Run {
+        output,
+        cwd: cwd.to_owned(),
+    }
+}
+
+/// No stream, receipt or sidecar of the run holds [`TOKEN`].
+fn assert_no_token(run: &Run) {
+    let mut texts = vec![
+        String::from_utf8_lossy(&run.output.stdout).into_owned(),
+        String::from_utf8_lossy(&run.output.stderr).into_owned(),
+    ];
+    if let Ok(dir) = fs::read_dir(run.cwd.join(".parley/receipts")) {
+        for entry in dir {
+            let path = entry.expect("an entry").path();
+            if path.is_file() {
+                texts.push(fs::read_to_string(&path).expect("a receipt"));
+            }
+        }
+    }
+    for text in texts {
+        assert!(!text.contains(TOKEN), "the token reached a line: {text}");
+    }
+}
+
+/// The JSON Pointers into `resolved` the receipt head says were redacted.
+fn redacted_resolved(run: &Run) -> Vec<Value> {
+    run.receipt()[0]["redacted"]["resolved"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default()
+}
+
+#[test]
+fn a_token_given_as_a_trusted_login_is_redacted_from_the_question() {
+    let fixture = Fixture::new("plan_state()");
+    let repo = fixture.repo();
+    let run = with_token(
+        &fixture,
+        &fixture.dir.join("trust"),
+        &["plan", "--repo", repo.to_str().expect("UTF-8"), "--trust", TOKEN],
+    );
+    assert_eq!(run.status(), 0, "{}", run.explain());
+    assert_no_token(&run);
+    let head = &run.receipt()[0];
+    assert_eq!(
+        head["resolved"]["question"]["trust"]["logins"],
+        json!(["[redacted]"])
+    );
+    assert!(redacted_resolved(&run).contains(&json!("/question/trust/logins/0")));
+    assert_valid(&run.receipt());
+}
+
+#[test]
+fn a_token_inside_a_root_is_redacted_from_the_question_and_the_error() {
+    let fixture = Fixture::new("plan_state()");
+    let repo = fixture.repo();
+    let root = format!("{TOKEN}/elsewhere#1");
+    let run = with_token(
+        &fixture,
+        &fixture.dir.join("root"),
+        &["plan", "--repo", repo.to_str().expect("UTF-8"), "--root", &root],
+    );
+    assert_eq!(run.status(), 2, "{}", run.explain());
+    assert_no_token(&run);
+    assert!(redacted_resolved(&run).contains(&json!("/question/roots/0")));
+    assert_eq!(of(&run.stderr(), "parley.error")[0]["code"], "root.out_of_scope");
+}
+
+#[test]
+fn a_token_inside_the_repository_path_is_redacted_from_the_question() {
+    let fixture = Fixture::new("plan_state()");
+    let repo = fixture.dir.join(format!("repo-{TOKEN}"));
+    fs::create_dir_all(&repo).expect("a directory");
+    for args in [
+        &["init", "-q", "-b", "main"][..],
+        &["-c", "commit.gpgsign=false", "-c", "user.name=F", "-c", "user.email=f@example.invalid",
+          "commit", "-q", "--allow-empty", "-m", "base"],
+    ] {
+        assert!(Command::new("git").args(args).current_dir(&repo).status().expect("git").success());
+    }
+    let run = with_token(
+        &fixture,
+        &fixture.dir.join("path"),
+        &["plan", "--repo", repo.to_str().expect("UTF-8")],
+    );
+    assert_eq!(run.status(), 0, "{}", run.explain());
+    assert_no_token(&run);
+    assert!(redacted_resolved(&run).contains(&json!("/question/repo")));
+}
+
+#[test]
+fn a_token_in_the_working_directory_refuses_the_run() {
+    let fixture = Fixture::new("plan_state()");
+    let repo = fixture.repo();
+    let run = with_token(
+        &fixture,
+        &fixture.dir.join(format!("cwd-{TOKEN}")),
+        &["plan", "--repo", repo.to_str().expect("UTF-8")],
+    );
+    assert_eq!(run.status(), 3, "{}", run.explain());
+    assert!(run.output.stdout.is_empty(), "{}", run.explain());
+    let err = run.stderr();
+    assert_eq!(err.len(), 1);
+    assert_eq!(err[0]["code"], "startup.secret_in_path");
+    assert_valid(&err);
+    assert_no_token(&run);
+    assert_eq!(run.receipts().len(), 0, "no receipt");
+}
+
+#[test]
+fn a_parley_directory_git_would_stage_refuses_the_run() {
+    let fixture = Fixture::new("plan_state()");
+    let repo = fixture.repo();
+    for (n, gitignore) in ["receipts/old.jsonl\n", "*\n!receipts/\n", ""].iter().enumerate() {
+        let cwd = fixture.dir.join(format!("stageable-{n}"));
+        fs::create_dir_all(cwd.join(".parley")).expect("a directory");
+        fs::write(cwd.join(".parley/.gitignore"), gitignore).expect("a .gitignore");
+        let run = fixture.run_in(
+            &format!("stageable-{n}"),
+            &["plan", "--repo", repo.to_str().expect("UTF-8")],
+        );
+        assert_eq!(run.status(), 3, "{gitignore:?}: {}", run.explain());
+        let err = run.stderr();
+        assert_eq!(err[0]["code"], "startup.receipt_stageable", "{gitignore:?}");
+        assert_valid(&err);
+        assert_eq!(run.receipts().len(), 0, "{gitignore:?}: no receipt");
+        assert_eq!(
+            fs::read_to_string(cwd.join(".parley/.gitignore")).expect("kept"),
+            *gitignore,
+            "a user's file is left alone"
+        );
+    }
+}
+
+#[test]
+fn a_closed_output_ends_the_run_with_4() {
+    let fixture = Fixture::new("plan_state()");
+    let cwd = fixture.dir.join("closed");
+    fs::create_dir_all(&cwd).expect("a directory");
+    let mut child = fixture
+        .command(Path::new(env!("CARGO_BIN_EXE_taskalisk")), &cwd)
+        .args(["plan", "--repo", fixture.repo().to_str().expect("UTF-8")])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("the binary runs");
+    drop(child.stdout.take());
+    let output = child.wait_with_output().expect("it ends");
+    let run = Run { output, cwd };
+    assert_eq!(run.status(), 4, "{}", run.explain());
+    let receipt = parse(&fs::read(&run.receipts()[0]).expect("the receipt"));
+    assert_eq!(receipt.last().expect("end")["status"], 4);
 }

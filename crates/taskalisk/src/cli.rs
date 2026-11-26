@@ -931,8 +931,81 @@ fn reject(run: &mut Run<'_>, rejection: &Rejection) {
 
 #[cfg(test)]
 mod tests {
-    use super::{capacities, codeowners_teams, command, names_issue, relative};
+    use super::{capacities, codeowners_teams, command, conclude, names_issue, relative};
+    use crate::parley::{Run, Start};
+    use crate::render::Display;
+    use issue_dag_core::{
+        Graph, Outcome, Parameters, ReadScope, Repo, TRUST_POLICY, TrustParameters,
+    };
+    use issue_dag_gh::GhError;
+    use serde_json::json;
+    use std::collections::{BTreeMap, BTreeSet};
     use std::path::Path;
+
+    /// The exit status and stdout of a run that concludes `outcome` after
+    /// the gh adapter recorded `failures`.
+    fn concluded(outcome: &Outcome, failures: &[GhError]) -> (u8, String) {
+        let dir = std::env::temp_dir().join(format!(
+            "taskalisk-conclude-{}-{}",
+            std::process::id(),
+            failures.len()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("a directory");
+        let home = Repo::parse("o/r").expect("a repository");
+        let parameters = Parameters {
+            home: home.clone(),
+            roots: Vec::new(),
+            read_scope: ReadScope {
+                owners: BTreeSet::from(["o".to_owned()]),
+                repositories: BTreeSet::new(),
+            },
+            trust: TrustParameters {
+                policy: TRUST_POLICY.to_owned(),
+                logins: Vec::new(),
+                codeowners: false,
+            },
+            capacities: BTreeMap::new(),
+        };
+        let (mut out, mut err) = (Vec::new(), Vec::new());
+        let start = Start {
+            tool: "taskalisk",
+            v: "0",
+            command: "plan",
+            cwd: &dir,
+            argv: Vec::new(),
+            resolved: json!({}),
+            inputs: Vec::new(),
+            effects: json!({"reads": [], "writes": [], "network": true, "idempotent": true}),
+            secrets: Vec::new(),
+            secret_names: Vec::new(),
+            human: None,
+            retention: 50,
+        };
+        let mut run = Run::start(start, &mut out, &mut err).expect("a run");
+        conclude(&mut run, &parameters, outcome, failures, &Display::default());
+        let status = run.end();
+        let _ = std::fs::remove_dir_all(&dir);
+        (status, String::from_utf8(out).expect("UTF-8"))
+    }
+
+    #[test]
+    fn a_plan_made_while_a_read_failed_is_an_error_not_a_plan() {
+        let planned = Outcome::Planned {
+            findings: BTreeSet::new(),
+            graph: Graph::default(),
+        };
+        let (status, out) = concluded(&planned, &[]);
+        assert_eq!(status, 0, "{out}");
+        assert!(out.contains("\"taskalisk.plan\""), "{out}");
+        let failed = GhError::CommandFailed {
+            source: "gh api x".to_owned(),
+            detail: "boom".to_owned(),
+        };
+        let (status, out) = concluded(&planned, &[failed]);
+        assert_eq!(status, 2, "{out}");
+        assert!(!out.contains("\"taskalisk.plan\""), "no plan from a failed read: {out}");
+    }
 
     fn strings(items: &[&str]) -> Vec<String> {
         items.iter().map(|s| (*s).to_owned()).collect()
