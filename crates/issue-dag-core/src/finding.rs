@@ -275,13 +275,13 @@ impl Severity {
 pub struct Finding {
     /// The issue that receives it.
     pub subject: IssueRef,
-    /// The stable code, an entry of [`CODES`] (see the table on [`code`]).
-    pub code: Code,
+    /// The stable code, an entry of [`CODES`]; read with [`Finding::code`].
+    code: Code,
     /// The reference it concerns, for D3, D5, X2 and X3; otherwise `None`.
     pub concerns: Option<IssueRef>,
-    /// The severity of its code, [`Code::severity`]: error for a violation,
-    /// warning for the advisory and the body warnings.
-    pub severity: Severity,
+    /// The severity of its code, [`Code::severity`]; read with
+    /// [`Finding::severity`].
+    severity: Severity,
     /// Fixed text for the code. It may name a key, never a value or a line.
     pub message: &'static str,
 }
@@ -341,6 +341,19 @@ impl Finding {
             severity: code.severity(),
             message,
         }
+    }
+
+    /// The stable code, an entry of [`CODES`] (see the table on [`code`]).
+    #[must_use]
+    pub const fn code(&self) -> Code {
+        self.code
+    }
+
+    /// The severity of its code, [`Code::severity`]: error for a violation,
+    /// warning for the advisory and the body warnings.
+    #[must_use]
+    pub const fn severity(&self) -> Severity {
+        self.severity
     }
 
     /// The label of its rule, as the corpus writes it: the code without its

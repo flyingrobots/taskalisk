@@ -71,7 +71,7 @@ fn every_emitted_finding_has_a_catalogued_code_and_its_severity() {
             .chain(PROFILE_RULES)
             .map(|rule| Finding::new(subject(), rule, None)),
     );
-    let severities: Vec<Severity> = emitted.iter().map(|f| f.severity()).collect();
+    let severities: Vec<Severity> = emitted.iter().map(Finding::severity).collect();
     assert!(severities.contains(&Severity::Warning));
     assert!(severities.contains(&Severity::Error));
     let catalogued: BTreeSet<&str> = CODES.iter().map(|(c, _)| *c).collect();

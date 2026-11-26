@@ -662,7 +662,7 @@ impl<'c> Assembly<'c> {
         let unresolved = self
             .findings
             .iter()
-            .any(|f| f.code == Rule::X3.code() || f.code == Rule::G4.code());
+            .any(|f| f.code() == Rule::X3.code() || f.code() == Rule::G4.code());
         let redundant = if cyclic.is_empty() {
             indexed.redundant(&order)
         } else {
@@ -678,7 +678,7 @@ impl<'c> Assembly<'c> {
             .map(|(id, _)| id.clone())
             .collect();
         let findings = self.findings;
-        if findings.iter().any(|f| f.severity == Severity::Error) {
+        if findings.iter().any(|f| f.severity() == Severity::Error) {
             Outcome::Invalid {
                 findings,
                 graph: (!unresolved).then_some(graph),
@@ -1122,7 +1122,7 @@ mod tests {
         assert!(graph.is_none());
         let cyclic: BTreeSet<u32> = findings
             .iter()
-            .filter(|f| f.code == super::Rule::G4.code())
+            .filter(|f| f.code() == super::Rule::G4.code())
             .map(|f| f.subject.number())
             .collect();
         assert_eq!(cyclic, (1..=n + 1).collect());

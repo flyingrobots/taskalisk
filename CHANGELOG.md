@@ -192,13 +192,16 @@ schema version under `Unreleased` is a draft and may change in place.
   separate advice for a retired version and for an unknown one. The test `finding_reference`
   enumerates the codes from `CODES`, so a code without an entry, or an entry for no code, fails it,
   as does a link or anchor on the page that does not resolve.
-- **A finding's code is a catalogued `Code`** (flyingrobots/taskalisk#60). `Finding::code` is now
-  `issue_dag_core::Code` instead of `&'static str`. A `Code` has no public constructor: the crate
-  builds one only from an entry of `CODES`, so no emitter can give a finding a code that is in no
-  catalogue. `Code::as_str`, its `Display` and its `Debug` give the unchanged code text, and codes
-  order by it. `Code::severity` reads the catalogue, the one place each code's severity is defined,
-  and every finding takes its severity from its code; `Code::all` lists the catalogue. A caller that
-  read `finding.code` as a string uses `finding.code.as_str()`.
+- **A finding's code is a catalogued `Code`** (flyingrobots/taskalisk#60). A finding's code is now
+  an `issue_dag_core::Code` instead of a `&'static str`. A `Code` has no public constructor: the
+  crate builds one only from an entry of `CODES`, so no emitter can give a finding a code that is
+  in no catalogue. `Code::as_str`, its `Display` and its `Debug` give the unchanged code text, and
+  codes order by it. `Code::severity` reads the catalogue, the one place each code's severity is
+  defined, and every finding takes its severity from its code; `Code::all` lists the catalogue.
+  `Finding`'s `code` and `severity` are no longer public fields: they are read with
+  `Finding::code()` and `Finding::severity()` and cannot be assigned, so a finding's severity
+  always matches its code. A caller that read `finding.code` as a string uses
+  `finding.code().as_str()`, and one that read `finding.severity` uses `finding.severity()`.
 
 - **A provenance check for the vendored Parley writer** (flyingrobots/taskalisk#77).
   `scripts/check_vendored_writer.py` fetches the writer from flyingrobots/parley at the pinned
