@@ -1,0 +1,20 @@
+{
+  "cites": [
+    "C7",
+    "V5",
+    "V6",
+    "V8",
+    "V12"
+  ],
+  "disagreement": {
+    "classification": "compatibility-exception",
+    "difference": 20,
+    "note": "the compiler judges the first `.kind` and reports V6 for the container's `.blocked_by`"
+  },
+  "id": "document/c7-repeated-kind-container-then-task--python",
+  "kind": "characterisation",
+  "level": "document",
+  "normative_case": "document/c7-repeated-kind-container-then-task",
+  "source": "the Python compiler, on the input of document/c7-repeated-kind-container-then-task",
+  "title": "What the compiler does: A repeated `.kind` in the other order gives the same labels"
+}

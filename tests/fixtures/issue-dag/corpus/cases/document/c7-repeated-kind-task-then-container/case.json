@@ -1,0 +1,14 @@
+{
+  "cites": [
+    "C7",
+    "V5",
+    "V6",
+    "V8",
+    "V12"
+  ],
+  "id": "document/c7-repeated-kind-task-then-container",
+  "kind": "normative",
+  "level": "document",
+  "source": "constructed from the rule text",
+  "title": "A repeated `.kind` is judged by C7 alone; another key's violation stays"
+}

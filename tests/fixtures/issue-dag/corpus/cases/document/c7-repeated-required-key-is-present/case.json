@@ -1,0 +1,12 @@
+{
+  "cites": [
+    "C7",
+    "V5",
+    "V12"
+  ],
+  "id": "document/c7-repeated-required-key-is-present",
+  "kind": "normative",
+  "level": "document",
+  "source": "constructed from the rule text",
+  "title": "A repeated `.blocked_by` is present: no V5 for its absence"
+}

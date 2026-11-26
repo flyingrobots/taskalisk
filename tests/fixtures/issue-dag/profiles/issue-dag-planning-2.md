@@ -174,7 +174,8 @@ see it, is an unavailable observation (I5): the run is incomplete.
 **X1. Own address.** When the `.id` of a document is a reference, it MUST
 equal the address of the issue that holds it; otherwise the document receives
 a violation: it was copied or transferred. A missing or malformed `.id` has
-its own violation (format rules V3 and L1) and receives none under X1.
+its own violation (format rules V3 and L1) and receives none under X1, and
+so does a repeated `.id` (format rule C7).
 
 **X2. No container prerequisite.** An item of the `.blocked_by` of an open
 task MUST NOT name an issue whose document is a container. Such an item gives
