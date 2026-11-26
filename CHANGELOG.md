@@ -9,6 +9,17 @@ schema version under `Unreleased` is a draft and may change in place.
 
 ### Added
 
+- **The Rust document core** (flyingrobots/taskalisk#27). A Cargo workspace at the repository root
+  (Rust 1.100.0, pinned in `rust-toolchain.toml`) holds `crates/issue-dag-core`, a library with no
+  I/O and no dependencies: a hand-written `issue-dag/2` carrier parser and validator, the typed
+  record a valid document decodes to, and the `.blocked_by` rewrite of edge-edit rule E4, which
+  changes that one line and keeps every other byte, CRLF line ends included. All 165 document cases
+  of the vendored corpus pass; for each `--python` twin the crate matches the normative case. Pending
+  their specification text: a key repeated under C7 is present but judged by no other rule, while the
+  rest of the document is judged; a repeated `.dag` leaves the version unknown, so C7 is the
+  document's only violation, as C4 and P3 stop judging; an invalid document reports no warnings. CI
+  runs the job "Rust workspace": `cargo fmt`, `clippy -D warnings` and `cargo test`, all locked.
+
 - **A provenance check for the vendored Parley writer** (flyingrobots/taskalisk#77).
   `scripts/check_vendored_writer.py` fetches the writer from flyingrobots/parley at the pinned
   commit and requires it to equal the pin and the copy; CI runs it. The offline pin test proves

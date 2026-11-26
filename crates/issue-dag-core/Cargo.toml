@@ -1,0 +1,16 @@
+[package]
+name = "issue-dag-core"
+version = "0.1.0"
+description = "The issue-dag/2 document core: carrier parser, validator, typed record and the .blocked_by rewrite. No I/O."
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+
+[dev-dependencies]
+serde_json = "1"
+
+[lints]
+workspace = true
