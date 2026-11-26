@@ -898,9 +898,12 @@ In case `trust-untrusted-editor`, `mallory`, no collaborator, edited the
 owner's `flyingrobots/geordi#1`: it receives `taskalisk.untrusted-editor`,
 login `mallory`, rule `AD5.7`.
 
-To fix: read the edit history, and if the edit is sound, have a trusted
-person write the body again (a fresh issue, or an edit after checking it);
-if the editor should be trusted, grant `write` or name them with `--trust`.
+To fix: read the edit history. Editing the body again does not help: every
+editor in the history is judged, so the untrusted edit still keeps the issue
+out. If the content is sound, have a trusted person file it again as a fresh
+issue, close this one with a pointer to it, and move any edges that named
+it. If the editor should be trusted, grant `write` or name them with
+`--trust`.
 
 ### `taskalisk.untrusted-pull-request`
 
