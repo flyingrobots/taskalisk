@@ -1,10 +1,18 @@
 # Finding codes
 
-Reference for every code that `issue-dag-core` gives a finding
-(`crates/issue-dag-core`, function `findings`). A finding is one violation or
-warning of the frontmatter document in an issue body. It carries a code, a
-severity, the address of the issue as its subject, and a fixed message that
-names keys and rules but never a value or a line of the body.
+Reference for every code that `issue-dag-core` gives a finding: every code of
+its public catalogue `CODES`. A finding is one violation or warning. It
+carries a code, a severity, the issue that receives it as its subject, for
+some codes the reference it concerns, and a fixed message that names keys and
+rules but never a value or a line of the body. Three families of findings
+share the catalogue:
+
+- **document findings** (function `findings`): the frontmatter document in an
+  issue body, judged with the issue's address;
+- **run findings** (function `plan`): the rules of the planning profile that
+  discovery and the graph apply to a whole run;
+- **body warnings** (function `body_warnings`): Taskalisk's own writing
+  convention for a task body, not a rule of any specification.
 
 These are the Rust crate's codes. The Python compiler reports frontmatter
 problems as `frontmatter.violation` and `frontmatter.warning` lines; their
@@ -20,14 +28,18 @@ V12 assigns it; the prefix names the specification that states the rule:
 | `format.` | the format [`issue-dag/2`](../../../tests/fixtures/issue-dag/formats/issue-dag-2.md): carrier rules C, value rules L, validity rules V |
 | `version.` | the [version policy](../../../tests/fixtures/issue-dag/versions.md) |
 | `profile.` | the planning profile [`issue-dag-planning/2`](../../../tests/fixtures/issue-dag/profiles/issue-dag-planning-2.md) |
+| `taskalisk.` | Taskalisk's convention, [Writing a task](../../../skills/taskalisk/WRITING-TASKS.md); the suffix is a name, not a label |
 
 The links go to the copy of the specification vendored in this repository
 under `tests/fixtures/issue-dag/`. A code never changes meaning; a rule that
-is added gets a new code.
+is added gets a new code. Each code has one severity, which the crate defines
+once, in the catalogue:
 
-- **error**: a violation. The document is invalid.
-- **warning**: the V10 advisory. The document stays valid. A warning is
-  reported only for a document with no violations.
+- **error**: a violation. The document is invalid, or for a run finding the
+  run is.
+- **warning**: the V10 advisory, or a body warning. The document stays valid.
+  A V10 warning is reported only for a document with no violations, and body
+  warnings only for a valid task document.
 
 A body with no frontmatter block (rules C1 to C3) is not a document and has
 no findings. A document gets one finding per rule it breaks, however many of
@@ -35,16 +47,20 @@ its values break that rule. Three cases stop judging, so the document gets
 one finding only: a line break under C4, a repeated `.dag` (C7), and a `.dag`
 that names another format version (P3).
 
-Each example below is the frontmatter block of a case in the vendored
-conformance corpus (`tests/fixtures/issue-dag/corpus/cases/document/`), judged
-with the address `o/r#1`; the crate's corpus test runs every case.
+Each example of a document finding is the frontmatter block of a case in the
+vendored conformance corpus (`tests/fixtures/issue-dag/corpus/cases/document/`),
+judged with the address `o/r#1`; the crate's corpus test runs every case. A
+run finding's example names a case under `corpus/cases/graph/`, whose issues
+are `o/r#1`, `o/r#2` and so on.
 
 ## Entries
 
-The entries are in the crate's order (`LABELS`), the order of the labels'
-text, so `V10` comes before `V2`. The test
+The entries are in the catalogue's order (`CODES`): the document codes in the
+order of the labels' text, so `V10` comes before `V2`; then the planning
+profile's codes; then the body warnings. The test
 `crates/issue-dag-core/tests/finding_reference.rs` fails when a code has no
-entry here, or an entry names no code.
+entry here, an entry names no code, or a link or anchor here does not
+resolve.
 
 ### `format.C4`
 
@@ -231,9 +247,19 @@ version is unknown to this reader.
 
 (case `p3-retired-version`; case `p3-unknown-version` has `issue-dag/3`).
 
-To fix: migrate to `issue-dag/2`: write every reference as `owner/repo#N` and
-set `.dag: issue-dag/2`. The other rules then apply, and may give further
+The fix depends on which case it is; the message is the same for both.
+
+To fix a retired version (`issue-dag/1`): migrate the document to
+`issue-dag/2`. Write every reference as `owner/repo#N` and set
+`.dag: issue-dag/2`. The other rules then apply, and may give further
 findings.
+
+To fix an unknown version (such as `issue-dag/3`): do not rewrite the
+document to an older version. It was written for a format this reader does not
+know, and the version policy (rules P6 and R1) lets a document declare a
+version only once every reader that plans its repository accepts it. Upgrade
+Taskalisk to a release that accepts the version. If the number is a typing
+error, set `.dag: issue-dag/2`.
 
 ### `format.V1`
 
@@ -447,3 +473,172 @@ instead, and gets no `profile.X1`.
 
 To fix: set `.id` to the issue's own address. If the body was copied, check
 its other keys too.
+
+### `profile.D3`
+
+**Severity:** error. **Rule:** [D3](../../../tests/fixtures/issue-dag/profiles/issue-dag-planning-2.md#3-discovery), out of scope, of the planning profile.
+
+A document names a reference in a repository outside the run's read scope.
+The planner never reads it, so it is not a node. Each document that names it
+receives this finding, open or closed, and the finding concerns the
+reference. A root reference outside the scope rejects the run instead (rule
+I2), with no findings.
+
+In case `d3-outside-the-scope`, the read scope is the owner `o`, and `o/r#1`
+names `x/y#1` in `.blocked_by`: `o/r#1` receives `profile.D3` concerning
+`x/y#1`. The prerequisite is then unknown too, so `o/r#1` also receives
+`profile.X3` (case `d3-closed-document-naming-it` shows that a closed
+document receives only D3).
+
+To fix: widen the read scope to the repository, if the reference belongs in
+the plan, or remove the reference from the document.
+
+### `profile.D4`
+
+**Severity:** error. **Rule:** [D4](../../../tests/fixtures/issue-dag/profiles/issue-dag-planning-2.md#3-discovery), pull request, of the planning profile.
+
+A reference resolves to a pull request, not an issue. The pull request is not
+a node, and receives the finding itself; it concerns no other reference.
+
+In case `d4-pull-request`, `o/r#1` names `o/r#5` in `.blocked_by`, and `o/r#5`
+is a pull request: `o/r#5` receives `profile.D4`, and `o/r#1` receives
+`profile.X3` concerning `o/r#5`.
+
+To fix: name the issue the pull request closes instead, since a pull request
+is not a unit of planned work.
+
+### `profile.D5`
+
+**Severity:** error. **Rule:** [D5](../../../tests/fixtures/issue-dag/profiles/issue-dag-planning-2.md#3-discovery), transferred, of the planning profile.
+
+A reference names an issue that was transferred and now has another address.
+It is not a node. Each document that names it receives this finding, which
+concerns the old reference; a root reference that no document names receives
+it itself.
+
+In case `d5-transferred`, `o/r#1` names `o/r#6`, which was transferred:
+`o/r#1` receives `profile.D5` concerning `o/r#6`, and `profile.X3` too. In case
+`d5-transferred-root`, the root `o/r#6` receives it.
+
+To fix: replace the old reference with the issue's new address, in every
+document that names it and in the run's roots.
+
+### `profile.X2`
+
+**Severity:** error. **Rule:** [X2](../../../tests/fixtures/issue-dag/profiles/issue-dag-planning-2.md#4-cross-document-rules), no container prerequisite, of the planning profile.
+
+An item of the `.blocked_by` of an open task names an issue whose document is
+a container. A container groups work and is never complete, so it cannot be a
+prerequisite: the item makes no edge, and the task receives this finding
+concerning the container. A closed task is not checked (case
+`x2-closed-task-naming-a-container`).
+
+In case `x2-container-prerequisite`, the open task `o/r#1` names `o/r#9`,
+whose `.kind` is `container`: `o/r#1` receives `profile.X2` concerning
+`o/r#9`.
+
+To fix: name the container's children that the task actually waits for,
+rather than the container.
+
+### `profile.X3`
+
+**Severity:** error. **Rule:** [X3](../../../tests/fixtures/issue-dag/profiles/issue-dag-planning-2.md#4-cross-document-rules), unknown prerequisite, of the planning profile.
+
+An item of the `.blocked_by` of an open task names an issue that is neither a
+node nor a container: one outside the read scope (D3), a pull request (D4), or
+a transferred issue (D5). The task receives this finding concerning that
+reference, and the run is invalid. It usually comes with the finding that says
+why the reference is not a node.
+
+In case `d4-pull-request`, `o/r#1` names the pull request `o/r#5`: `o/r#1`
+receives `profile.X3` concerning `o/r#5`.
+
+To fix: fix the finding that comes with it (see `profile.D3`, `profile.D4` and
+`profile.D5`), or remove the prerequisite.
+
+### `profile.G4`
+
+**Severity:** error. **Rule:** [G4](../../../tests/fixtures/issue-dag/profiles/issue-dag-planning-2.md#5-the-graph), cycles, of the planning profile.
+
+The `.blocked_by` edges between open nodes form a cycle, so the run is
+invalid: no order completes every node. Each node on a cycle, and each node
+downstream of one, receives this finding; it concerns no reference. A node
+upstream of a cycle does not.
+
+In case `g4-cycle`, `o/r#1` is blocked by `o/r#2` and `o/r#2` by `o/r#1`: both
+receive `profile.G4`. In case `g4-downstream-of-a-cycle`, a node that waits on
+the cycle receives it too.
+
+To fix: find the cycle among the reported nodes and remove the edge that is
+wrong, usually one that points the wrong way. The nodes downstream recover
+once the cycle is gone.
+
+### `taskalisk.acceptance-missing`
+
+**Severity:** warning. **Rule:** [Body sections](../../../skills/taskalisk/WRITING-TASKS.md#body-sections), of Taskalisk's convention.
+
+A valid task document's body has no `## Acceptance` heading: a level-2
+heading, ATX or setext, whose text is exactly `Acceptance`. The match is
+case-sensitive and the heading must be plain text, so `## acceptance`,
+`### Acceptance` and `## **Acceptance**` do not count, nor does a heading in a
+code block, a block quote or a list.
+
+To fix: add the section from the task's canonical template, with exact and
+observable results as a checklist.
+
+### `taskalisk.outcome-items`
+
+**Severity:** warning. **Rule:** [The one-outcome test](../../../skills/taskalisk/WRITING-TASKS.md#the-one-outcome-test), of Taskalisk's convention.
+
+The Outcome section, from its first `## Outcome` heading to the next heading
+of level 1 or 2, holds more than one list item, counted at any depth. A task
+delivers one outcome; two items usually mean two tasks.
+
+To fix: state the outcome as one sentence. If it needs two, split the task
+and give each piece its own issue.
+
+### `taskalisk.outcome-missing`
+
+**Severity:** warning. **Rule:** [Body sections](../../../skills/taskalisk/WRITING-TASKS.md#body-sections), of Taskalisk's convention.
+
+A valid task document's body has no `## Outcome` heading, matched as for
+`taskalisk.acceptance-missing`. Without it the outcome checks are skipped.
+
+To fix: add the section from the task's canonical template, with the task's
+one outcome as one sentence.
+
+### `taskalisk.outcome-sentences`
+
+**Severity:** warning. **Rule:** [The one-outcome test](../../../skills/taskalisk/WRITING-TASKS.md#the-one-outcome-test), of Taskalisk's convention.
+
+The Outcome section holds more than one sentence, over its prose paragraphs
+or within one list item. A sentence ends at `.`, `!` or `?` followed by
+whitespace and an uppercase letter, so `e.g. a block` and `v1.2` do not end
+one; two paragraphs are two sentences. Code and HTML add no text.
+
+To fix: state the outcome as one sentence with one subject and one verb. Move
+detail to Scope, or split the task if the second sentence is a second
+outcome.
+
+### `taskalisk.scope-missing`
+
+**Severity:** warning. **Rule:** [Body sections](../../../skills/taskalisk/WRITING-TASKS.md#body-sections), of Taskalisk's convention.
+
+A valid task document's body has no `## Scope` heading, matched as for
+`taskalisk.acceptance-missing`. `## Out of scope` is a different section and
+does not count.
+
+To fix: add the section from the task's canonical template, listing what the
+pull request contains.
+
+### `taskalisk.title-joins`
+
+**Severity:** warning. **Rule:** [Signs of a bundle](../../../skills/taskalisk/WRITING-TASKS.md#signs-of-a-bundle), of Taskalisk's convention.
+
+The issue's title, read as inline Markdown outside code spans, holds a `;` or
+the word `and`, in any ASCII case, between two other words: it probably joins
+two outcomes. The check runs only when the caller passes the title; the
+observation bundle records none.
+
+To fix: if the title names two outcomes, split the task. If `and` is part of
+one name, rephrase the title or put the name in a code span.
