@@ -360,6 +360,74 @@ class Secrets(Harness):
         self.assertTrue(out[-1]["redacted"])
 
 
+class QuerySecrets(unittest.TestCase):
+    """OUT-31 (F-18): a secret-like query parameter's value in gh or git text is redacted."""
+
+    @classmethod
+    def setUpClass(cls):
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("taskalisk_sanitize", SCRIPT)
+        cls.tk = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(cls.tk)
+
+    def test_secret_parameters_are_redacted(self):
+        cases = {
+            "gh: https://api.github.com/x?token=abc123secret failed":
+                "gh: https://api.github.com/x?token=[redacted] failed",
+            "https://h/p?page=2&token=abc123secret": "https://h/p?page=2&token=[redacted]",
+            "https://h/p?TOKEN=abc123secret&page=2": "https://h/p?TOKEN=[redacted]&page=2",
+            "https://h/p?Access_Token=abc123secret#frag": "https://h/p?Access_Token=[redacted]#frag",
+            "https://user:pw123secret@h/p?sig=abc123secret": "https://[redacted]@h/p?sig=[redacted]",
+            "a https://h/1?key=abc123secret b https://h/2?password=abc123secret c":
+                "a https://h/1?key=[redacted] b https://h/2?password=[redacted] c",
+            "https://h/p?secret=abc123secret;https://h/q?signature=abc123secret":
+                "https://h/p?secret=[redacted]",  # a value runs past ; so no part of a secret is left
+            "https://h/cb?code=abc123secret&state=s1&auth=abc123secret":
+                "https://h/cb?code=[redacted]&state=s1&auth=[redacted]",
+            # a secret that opens a fragment, as an OAuth implicit-flow callback puts it
+            "https://h/cb#access_token=abc123secret&state=s1": "https://h/cb#access_token=[redacted]&state=s1",
+            "https://h/cb#a=1&token=abc123secret": "https://h/cb#a=1&token=[redacted]",
+            "HTTPS://H/P?Token=abc123secret": "HTTPS://H/P?Token=[redacted]",
+            # the characters around a URL stay where they were
+            "'https://h/p?token=abc123secret'": "'https://h/p?token=[redacted]'",
+            '"https://h/p?token=abc123secret"': '"https://h/p?token=[redacted]"',
+            "(see https://h/p?token=abc123secret)": "(see https://h/p?token=[redacted])",
+            "<https://h/p?token=abc123secret>": "<https://h/p?token=[redacted]>",
+            "failed at https://h/p?token=abc123secret.": "failed at https://h/p?token=[redacted].",
+            "https://h/p?token=abc123secret, then": "https://h/p?token=[redacted], then",
+            "https://h/p?token=abc.123secret": "https://h/p?token=[redacted]",
+            "[https://h/p?token=abc123secret]": "[https://h/p?token=[redacted]]",
+            # a value made only of sentence punctuation is still a value
+            "https://h/p?token=...": "https://h/p?token=[redacted]",
+        }
+        for given, expected in cases.items():
+            with self.subTest(given):
+                self.assertEqual(self.tk.sanitize_text(given), expected)
+                self.assertNotIn("abc123secret", self.tk.sanitize_text(given))
+
+    def test_a_quote_or_bracket_inside_a_value_leaks_nothing(self):
+        for value in ("abc(def)TAILSECRET", "abc;TAILSECRET", "abc;cdTAILSECRET&page=2", "ab'cdTAILSECRET", 'ab"cdTAILSECRET', "ab<cd>TAILSECRET", "ab[cd]TAILSECRET", "ab)TAILSECRET"):
+            for wrap in ("{}", "'{}'", "({})", "<{}>"):
+                text = wrap.format(f"https://h/p?token={value}")
+                with self.subTest(text):
+                    self.assertNotIn("TAILSECRET", self.tk.sanitize_text(text))
+                    self.assertNotIn("cd", self.tk.sanitize_text(text).replace("[redacted]", ""))
+
+    def test_long_text_without_a_url_is_linear(self):
+        """A scheme-like word with no `://` after it must not rescan the rest of the text."""
+        for text in ("a." * 50_000, "a-" * 50_000, "a+" * 50_000, "x" * 100_000 + ":/"):
+            with self.subTest(text[:6]):
+                start = time.monotonic()
+                self.tk.sanitize_text(text)
+                self.assertLess(time.monotonic() - start, 1.0)
+
+    def test_other_parameters_and_text_are_untouched(self):
+        for text in ("https://h/p?page=2&per_page=100", "https://h/p?tokens_left=3", "https://h/p?monkey=1",
+                     "a token=abc outside any URL", "https://h/p", "https://h/p?", "https://h/p?token"):
+            with self.subTest(text):
+                self.assertEqual(self.tk.sanitize_text(text), text)
+
+
 MARKS = ("MARK_TITLE_SEED", "MARK_BODY_SEED", "MARK_TITLE_REF", "MARK_BODY_REF")
 
 

@@ -118,12 +118,32 @@ def sanitize_home(text: str) -> str:
 
 
 # `scheme://user:secret@host`: a credential embedded in a URL that git or gh echoes in an error.
-URL_CREDENTIALS_RE = re.compile(r"(?i)\b([a-z][a-z0-9+.-]*://)[^\s/@]+@")
+# A scheme is bounded (RFC 3986 names are short), so a long scheme-like word with no `://` after it,
+# such as `a.a.a.…`, is not rescanned from every word boundary: the match stays linear.
+URL_SCHEME = r"[a-z][a-z0-9+.-]{0,31}://"
+URL_CREDENTIALS_RE = re.compile(r"(?i)\b(" + URL_SCHEME + r")[^\s/@]+@")
+URL_RE = re.compile(r"(?i)\b" + URL_SCHEME + r"\S+")
+# A query or fragment parameter whose name says it carries a secret; its value is redacted. The
+# names are a heuristic: a secret in a parameter not named here is not found
+# (docs/topics/output/README.md). A value runs to the next `&`, the fragment or white space,
+# past any `;`, quote or bracket inside it, so no part of it leaks; only closing punctuation at
+# its very end, which belongs to the text around the URL, is given back (`_redact_value`).
+URL_SECRET_PARAM_RE = re.compile(r"(?i)([?&;#](?:access_token|token|key|secret|password|signature|sig|auth|code)=)([^&#\s]+)")
+AROUND_A_URL = ".,:!?'\")>]"
+
+
+def _redact_value(m: re.Match[str]) -> str:
+    value = m.group(2)
+    kept = value.rstrip(AROUND_A_URL)
+    return m.group(1) + "[redacted]" + (value[len(kept):] if kept else "")
 
 
 def sanitize_text(text: str) -> str:
-    """Command output that may reach a line: no home directory, no credential inside a URL."""
-    return sanitize_home(URL_CREDENTIALS_RE.sub(r"\1[redacted]@", text))
+    """Command output that may reach a line: no home directory, no credential inside a URL, either
+    as `user:secret@` or as the value of a secret-like query or fragment parameter."""
+    text = URL_CREDENTIALS_RE.sub(r"\1[redacted]@", text)
+    text = URL_RE.sub(lambda m: URL_SECRET_PARAM_RE.sub(_redact_value, m.group(0)), text)
+    return sanitize_home(text)
 
 
 # The run being written, so discovery can record each decision in the receipt as it is made.
