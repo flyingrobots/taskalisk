@@ -5,6 +5,15 @@ The Taskalisk skill's releases. The skill version (the release tag, and `__versi
 under `skills/taskalisk/schemas/` has its own version and moves only when that message changes. A
 schema version under `Unreleased` is a draft and may change in place.
 
+## Unreleased
+
+### Fixed
+
+- **A secret in a URL query string is redacted** (flyingrobots/taskalisk#78). The value of a
+  query parameter named `token`, `access_token`, `key`, `secret`, `password`, `sig`, `signature`,
+  `auth` or `code`, in any case, is replaced by `[redacted]` in `gh` and `git` text before it
+  reaches a line or the receipt, as `user:secret@` already was. Other parameters are kept.
+
 ## 2.1.2 - 2026-11-24
 
 ### Changed

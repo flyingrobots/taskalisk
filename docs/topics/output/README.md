@@ -234,8 +234,11 @@ type; `<command> --help` emits that command and the schemas of its results and e
 `GH_TOKEN`, `GITHUB_TOKEN`, `GH_ENTERPRISE_TOKEN` and `GITHUB_ENTERPRISE_TOKEN`, every token
 variable `gh help environment` names, are declared secrets: their values are
 replaced by `[redacted]` in every line and in the receipt, and the receipt head names which were
-set. A credential inside a URL (`scheme://user:secret@host`) in `gh` or `git` output is replaced
-before it is recorded. The home directory is shown as `~` in worktree paths and command output,
+set. A credential inside a URL in `gh` or `git` output is replaced by `[redacted]` before it is
+recorded: userinfo (`scheme://user:secret@host`), and the value of a query parameter named
+`token`, `access_token`, `key`, `secret`, `password`, `sig`, `signature`, `auth` or `code`, in any
+case and any position in the query. Other parameters are kept. The names are a heuristic: a secret
+in a parameter not on that list, or outside a URL, is not found. The home directory is shown as `~` in worktree paths and command output,
 as in 1.x. The bootstrap line's receipt path is absolute because the protocol requires it.
 
 ## What is not guaranteed

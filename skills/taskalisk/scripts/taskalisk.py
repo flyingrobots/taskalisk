@@ -118,11 +118,18 @@ def sanitize_home(text: str) -> str:
 
 # `scheme://user:secret@host`: a credential embedded in a URL that git or gh echoes in an error.
 URL_CREDENTIALS_RE = re.compile(r"(?i)\b([a-z][a-z0-9+.-]*://)[^\s/@]+@")
+URL_RE = re.compile(r"(?i)\b[a-z][a-z0-9+.-]*://\S+")
+# A query parameter whose name says it carries a secret; its value is redacted. The names are a
+# heuristic: a secret in a parameter not named here is not found (docs/topics/output/README.md).
+URL_SECRET_PARAM_RE = re.compile(r"(?i)([?&;](?:access_token|token|key|secret|password|signature|sig|auth|code)=)[^&;#\s]+")
 
 
 def sanitize_text(text: str) -> str:
-    """Command output that may reach a line: no home directory, no credential inside a URL."""
-    return sanitize_home(URL_CREDENTIALS_RE.sub(r"\1[redacted]@", text))
+    """Command output that may reach a line: no home directory, no credential inside a URL, either
+    as `user:secret@` or as the value of a secret-like query parameter."""
+    text = URL_CREDENTIALS_RE.sub(r"\1[redacted]@", text)
+    text = URL_RE.sub(lambda m: URL_SECRET_PARAM_RE.sub(r"\1[redacted]", m.group(0)), text)
+    return sanitize_home(text)
 
 
 # The run being written, so discovery can record each decision in the receipt as it is made.
