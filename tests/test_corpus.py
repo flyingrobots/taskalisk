@@ -437,3 +437,27 @@ class CheckCommandLine(unittest.TestCase):
         self.assertEqual(p.returncode, 2)
         self.assertNotIn("Traceback", p.stderr)
         self.assertIn("no issue-dag checkout", p.stderr)
+
+
+class CodexFindings(unittest.TestCase):
+    """Review of PR #100: replay honours the recorded scope; a malformed expected result is a problem."""
+
+    def test_replay_honours_a_scope_narrower_than_the_home_owner(self):
+        b = ob.from_fake_state(plan_state(), roots=[f"{HOME}#9"])
+        b["parameters"]["read_scope"] = {"owners": [], "repositories": [HOME]}
+        b["observations"]["issues"] = {k: v for k, v in b["observations"]["issues"].items() if k.startswith(HOME + "#")}
+        self.assertEqual(ob.validate(b), [])
+        r = forge.run_graph(b)  # must not ask for an issue outside the recorded scope
+        self.assertEqual(r["outcome"], "invalid")
+        self.assertTrue(any(f["rule"] == "D3" and f.get("concerns", "").startswith(ECHO + "#") for f in r["findings"]), r["findings"])
+
+    def test_an_expected_result_that_is_not_an_object_is_a_problem(self):
+        tmp = pathlib.Path(tempfile.mkdtemp(prefix="corpus-expected-"))
+        self.addCleanup(shutil.rmtree, tmp, True)
+        case = SPEC_COPY / "corpus" / "cases" / "document" / "census-shape-01"
+        shutil.copytree(case, tmp / "census-shape-01")
+        (tmp / "census-shape-01" / "expected.json").write_text("null\n")
+        labels, diffs = spec.rule_labels(SPEC_COPY), spec.differences(SPEC_COPY)
+        cases = {"census-shape-01": json.loads((case / "case.json").read_text())}
+        problems = check.check_case("document", tmp / "census-shape-01", labels, diffs, cases)
+        self.assertTrue(any("expected.json" in p for p in problems), problems)
