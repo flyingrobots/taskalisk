@@ -665,6 +665,12 @@ class Trust(Harness):
             with self.subTest(title):
                 self.assertEqual(tk._md_cell(title), title)
         self.assertEqual(tk._md_cell("a|b <c> [d]"), "a\\|b &lt;c&gt; \\[d\\]")
+        import time
+        for text in ("a." * 50_000, "a-" * 50_000, "a+" * 50_000):  # a scheme-like word with no :// after it
+            with self.subTest(text[:6]):
+                start = time.monotonic()
+                tk._md_cell(text)
+                self.assertLess(time.monotonic() - start, 1.0)
 
     def test_compare_mode_fails_closed_on_a_gh_error(self):
         state = plan_state()
