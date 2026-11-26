@@ -13,7 +13,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use issue_dag_core::{
     Actor, Body, Bundle, CodeownersFile, Issue, IssueRef, IssueState, Observations, Observed,
-    Parameters, PullRequest, ReadScope, Repo, TrustParameters,
+    Parameters, PullRequest, ReadScope, Repo, TrustParameters, is_name,
 };
 use serde_json::{Map, Value};
 
@@ -177,7 +177,8 @@ fn parameters(value: &Value) -> Read<Parameters> {
     for (i, owner) in list(&s["owners"], scope_at)?.iter().enumerate() {
         let at = format!("{scope_at}.owners[{i}]");
         let raw = text(owner, &at)?;
-        if raw.is_empty() || raw != raw.to_ascii_lowercase() || raw.contains('/') {
+        // A name of rule L1, as written (never trimmed), in lower case (OB13).
+        if !is_name(raw) || raw != raw.to_ascii_lowercase() {
             return fail(&at, format!("{raw:?} is not an owner in canonical form"));
         }
         owners.insert(raw.to_owned());
