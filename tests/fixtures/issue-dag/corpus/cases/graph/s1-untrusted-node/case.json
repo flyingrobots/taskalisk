@@ -2,7 +2,8 @@
   "cites": [
     "S1",
     "S2",
-    "T2"
+    "T2",
+    "AD8"
   ],
   "id": "graph/s1-untrusted-node",
   "kind": "normative",

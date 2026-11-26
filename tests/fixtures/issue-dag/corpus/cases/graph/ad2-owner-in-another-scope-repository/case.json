@@ -1,0 +1,12 @@
+{
+  "cites": [
+    "AD2",
+    "AD5",
+    "AD8"
+  ],
+  "id": "graph/ad2-owner-in-another-scope-repository",
+  "kind": "normative",
+  "level": "graph",
+  "source": "constructed from the rule text",
+  "title": "An author who is OWNER of another repository of the scope is trusted there"
+}

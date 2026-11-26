@@ -1,0 +1,10 @@
+{
+  "cites": [
+    "AD9"
+  ],
+  "id": "graph/ad9-head-not-observed",
+  "kind": "normative",
+  "level": "graph",
+  "source": "constructed from the rule text",
+  "title": "A pull request whose head repository was not observed is not admitted"
+}

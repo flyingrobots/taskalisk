@@ -1,0 +1,11 @@
+{
+  "cites": [
+    "AD7",
+    "AD5"
+  ],
+  "id": "graph/ad7-codeowners-does-not-trust-a-bot",
+  "kind": "normative",
+  "level": "graph",
+  "source": "constructed from the rule text",
+  "title": "A bot named in CODEOWNERS is not trusted"
+}

@@ -1,0 +1,12 @@
+{
+  "cites": [
+    "I2",
+    "I6",
+    "F1"
+  ],
+  "id": "graph/i2-other-trust-policy",
+  "kind": "normative",
+  "level": "graph",
+  "source": "constructed from the rule text",
+  "title": "A run under a trust policy that the specification does not define is rejected"
+}

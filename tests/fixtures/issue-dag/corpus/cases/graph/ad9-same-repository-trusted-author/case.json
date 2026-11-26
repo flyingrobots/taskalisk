@@ -1,0 +1,12 @@
+{
+  "cites": [
+    "AD9",
+    "S1",
+    "S2"
+  ],
+  "id": "graph/ad9-same-repository-trusted-author",
+  "kind": "normative",
+  "level": "graph",
+  "source": "constructed from the rule text",
+  "title": "A same-repository pull request by an author with write permission is admitted"
+}

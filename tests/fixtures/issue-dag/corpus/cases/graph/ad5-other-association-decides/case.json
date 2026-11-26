@@ -1,0 +1,11 @@
+{
+  "cites": [
+    "AD5",
+    "AD10"
+  ],
+  "id": "graph/ad5-other-association-decides",
+  "kind": "normative",
+  "level": "graph",
+  "source": "constructed from the rule text",
+  "title": "An association outside OWNER, MEMBER and COLLABORATOR decides without the permission"
+}

@@ -142,6 +142,13 @@ class Forge(unittest.TestCase):
         self.assertEqual(r["ready"][0], f"{ECHO}#5")
         self.assertIn({"id": f"{BUNNY}#7", "complete": True, "opaque": False, "untrusted": False}, r["nodes"])
 
+    def test_a_bundle_naming_another_trust_policy_is_a_valid_bundle_whose_run_is_rejected(self):
+        """Profile rule I2: the only trust policy the specification defines is taskalisk/threat-model."""
+        b = ob.from_fake_state(plan_state(), roots=[f"{HOME}#9"])
+        b["parameters"]["trust"]["policy"] = "someone/else"
+        self.assertEqual(ob.validate(b), [])
+        self.assertEqual(forge.run_graph(b), {"outcome": "rejected"})
+
     def test_violations_are_labelled_with_rules(self):
         state = plan_state()
         state["issues"][f"{HOME}#1"]["body"] = fm(f"{HOME}#1", blocked_by=["#2", "mallory/trap#1"], extra=".blockedby: [x]")
@@ -256,7 +263,7 @@ class ForgeFidelity(unittest.TestCase):
 
 # The digest of the corpus this suite checks: the issue-dag repository's corpus/DIGEST and the
 # version table name the same value. A change to the corpus changes this constant in the same commit.
-CORPUS_DIGEST = "sha256:b2aa4839e0f2c7dcb2113cc8c6b6db99fb60191deef39ff5e8777652e93bf246"
+CORPUS_DIGEST = "sha256:015ae95e2e611ee70b75d22f9a6c99396bf2e9f7139c2e68502aad475c97940d"
 
 
 class CorpusPin(unittest.TestCase):

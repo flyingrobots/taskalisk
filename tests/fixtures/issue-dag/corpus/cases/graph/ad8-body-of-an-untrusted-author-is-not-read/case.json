@@ -1,0 +1,12 @@
+{
+  "cites": [
+    "AD8",
+    "AD10",
+    "D6"
+  ],
+  "id": "graph/ad8-body-of-an-untrusted-author-is-not-read",
+  "kind": "normative",
+  "level": "graph",
+  "source": "constructed from the rule text",
+  "title": "The body of an issue whose author is not trusted is not read"
+}

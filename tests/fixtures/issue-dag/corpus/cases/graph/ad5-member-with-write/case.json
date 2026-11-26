@@ -1,0 +1,11 @@
+{
+  "cites": [
+    "AD5",
+    "AD6"
+  ],
+  "id": "graph/ad5-member-with-write",
+  "kind": "normative",
+  "level": "graph",
+  "source": "constructed from the rule text",
+  "title": "A MEMBER with write permission is trusted"
+}

@@ -1,0 +1,14 @@
+{
+  "cites": [
+    "AD2",
+    "AD5",
+    "AD6",
+    "AD8",
+    "D6"
+  ],
+  "id": "graph/ad2-permission-counts-per-repository",
+  "kind": "normative",
+  "level": "graph",
+  "source": "constructed from the rule text",
+  "title": "Write permission on one repository does not trust the person in another"
+}

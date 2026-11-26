@@ -1,0 +1,10 @@
+{
+  "cites": [
+    "AD7"
+  ],
+  "id": "graph/ad7-codeowners-line-separator-ends-a-line",
+  "kind": "normative",
+  "level": "graph",
+  "source": "constructed from the rule text",
+  "title": "U+2028 ends a CODEOWNERS line: `@carol` after it is the next line's pattern, not an owner"
+}

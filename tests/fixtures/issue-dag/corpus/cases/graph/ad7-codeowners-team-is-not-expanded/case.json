@@ -1,0 +1,11 @@
+{
+  "cites": [
+    "AD7",
+    "AD5"
+  ],
+  "id": "graph/ad7-codeowners-team-is-not-expanded",
+  "kind": "normative",
+  "level": "graph",
+  "source": "constructed from the rule text",
+  "title": "A team named in CODEOWNERS trusts nobody"
+}

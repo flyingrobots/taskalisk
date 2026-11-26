@@ -1,0 +1,10 @@
+{
+  "cites": [
+    "AD7"
+  ],
+  "id": "graph/ad7-codeowners-comment",
+  "kind": "normative",
+  "level": "graph",
+  "source": "constructed from the rule text",
+  "title": "A name after `#` in CODEOWNERS is a comment"
+}

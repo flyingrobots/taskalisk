@@ -123,8 +123,9 @@ An issue is **trusted** only when all of the following hold:
   themselves: both include read- and triage-level people.
 - **Every editor** in the issue's body edit history is trusted by the same
   rule: the author (already trusted), an allowlisted login, or a login with
-  `write` or higher permission. A deleted user, a bot, a `read` or `triage`
-  collaborator, or a check that cannot be made is untrusted.
+  `write` or higher permission. A deleted user, a bot, or a `read` or
+  `triage` collaborator is untrusted. A check that cannot be made fails the
+  run (below); it is never read as untrusted or trusted.
 - Owner, repository and login names compare case-insensitively, as GitHub
   treats them.
 

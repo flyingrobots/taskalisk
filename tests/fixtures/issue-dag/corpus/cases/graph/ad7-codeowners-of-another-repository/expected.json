@@ -1,0 +1,34 @@
+{
+  "batch": [],
+  "edges": [
+    {
+      "from": "o/s#2",
+      "status": "open",
+      "to": "o/r#1"
+    }
+  ],
+  "findings": [],
+  "nodes": [
+    {
+      "complete": false,
+      "id": "o/r#1",
+      "opaque": false,
+      "status": "open",
+      "untrusted": false
+    },
+    {
+      "complete": false,
+      "id": "o/s#2",
+      "opaque": true,
+      "status": "blocked",
+      "untrusted": true
+    }
+  ],
+  "outcome": "planned",
+  "ready": [
+    "o/s#2"
+  ],
+  "untrusted": [
+    "o/s#2"
+  ]
+}

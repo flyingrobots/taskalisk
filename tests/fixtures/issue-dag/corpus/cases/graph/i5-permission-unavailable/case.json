@@ -1,7 +1,9 @@
 {
   "cites": [
     "I5",
-    "F1"
+    "F1",
+    "AD8",
+    "AD10"
   ],
   "id": "graph/i5-permission-unavailable",
   "kind": "normative",
