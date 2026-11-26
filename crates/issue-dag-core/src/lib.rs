@@ -2,10 +2,14 @@
 //!
 //! A hand-written reader for the `issue-dag/2` format: the carrier
 //! ([`parse`]), validity ([`validate`]), the decoded record ([`admit`]), and
-//! the `.blocked_by` rewrite of the edge-edit contract ([`rewrite_blocked_by`]).
+//! the `.blocked_by` rewrite of the edge-edit contract ([`rewrite_blocked_by`]),
+//! and the observations, ports and admission policy a planning run reads.
 //! The crate performs no I/O and has no dependencies.
+mod admission;
 mod carrier;
+mod forge;
 mod label;
+mod observation;
 mod record;
 mod reference;
 mod rewrite;
@@ -13,8 +17,14 @@ mod validate;
 
 use std::collections::BTreeSet;
 
+pub use admission::{Admission, Identity, Undecided, codeowners_persons};
 pub use carrier::{Block, Entry, Integer, Parse, Slot, Value, parse, trim};
+pub use forge::{Bundle, Forge, LocalRepository, NoLocalRepository, Observations, RecordedForge};
 pub use label::Label;
+pub use observation::{
+    Actor, Body, CodeownersFile, Issue, IssueState, Lookup, Missing, Observed, Parameters,
+    PullRequest, ReadScope, Repo, TRUST_POLICY, TrustParameters,
+};
 pub use record::{Kind, MeterClaim, Record, Status, TaskType, VERSION};
 pub use reference::{IssueRef, MAX_NUMBER};
 pub use rewrite::{EdgeEdit, Refusal, Rewrite, rewrite_blocked_by};

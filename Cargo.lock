@@ -3,6 +3,14 @@
 version = 4
 
 [[package]]
+name = "issue-dag-bundle"
+version = "0.1.0"
+dependencies = [
+ "issue-dag-core",
+ "serde_json",
+]
+
+[[package]]
 name = "issue-dag-core"
 version = "0.1.0"
 dependencies = [
