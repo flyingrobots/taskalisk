@@ -1,0 +1,18 @@
+{
+  "cites": [
+    "V10",
+    "X1",
+    "CC5"
+  ],
+  "disagreement": {
+    "classification": "compatibility-exception",
+    "difference": 22,
+    "note": "the compiler reports the V10 warning beside the X1 violation"
+  },
+  "id": "document/v10-x1-document-has-no-warnings--python",
+  "kind": "characterisation",
+  "level": "document",
+  "normative_case": "document/v10-x1-document-has-no-warnings",
+  "source": "the Python compiler, on the input of document/v10-x1-document-has-no-warnings",
+  "title": "What the compiler does: A document whose only violation is X1 has no warnings either"
+}

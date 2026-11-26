@@ -1,0 +1,19 @@
+{
+  "cites": [
+    "C7",
+    "V3",
+    "V7",
+    "V12",
+    "X1"
+  ],
+  "disagreement": {
+    "classification": "compatibility-exception",
+    "difference": 20,
+    "note": "the compiler judges the first `.id` and also reports V7"
+  },
+  "id": "document/c7-repeated-id",
+  "kind": "normative",
+  "level": "document",
+  "source": "constructed from the rule text",
+  "title": "A repeated `.id` leaves the identity unknown: no V7 and no X1"
+}

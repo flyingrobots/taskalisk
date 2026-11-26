@@ -1,0 +1,20 @@
+{
+  "cites": [
+    "C7",
+    "V3",
+    "V7",
+    "V12",
+    "X1"
+  ],
+  "disagreement": {
+    "classification": "compatibility-exception",
+    "difference": 20,
+    "note": "the compiler judges the first `.id` and also reports V7"
+  },
+  "id": "document/c7-repeated-id--python",
+  "kind": "characterisation",
+  "level": "document",
+  "normative_case": "document/c7-repeated-id",
+  "source": "the Python compiler, on the input of document/c7-repeated-id",
+  "title": "What the compiler does: A repeated `.id` leaves the identity unknown: no V7 and no X1"
+}

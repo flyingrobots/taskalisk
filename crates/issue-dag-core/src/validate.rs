@@ -116,7 +116,7 @@ pub fn decode(block: &Block, address: Option<&IssueRef>) -> (Validation, Option<
         _ => None,
     };
     if !v.violations.is_empty() {
-        // Warnings are reported only for a valid document (CC5).
+        // V10: warnings are reported only when the document has no violation at all (X1 included).
         v.warnings.clear();
     }
     (v, record)

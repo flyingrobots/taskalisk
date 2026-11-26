@@ -1,0 +1,18 @@
+{
+  "cites": [
+    "C7",
+    "C8",
+    "V5",
+    "V12"
+  ],
+  "disagreement": {
+    "classification": "compatibility-exception",
+    "difference": 19,
+    "note": "the compiler counts neither unterminated line as an entry, so it reports V5 and no duplicate"
+  },
+  "id": "document/c8-repeated-unterminated-key-is-present",
+  "kind": "normative",
+  "level": "document",
+  "source": "constructed from the rule text",
+  "title": "A key repeated on two unterminated lines is present: C7 and C8, no V5"
+}
