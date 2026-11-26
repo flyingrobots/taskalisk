@@ -88,7 +88,7 @@ pub struct ShapeFinding {
 pub fn shape_warnings(graph: &Graph) -> Vec<ShapeFinding> {
     let mut found = Vec::new();
     for (id, children) in &graph.containers {
-        if children.iter().collect::<BTreeSet<_>>().len() > usize::MAX {
+        if children.iter().collect::<BTreeSet<_>>().len() < 2 {
             found.push(ShapeFinding {
                 finding: finding(ShapeWarning::SmallContainer, id, None),
                 detail: Detail::None,
