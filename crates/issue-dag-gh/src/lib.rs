@@ -147,13 +147,23 @@ impl GhForge {
 impl Forge for GhForge {
     fn home_open_issues(&self) -> Lookup<Vec<IssueRef>> {
         let cached = self.read.borrow().home_open_issues.clone();
-        let slot = cached.unwrap_or_else(|| {
-            self.settle(read::home_open_issues(
-                &self.runner,
-                &self.home,
-                self.limits,
-            ))
+        if let Some(slot) = cached {
+            return Ok(slot);
+        }
+        let listed = read::home_open_issues(&self.runner, &self.home, self.limits).map(|listed| {
+            // Each listed issue is read: its own lookup makes no query.
+            let mut read = self.read.borrow_mut();
+            listed
+                .into_iter()
+                .map(|(reference, issue)| {
+                    read.issues
+                        .entry(reference.clone())
+                        .or_insert(Observed::Value(issue));
+                    reference
+                })
+                .collect()
         });
+        let slot = self.settle(listed);
         self.read.borrow_mut().home_open_issues = Some(slot.clone());
         Ok(slot)
     }

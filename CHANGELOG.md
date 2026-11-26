@@ -60,7 +60,8 @@ schema version under `Unreleased` is a draft and may change in place.
   (D10). Each slot is read once, and what was read replays through `RecordedForge`. As in the
   Python, the body's edit history is read only after the author is trusted, so an issue a stranger
   wrote costs no further query (threat model C15): the `Forge` port gains `body(reference)`, which
-  the planner calls only after admission; `Issue` has no body, and `Observations` keeps the bodies
+  the planner calls only after admission, and an issue of the home listing is filled from the
+  listing, never fetched again; `Issue` has no body, and `Observations` keeps the bodies
   read in their own map, `bodies`. The bundle format is unchanged: the loader reads an issue
   slot's nested `body` into that map, a bundle may leave out a body the run never reads (OB14),
   and a run that reads one not recorded finds it missing (OB5). An issue listed on two pages makes the listing unavailable

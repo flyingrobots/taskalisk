@@ -70,12 +70,15 @@ fn reference(source: &str, repo: &Repo, item: &Map<String, Value>) -> Result<Iss
         .ok_or_else(|| GhError::invalid(source, format!("{repo}#{number} is not a reference")))
 }
 
-/// The open issues of `home` that are not pull requests (bundle rule OB6).
+/// The open issues of `home` that are not pull requests (bundle rule OB6),
+/// each with the issue its listed object reads to, as the Python compiler
+/// fills a seed from the listing: a listed issue needs no query of its own
+/// (threat model C15).
 pub fn home_open_issues(
     runner: &Runner,
     home: &Repo,
     limits: Limits,
-) -> Result<Vec<IssueRef>, GhError> {
+) -> Result<Vec<(IssueRef, Issue)>, GhError> {
     let path = format!(
         "repos/{}/{}/issues?state=open&per_page=100",
         home.owner(),
@@ -108,7 +111,8 @@ pub fn home_open_issues(
                     format!("{listed} was listed twice; the pages shifted while they were read"),
                 ));
             }
-            issues.push(listed);
+            let issue = rest_issue(&source, item)?;
+            issues.push((listed, issue));
         }
     }
     if pages == 0 {
@@ -287,18 +291,24 @@ pub fn issue(runner: &Runner, reference: &IssueRef) -> Result<Observed<Issue>, G
     };
     let value = json(&source, &out)?;
     let item = object(&source, &value, "the issue")?;
-    let url = text(&source, item, "repository_url")?;
+    rest_issue(&source, item).map(Observed::Value)
+}
+
+/// A REST issue object, as `GET .../issues/N` and the issue listing both
+/// return it, read into an [`Issue`].
+fn rest_issue(source: &str, item: &Map<String, Value>) -> Result<Issue, GhError> {
+    let url = text(source, item, "repository_url")?;
     let repo = repository_of(&url)
-        .ok_or_else(|| GhError::invalid(&source, "the issue has no parseable repository_url"))?;
-    let address = self::reference(&source, &repo, item)?;
+        .ok_or_else(|| GhError::invalid(source, "the issue has no parseable repository_url"))?;
+    let address = reference(source, &repo, item)?;
     let pull_request = item.get("pull_request").is_some_and(|pr| !pr.is_null());
-    let state = match text(&source, item, "state")?.to_ascii_lowercase().as_str() {
+    let state = match text(source, item, "state")?.to_ascii_lowercase().as_str() {
         "open" => IssueState::Open,
         "closed" => IssueState::Closed,
         // The server's text is left out of the reason.
         _ => {
             return Err(GhError::invalid(
-                &source,
+                source,
                 "the issue's state is neither open nor closed",
             ));
         }
@@ -306,21 +316,21 @@ pub fn issue(runner: &Runner, reference: &IssueRef) -> Result<Observed<Issue>, G
     let author = match item.get("user") {
         None | Some(Value::Null) => None,
         Some(user) => {
-            let user = object(&source, user, "the user")?;
+            let user = object(source, user, "the user")?;
             Some(Actor {
-                login: text(&source, user, "login")?,
-                actor_type: text(&source, user, "type")?,
+                login: text(source, user, "login")?,
+                actor_type: text(source, user, "type")?,
             })
         }
     };
-    Ok(Observed::Value(Issue {
+    Ok(Issue {
         address,
         pull_request,
         state,
-        state_reason: optional_text(&source, item, "state_reason")?,
+        state_reason: optional_text(source, item, "state_reason")?,
         author,
-        author_association: optional_text(&source, item, "author_association")?,
-    }))
+        author_association: optional_text(source, item, "author_association")?,
+    })
 }
 
 /// Why the body of an issue already read is not read: it is a pull request,
