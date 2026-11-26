@@ -72,7 +72,8 @@ pub struct Node {
     /// otherwise.
     pub pull_requests: Vec<LinkedPullRequest>,
     /// For an opaque node, the documents that name it (in `.blocked_by` or
-    /// `.children`), in the order the closure read them, once per name.
+    /// `.children`), in the order the closure read them, once per mention:
+    /// a document that names it twice appears twice, as in the Python.
     /// Empty for any other node.
     pub named_by: Vec<IssueRef>,
 }
@@ -334,17 +335,15 @@ struct Closure {
     has_roots: bool,
     seeds: BTreeSet<IssueRef>,
     visits: BTreeMap<IssueRef, Visit>,
-    named_by: BTreeMap<IssueRef, BTreeSet<IssueRef>>,
     /// The documents that name each reference, in the order read, once per
-    /// name.
+    /// mention (a document that names it twice appears twice).
     naming: BTreeMap<IssueRef, Vec<IssueRef>>,
 }
 
 impl Closure {
     /// A seed that no document read in the run names (D6, D7).
     fn unnamed_seed(&self, reference: &IssueRef) -> bool {
-        self.seeds.contains(reference)
-            && self.named_by.get(reference).is_none_or(BTreeSet::is_empty)
+        self.seeds.contains(reference) && self.naming.get(reference).is_none_or(Vec::is_empty)
     }
 
     /// F5: the issues that receive the D3 or D5 finding about a reference:
@@ -352,8 +351,13 @@ impl Closure {
     /// root that no document names. A seed of the home listing is not a
     /// root: unnamed, it gives no finding (D5).
     fn namers(&self, reference: &IssueRef) -> Vec<IssueRef> {
-        match self.named_by.get(reference) {
-            Some(by) => by.iter().cloned().collect(),
+        match self.naming.get(reference) {
+            Some(by) => {
+                let mut namers = by.clone();
+                namers.sort();
+                namers.dedup();
+                namers
+            }
             None if self.has_roots && self.seeds.contains(reference) => vec![reference.clone()],
             None => Vec::new(),
         }
@@ -443,7 +447,6 @@ impl<'a, F: Forge + ?Sized> Run<'a, F> {
             has_roots,
             seeds: seeds.iter().cloned().collect(),
             visits: BTreeMap::new(),
-            named_by: BTreeMap::new(),
             naming: BTreeMap::new(),
         };
         let mut undecided = BTreeSet::new();
@@ -458,11 +461,6 @@ impl<'a, F: Forge + ?Sized> Run<'a, F> {
             };
             if let Visit::Document(document) = &visit {
                 for name in document.reading.names() {
-                    closure
-                        .named_by
-                        .entry(name.clone())
-                        .or_default()
-                        .insert(reference.clone());
                     closure
                         .naming
                         .entry(name.clone())
