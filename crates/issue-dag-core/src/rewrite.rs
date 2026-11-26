@@ -19,15 +19,15 @@ pub enum EdgeEdit {
 pub enum Refusal {
     /// The body has no frontmatter block.
     NoDocument,
-    /// The block does not have exactly one `.blocked_by` line; the count.
+    /// The block does not have exactly one `.blocked_by` line; the count. A
+    /// valid task always has one, so this refusal is defensive.
     BlockedByLines(usize),
     /// The body is not a valid task document for the address; the labels
     /// of its violations.
     Invalid(Vec<Label>),
     /// The parent equals the child (rule E1).
     SelfEdge,
-    /// The document is not a task. A valid container has no `.blocked_by`
-    /// line, so this follows only a change to the rules above.
+    /// The document is a valid container, not a task.
     NotATask,
 }
 
@@ -46,9 +46,10 @@ pub struct Rewrite {
 ///
 /// # Errors
 ///
-/// Returns a [`Refusal`] when the body is not a valid task document for that
-/// address, when its block does not have exactly one `.blocked_by` line, or
-/// when the parent equals the child.
+/// Returns a [`Refusal`], checked in this order: the body has no block; it
+/// is not a valid document for that address; it is not a task; the parent
+/// equals the child; its block does not have exactly one `.blocked_by` line
+/// (which a valid task always has, so this refusal is defensive).
 pub fn rewrite_blocked_by(
     body: &str,
     address: &IssueRef,
@@ -59,20 +60,6 @@ pub fn rewrite_blocked_by(
         Parse::Unreadable => return Err(Refusal::Invalid(vec![Label::C4])),
         Parse::Block(block) => block,
     };
-    let lines: Vec<_> = block
-        .entries()
-        .iter()
-        .filter(|e| e.key == ".blocked_by")
-        .collect();
-    let [line] = lines.as_slice() else {
-        return Err(Refusal::BlockedByLines(lines.len()));
-    };
-    let parent = match edit {
-        EdgeEdit::Add(parent) | EdgeEdit::Remove(parent) => parent,
-    };
-    if parent == address {
-        return Err(Refusal::SelfEdge);
-    }
     let (validation, record) = decode(&block, Some(address));
     if !validation.violations.is_empty() {
         return Err(Refusal::Invalid(
@@ -81,6 +68,21 @@ pub fn rewrite_blocked_by(
     }
     let Some(mut references) = record.and_then(|r| r.blocked_by) else {
         return Err(Refusal::NotATask);
+    };
+    let parent = match edit {
+        EdgeEdit::Add(parent) | EdgeEdit::Remove(parent) => parent,
+    };
+    if parent == address {
+        return Err(Refusal::SelfEdge);
+    }
+    // Defensive: a valid task has exactly one `.blocked_by` line (C7, V5).
+    let lines: Vec<_> = block
+        .entries()
+        .iter()
+        .filter(|e| e.key == ".blocked_by")
+        .collect();
+    let [line] = lines.as_slice() else {
+        return Err(Refusal::BlockedByLines(lines.len()));
     };
     match edit {
         EdgeEdit::Add(parent) => {

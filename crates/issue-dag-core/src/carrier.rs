@@ -87,16 +87,39 @@ impl Block {
         &self.violations
     }
 
-    /// The value of a key for the rules of sections 3 to 5: the value of the
-    /// first entry line with that key that gives it one (rule C8), or `None`
-    /// when the key is absent.
+    /// How a key appears for the rules of sections 3 to 5.
+    #[must_use]
+    pub fn slot(&self, key: &str) -> Slot<'_> {
+        let mut lines = self.entries.iter().filter(|e| e.key == key);
+        match (lines.next(), lines.next()) {
+            (None, _) => Slot::Absent,
+            (Some(_), Some(_)) => Slot::Repeated,
+            (Some(entry), None) => entry.value.as_ref().map_or(Slot::Absent, Slot::One),
+        }
+    }
+
+    /// The value of a key that has exactly one entry line, which gives it a
+    /// value; `None` otherwise.
     #[must_use]
     pub fn value(&self, key: &str) -> Option<&Value> {
-        self.entries
-            .iter()
-            .filter(|e| e.key == key)
-            .find_map(|e| e.value.as_ref())
+        match self.slot(key) {
+            Slot::One(value) => Some(value),
+            Slot::Absent | Slot::Repeated => None,
+        }
     }
+}
+
+/// How a key appears in a block.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Slot<'a> {
+    /// No entry line gives the key a value: it has no line, or its only line
+    /// is a list without its `]` (rule C8).
+    Absent,
+    /// The key has two or more entry lines (rule C7). It is present, but no
+    /// rule other than C7 judges it or any of its values.
+    Repeated,
+    /// The key has one entry line, with this value.
+    One(&'a Value),
 }
 
 /// What the carrier finds in a body.

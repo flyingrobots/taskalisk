@@ -2,7 +2,7 @@
 
 use std::collections::BTreeSet;
 
-use crate::carrier::{Block, Value};
+use crate::carrier::{Block, Slot, Value};
 use crate::label::Label;
 use crate::record::{Kind, MeterClaim, Record, Status, TaskType, VERSION};
 use crate::reference::{IssueRef, MAX_NUMBER, parse_number};
@@ -61,21 +61,22 @@ pub fn decode(block: &Block, address: Option<&IssueRef>) -> (Validation, Option<
             None,
         );
     }
-    if block
-        .entries()
-        .iter()
-        .any(|e| e.key.starts_with('.') && !FORMAT_KEYS.contains(&e.key.as_str()))
-    {
+    if block.entries().iter().any(|e| {
+        e.key.starts_with('.')
+            && !FORMAT_KEYS.contains(&e.key.as_str())
+            && block.slot(&e.key) != Slot::Repeated
+    }) {
         v.fail(Label::V2);
     }
     let id = identity(block, address, &mut v);
-    let kind = match block.value(".kind") {
-        Some(Value::String(text)) => Kind::parse(text),
-        _ => None,
+    let kind = match block.slot(".kind") {
+        Slot::Repeated => None,
+        Slot::One(value) => one_of(value, Kind::parse, Label::V4, &mut v),
+        Slot::Absent => {
+            v.fail(Label::V4);
+            None
+        }
     };
-    if kind.is_none() {
-        v.fail(Label::V4);
-    }
     let (task_type, blocked_by, children) = kind_keys(block, kind, &mut v);
     if let Some(id) = &id
         && blocked_by
@@ -104,16 +105,21 @@ pub fn decode(block: &Block, address: Option<&IssueRef>) -> (Validation, Option<
         }),
         _ => None,
     };
+    if !v.violations.is_empty() {
+        // Warnings are reported only for a valid document (CC5).
+        v.warnings.clear();
+    }
     (v, record)
 }
 
 /// V1 and P3. Returns whether `.dag` names a format version other than this
 /// one.
 fn names_another_version(block: &Block, v: &mut Validation) -> bool {
-    match block.value(".dag") {
-        Some(Value::String(version)) if version == VERSION => false,
-        Some(Value::String(version)) if is_format_name(version) => true,
-        _ => {
+    match block.slot(".dag") {
+        Slot::Repeated => false,
+        Slot::One(Value::String(version)) if version == VERSION => false,
+        Slot::One(Value::String(version)) if is_format_name(version) => true,
+        Slot::One(_) | Slot::Absent => {
             v.fail(Label::V1);
             false
         }
@@ -122,9 +128,13 @@ fn names_another_version(block: &Block, v: &mut Validation) -> bool {
 
 /// V3, L1 and X1 for `.id`.
 fn identity(block: &Block, address: Option<&IssueRef>, v: &mut Validation) -> Option<IssueRef> {
-    let Some(Value::String(text)) = block.value(".id") else {
-        v.fail(Label::V3);
-        return None;
+    let text = match block.slot(".id") {
+        Slot::Repeated => return None,
+        Slot::One(Value::String(text)) => text,
+        Slot::One(_) | Slot::Absent => {
+            v.fail(Label::V3);
+            return None;
+        }
     };
     let Some(id) = IssueRef::parse(text) else {
         v.fail(Label::L1);
@@ -147,15 +157,11 @@ type KindKeys = (
 fn kind_keys(block: &Block, kind: Option<Kind>, v: &mut Validation) -> KindKeys {
     match kind {
         Some(Kind::Task) => {
-            let task_type = match block.value(".type") {
-                Some(Value::String(text)) => TaskType::parse(text),
-                _ => None,
-            };
-            if task_type.is_none() {
-                v.fail(Label::V5);
-            }
-            let blocked_by = references(block.value(".blocked_by"), Label::V5, v);
-            if block.value(".children").is_some() {
+            let task_type = required(block.slot(".type"), Label::V5, v)
+                .and_then(|value| one_of(value, TaskType::parse, Label::V5, v));
+            let blocked_by = required(block.slot(".blocked_by"), Label::V5, v)
+                .and_then(|value| references(value, Label::V5, v));
+            if matches!(block.slot(".children"), Slot::One(_)) {
                 v.fail(Label::V5);
             }
             (task_type, blocked_by, None)
@@ -164,8 +170,9 @@ fn kind_keys(block: &Block, kind: Option<Kind>, v: &mut Validation) -> KindKeys 
             let task_type = block
                 .value(".type")
                 .and_then(|value| one_of(value, TaskType::parse, Label::V6, v));
-            let children = references(block.value(".children"), Label::V6, v);
-            if block.value(".blocked_by").is_some() {
+            let children = required(block.slot(".children"), Label::V6, v)
+                .and_then(|value| references(value, Label::V6, v));
+            if matches!(block.slot(".blocked_by"), Slot::One(_)) {
                 v.fail(Label::V6);
             }
             (task_type, None, children)
@@ -174,10 +181,23 @@ fn kind_keys(block: &Block, kind: Option<Kind>, v: &mut Validation) -> KindKeys 
     }
 }
 
-/// A list of references for a key the kind requires: a missing or wrongly
-/// kinded value is labelled `rule`, an item that is not a reference L1.
-fn references(value: Option<&Value>, rule: Label, v: &mut Validation) -> Option<Vec<IssueRef>> {
-    let Some(Value::List(items)) = value else {
+/// The value of a key a rule requires: an absent key is labelled `rule`; a
+/// repeated key is present but not judged, so it gives no value and no label.
+fn required<'a>(slot: Slot<'a>, rule: Label, v: &mut Validation) -> Option<&'a Value> {
+    match slot {
+        Slot::One(value) => Some(value),
+        Slot::Repeated => None,
+        Slot::Absent => {
+            v.fail(rule);
+            None
+        }
+    }
+}
+
+/// A list of references for a key the kind requires: a wrongly kinded value
+/// is labelled `rule`, an item that is not a reference L1.
+fn references(value: &Value, rule: Label, v: &mut Validation) -> Option<Vec<IssueRef>> {
+    let Value::List(items) = value else {
         v.fail(rule);
         return None;
     };

@@ -13,7 +13,7 @@ mod validate;
 
 use std::collections::BTreeSet;
 
-pub use carrier::{Block, Entry, Integer, Parse, Value, parse, trim};
+pub use carrier::{Block, Entry, Integer, Parse, Slot, Value, parse, trim};
 pub use label::Label;
 pub use record::{Kind, MeterClaim, Record, Status, TaskType, VERSION};
 pub use reference::{IssueRef, MAX_NUMBER};

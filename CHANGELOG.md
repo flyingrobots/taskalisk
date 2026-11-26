@@ -14,7 +14,9 @@ schema version under `Unreleased` is a draft and may change in place.
   I/O and no dependencies: a hand-written `issue-dag/2` carrier parser and validator, the typed
   record a valid document decodes to, and the `.blocked_by` rewrite of edge-edit rule E4, which
   changes that one line and keeps every other byte, CRLF line ends included. All 165 document cases
-  of the vendored corpus pass; for each `--python` twin the crate matches the normative case. CI
+  of the vendored corpus pass; for each `--python` twin the crate matches the normative case. Pending
+  their specification text: a key repeated under C7 is present but judged by no other rule, and an
+  invalid document reports no warnings. CI
   runs the job "Rust workspace": `cargo fmt`, `clippy -D warnings` and `cargo test`, all locked.
 
 - **A provenance check for the vendored Parley writer** (flyingrobots/taskalisk#77).

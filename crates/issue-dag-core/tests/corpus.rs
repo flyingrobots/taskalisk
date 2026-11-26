@@ -70,7 +70,6 @@ fn result_json(input: &Value) -> Value {
         Judgement::Invalid(v) => json!({
             "result": "invalid",
             "violations": labels(&v.violations),
-            "warnings": labels(&v.warnings),
         }),
     }
 }
