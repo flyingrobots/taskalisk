@@ -10,8 +10,13 @@
 //!
 //! It only reads. Every call passes `--no-optional-locks`, so `status`
 //! never rewrites the index, and turns off `core.fsmonitor` and
-//! `core.untrackedCache`, so a configured monitor command never runs. Every
-//! inherited `GIT_*` variable is removed (`GIT_DIR`, `GIT_CONFIG_*`,
+//! `core.untrackedCache`, so a configured monitor command never runs and a
+//! stale cache never hides an untracked file. One configured command can
+//! still run: a clean filter (`filter.<driver>.clean`) that `status` uses
+//! to compare a file whose stat data changed. That is accepted: a filter
+//! command comes only from the user's own local or global configuration,
+//! which a clone cannot set, so it runs with the same trust as the user's
+//! own `git status`. Every inherited `GIT_*` variable is removed (`GIT_DIR`, `GIT_CONFIG_*`,
 //! `GIT_CEILING_DIRECTORIES`, `GIT_NO_REPLACE_OBJECTS` and the rest), so a
 //! run inside a hook, or under a caller's injected configuration, reads the
 //! repository it was given as that repository configures it.
@@ -62,6 +67,14 @@ pub enum GitError {
         /// The top level of the work tree it is in, as git reports it.
         top_level: PathBuf,
     },
+    /// A listed worktree's directory holds the `.git` of another
+    /// repository: its directory was replaced after the worktree was added.
+    ForeignWorktree {
+        /// The worktree's directory, as listed.
+        worktree: PathBuf,
+        /// The common git directory its `.git` belongs to.
+        common_dir: PathBuf,
+    },
     /// `git` could not be started.
     Spawn {
         /// The command line, for the report.
@@ -98,6 +111,15 @@ impl fmt::Display for GitError {
                 "{} is not the top level of a work tree; the top level is {}",
                 path.display(),
                 top_level.display()
+            ),
+            Self::ForeignWorktree {
+                worktree,
+                common_dir,
+            } => write!(
+                f,
+                "the worktree {} holds the .git of another repository ({})",
+                worktree.display(),
+                common_dir.display()
             ),
             Self::Spawn { command, message } => {
                 write!(f, "{command} could not be started: {message}")
@@ -140,13 +162,16 @@ enum At<'a> {
 pub struct GitRepository {
     work_tree: PathBuf,
     git_dir: PathBuf,
+    /// The common git directory, canonical: the main repository's git
+    /// directory, which every worktree's own git directory belongs to.
+    common_dir: PathBuf,
 }
 
 impl GitRepository {
     /// Opens the repository whose work tree has its top level at `path`, a
     /// main or a linked worktree
-    /// (`git rev-parse --absolute-git-dir --show-toplevel`), and records its
-    /// git directory and work tree.
+    /// (`git rev-parse --absolute-git-dir --show-toplevel --git-common-dir`),
+    /// and records its git directory, work tree and common git directory.
     ///
     /// `path` must be the top level itself. A subdirectory of a work tree,
     /// a `.git` directory and a bare repository are refused, so a plain
@@ -166,7 +191,13 @@ impl GitRepository {
     pub fn open(path: impl Into<PathBuf>) -> Result<Self, GitError> {
         let path = path.into();
         let at = At::Discover(&path);
-        let args = ["rev-parse", "--absolute-git-dir", "--show-toplevel"];
+        let args = [
+            "rev-parse",
+            "--absolute-git-dir",
+            "--show-toplevel",
+            "--path-format=absolute",
+            "--git-common-dir",
+        ];
         let out = match git(at, &args) {
             Ok(out) => text(at, &args, out)?,
             Err(GitError::Failed { stderr, .. }) => {
@@ -179,22 +210,28 @@ impl GitRepository {
             why,
         };
         let lines: Vec<&str> = out.lines().collect();
-        let [git_dir, top_level] = lines[..] else {
-            return Err(unreadable(format!("{} lines, not 2", lines.len())));
+        let [git_dir, top_level, common_dir] = lines[..] else {
+            return Err(unreadable(format!("{} lines, not 3", lines.len())));
         };
         let (git_dir, top_level) = (PathBuf::from(git_dir), PathBuf::from(top_level));
-        let same = match (path.canonicalize(), top_level.canonicalize()) {
-            (Ok(given), Ok(top)) => given == top,
-            (Err(error), _) | (_, Err(error)) => {
+        let resolved = (
+            path.canonicalize(),
+            top_level.canonicalize(),
+            Path::new(common_dir).canonicalize(),
+        );
+        let (given, top, common_dir) = match resolved {
+            (Ok(given), Ok(top), Ok(common)) => (given, top, common),
+            (Err(error), _, _) | (_, Err(error), _) | (_, _, Err(error)) => {
                 return Err(unreadable(format!("a path cannot be resolved: {error}")));
             }
         };
-        if !same {
+        if given != top {
             return Err(GitError::NotTopLevel { path, top_level });
         }
         Ok(Self {
             work_tree: top_level,
             git_dir,
+            common_dir,
         })
     }
 
@@ -284,10 +321,20 @@ impl GitRepository {
     /// -z`), each with its dirty state (`git status --porcelain -z` in the
     /// worktree) when its directory exists and it is not prunable.
     ///
+    /// Each worktree's `status` runs against that worktree's own `.git`,
+    /// after checking that it belongs to the opened repository (the same
+    /// common git directory). For a submodule or a repository made with
+    /// `--separate-git-dir`, git lists the main worktree at its git
+    /// directory; its dirty state is read through the work tree recorded at
+    /// [`open`](Self::open) when that is the main worktree, and is unknown
+    /// (`None`) when a linked worktree was opened.
+    ///
     /// # Errors
     ///
-    /// A [`GitError`] when git fails, for the listing or for any worktree's
-    /// status, or its output cannot be read.
+    /// [`GitError::ForeignWorktree`] when a listed worktree's directory
+    /// holds another repository's `.git`; another [`GitError`] when git
+    /// fails, for the listing or for any worktree's status, or its output
+    /// cannot be read.
     pub fn read_worktrees(&self) -> Result<Vec<Worktree>, GitError> {
         let args = ["worktree", "list", "--porcelain", "-z"];
         let at = self.at();
@@ -298,12 +345,13 @@ impl GitRepository {
         })?;
         records
             .into_iter()
-            .map(|record| {
+            .enumerate()
+            .map(|(index, record)| {
                 let dir = Path::new(&record.path);
                 let path_exists = dir.is_dir();
                 let dirty = if path_exists && !record.prunable && record.checkout != Checkout::Bare
                 {
-                    Some(is_dirty(dir)?)
+                    self.dirty(dir, index == 0)?
                 } else {
                     None
                 };
@@ -318,6 +366,40 @@ impl GitRepository {
                 })
             })
             .collect()
+    }
+
+    /// The dirty state of one listed worktree, read against its own `.git`
+    /// once that is known to belong to this repository.
+    fn dirty(&self, dir: &Path, main: bool) -> Result<Option<bool>, GitError> {
+        if main && dir.canonicalize().ok().as_ref() == Some(&self.common_dir) {
+            // Listed at its git directory: the work tree is known only when
+            // it is the one opened.
+            let opened_main = self.git_dir.canonicalize().ok().as_ref() == Some(&self.common_dir);
+            return if opened_main {
+                is_dirty(self.at()).map(Some)
+            } else {
+                Ok(None)
+            };
+        }
+        let git_dir = dir.join(".git");
+        let at = At::Recorded {
+            git_dir: &git_dir,
+            work_tree: dir,
+        };
+        let args = ["rev-parse", "--path-format=absolute", "--git-common-dir"];
+        let out = text(at, &args, git(at, &args)?)?;
+        let common_dir = Path::new(out.trim_end_matches('\n'));
+        let unreadable = |error: std::io::Error| GitError::Unreadable {
+            command: command_line(at, &args),
+            why: format!("the common git directory cannot be resolved: {error}"),
+        };
+        if common_dir.canonicalize().map_err(unreadable)? != self.common_dir {
+            return Err(GitError::ForeignWorktree {
+                worktree: dir.to_path_buf(),
+                common_dir: common_dir.to_path_buf(),
+            });
+        }
+        is_dirty(at).map(Some)
     }
 
     /// How far `revision` has diverged from `base` (`git rev-list
@@ -447,10 +529,10 @@ fn parse_worktrees(out: &str) -> Result<Vec<Record>, String> {
 }
 
 /// Whether a worktree has changes, untracked files included. The call
-/// names the worktree's own `.git` (a directory, or the file a linked
-/// worktree has) and the worktree, and never discovers: a worktree whose
-/// `.git` is gone is an error, never a read of the repository above it.
-fn is_dirty(dir: &Path) -> Result<bool, GitError> {
+/// names a git directory (or the `.git` file a linked worktree has) and the
+/// work tree, and never discovers: a worktree whose `.git` is gone is an
+/// error, never a read of the repository above it.
+fn is_dirty(at: At<'_>) -> Result<bool, GitError> {
     let args = [
         "status",
         "--porcelain",
@@ -458,11 +540,6 @@ fn is_dirty(dir: &Path) -> Result<bool, GitError> {
         "--untracked-files=normal",
         "--ignore-submodules=none",
     ];
-    let git_dir = dir.join(".git");
-    let at = At::Recorded {
-        git_dir: &git_dir,
-        work_tree: dir,
-    };
     Ok(!git(at, &args)?.is_empty())
 }
 

@@ -75,6 +75,32 @@ fn git(dir: &Path, args: &[&str]) -> String {
         .to_owned()
 }
 
+/// Runs git in the environment the adapter gives it: every inherited
+/// `GIT_*` variable removed, the user's and the system's configuration read.
+fn git_as_adapter(dir: &Path, args: &[&str]) -> String {
+    let mut command = Command::new("git");
+    for (name, _) in std::env::vars_os() {
+        if name.as_encoded_bytes().starts_with(b"GIT_") {
+            command.env_remove(name);
+        }
+    }
+    let output = command
+        .arg("-C")
+        .arg(dir)
+        .args(args)
+        .output()
+        .expect("run git");
+    assert!(
+        output.status.success(),
+        "git {args:?} failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    String::from_utf8(output.stdout)
+        .expect("utf-8")
+        .trim()
+        .to_owned()
+}
+
 /// A repository with `main` (one commit), `FEATURE` (one more), a
 /// remote-tracking `origin/main` with `origin/HEAD` pointing at it, and the
 /// returned extra worktree, whose path has spaces and non-ASCII letters,
@@ -436,4 +462,129 @@ fn a_configured_fsmonitor_is_never_run() {
     let local = GitRepository::open(&repo).expect("a repository");
     let _ = value(local.worktrees());
     assert!(!marker.exists(), "status ran the configured fsmonitor");
+}
+
+#[test]
+fn a_worktree_directory_replaced_by_another_repository_is_never_read() {
+    let scratch = Scratch::new("replaced");
+    let (repo, extra) = fixture(&scratch);
+    fs::remove_dir_all(&extra).expect("remove the worktree directory");
+    fs::create_dir(&extra).expect("recreate it");
+    git(&extra, &["init", "-q"]);
+    fs::write(extra.join("stranger.txt"), "s\n").expect("write");
+    let listing = git(&repo, &["worktree", "list", "--porcelain"]);
+    assert!(!listing.contains("prunable"), "git still lists it as live");
+    let local = GitRepository::open(&repo).expect("a repository");
+    assert!(matches!(local.worktrees(), Observed::Unavailable(_)));
+    assert!(matches!(
+        local.read_worktrees(),
+        Err(GitError::ForeignWorktree { .. })
+    ));
+}
+
+#[test]
+fn a_worktree_without_its_git_file_is_prunable_and_not_read() {
+    let scratch = Scratch::new("prunable");
+    let (repo, extra) = fixture(&scratch);
+    fs::remove_file(extra.join(".git")).expect("remove the worktree's .git file");
+    let local = GitRepository::open(&repo).expect("a repository");
+    let worktrees = value(local.worktrees());
+    let found = &worktrees[1];
+    assert_eq!(found.path, path_of(&extra));
+    assert!(found.path_exists);
+    assert!(found.prunable);
+    assert_eq!(found.dirty, None);
+}
+
+#[test]
+fn a_submodule_reports_its_dirty_state() {
+    let scratch = Scratch::new("submodule");
+    let (source, _) = fixture(&scratch);
+    let sup = scratch.path().join("sup");
+    fs::create_dir(&sup).expect("create the superproject");
+    git(&sup, &["init", "-q"]);
+    git(
+        &sup,
+        &[
+            "-c",
+            "protocol.file.allow=always",
+            "submodule",
+            "add",
+            "-q",
+            &path_of(&source),
+            "m",
+        ],
+    );
+    let module = sup.join("m");
+    let local = GitRepository::open(&module).expect("the submodule");
+    let main_of = |local: &GitRepository| value(local.worktrees())[0].dirty;
+    assert_eq!(main_of(&local), Some(false));
+    fs::write(module.join("untracked.txt"), "u\n").expect("write");
+    assert_eq!(main_of(&local), Some(true));
+}
+
+#[test]
+fn a_separate_git_dir_repository_reports_its_dirty_state() {
+    let scratch = Scratch::new("separate");
+    let work = scratch.path().join("work");
+    let separate = scratch.path().join("separate.git");
+    git(
+        scratch.path(),
+        &[
+            "init",
+            "-q",
+            "--separate-git-dir",
+            &path_of(&separate),
+            &path_of(&work),
+        ],
+    );
+    fs::write(work.join("a.txt"), "a\n").expect("write");
+    git(&work, &["add", "a.txt"]);
+    git(&work, &["commit", "-q", "-m", "first"]);
+    let local = GitRepository::open(&work).expect("a repository");
+    let main_of = |local: &GitRepository| value(local.worktrees())[0].dirty;
+    assert_eq!(main_of(&local), Some(false));
+    fs::write(work.join("untracked.txt"), "u\n").expect("write");
+    assert_eq!(main_of(&local), Some(true));
+}
+
+/// A configured untracked cache trusts a directory's stat data; a file
+/// renamed into view behind a restored mtime (same size, same inode, ctime
+/// not trusted) is missed unless the cache is turned off.
+#[test]
+fn a_stale_untracked_cache_never_hides_a_new_file() {
+    let scratch = Scratch::new("untracked-cache");
+    let (repo, _) = fixture(&scratch);
+    let sub = repo.join("sub");
+    fs::create_dir(&sub).expect("create a directory");
+    fs::write(sub.join("tracked.txt"), "t\n").expect("write");
+    fs::write(sub.join("kept.ignored"), "k\n").expect("write");
+    fs::write(repo.join(".gitignore"), "*.ignored\n").expect("write");
+    git(&repo, &["add", ".gitignore", "sub/tracked.txt"]);
+    git(&repo, &["commit", "-q", "-m", "sub"]);
+    git(&repo, &["config", "core.untrackedCache", "true"]);
+    git(&repo, &["config", "core.trustctime", "false"]);
+    // Stat data changed within the index's second is racy and not cached.
+    // The cache is keyed on the exclude files the configuration names, so
+    // it is filled and checked under the configuration the adapter reads.
+    for _ in 0..2 {
+        std::thread::sleep(std::time::Duration::from_millis(1100));
+        git_as_adapter(&repo, &["status", "--porcelain"]);
+    }
+    let mtime = fs::metadata(&sub)
+        .expect("stat the directory")
+        .modified()
+        .expect("its mtime");
+    fs::rename(sub.join("kept.ignored"), sub.join("hidden.txt")).expect("rename");
+    fs::File::open(&sub)
+        .expect("open the directory")
+        .set_modified(mtime)
+        .expect("restore its mtime");
+    assert_eq!(
+        git_as_adapter(&repo, &["--no-optional-locks", "status", "--porcelain"]),
+        "",
+        "the fixture must make the cache stale"
+    );
+    let local = GitRepository::open(&repo).expect("a repository");
+    assert_eq!(value(local.worktrees())[0].dirty, Some(true));
 }
