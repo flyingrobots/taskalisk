@@ -125,10 +125,12 @@ pub fn view(
     }))
 }
 
-/// The `taskalisk.rendering` line of a view, written after every other
-/// result line: `format` and `text`, and for [`View::StatusMermaid`] the
-/// [`LEGEND`] in `legend`, to paste with the diagram. `None` when the plan
-/// is not `ok`, which has no view.
+/// The `taskalisk.rendering` line of a view, or `None` for a plan that is
+/// not `ok`.
+///
+/// It is written after every other result line, with `format` and `text`,
+/// and for [`View::StatusMermaid`] the [`LEGEND`] in `legend`, to paste
+/// with the diagram.
 ///
 /// # Errors
 ///
@@ -564,6 +566,18 @@ fn issue_link(node: &Value) -> String {
 
 /// The Python's `--emit-roadmap` block.
 fn roadmap_block(document: &Value) -> String {
+    let mut out: Vec<String> = vec![ROADMAP_BEGIN.to_owned(), String::new()];
+    out.extend(health(document));
+    out.extend(frontier_table(document));
+    out.extend(checklists(document));
+    out.extend(dag_and_edges(document));
+    out.push(String::new());
+    out.push(ROADMAP_END.to_owned());
+    out.join("\n")
+}
+
+/// The block's provenance line and its structural health table.
+fn health(document: &Value) -> Vec<String> {
     let m = &document["metrics"];
     let src = &document["source"];
     let hash: String = str_of(&document["meta"]["artifact_hash"])
@@ -585,7 +599,7 @@ fn roadmap_block(document: &Value) -> String {
     } else {
         "outside"
     };
-    let mut out: Vec<String> = vec![ROADMAP_BEGIN.to_owned(), String::new()];
+    let mut out: Vec<String> = Vec::new();
     out.push(format!(
         "Compiled from issue frontmatter (`{}`), home `{}`, roots `{roots}`. Artifact hash `{hash}`. \
          Regenerate with `taskalisk.py --from-github [--root <ref>] --emit-roadmap`.",
@@ -636,6 +650,12 @@ fn roadmap_block(document: &Value) -> String {
             containers.join(", ")
         }
     ));
+    out
+}
+
+/// The ranked open frontier and the conflict-free batch.
+fn frontier_table(document: &Value) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
     out.extend(
         [
             "",
@@ -674,6 +694,12 @@ fn roadmap_block(document: &Value) -> String {
             resources_cell(b, "no resources", false)
         ));
     }
+    out
+}
+
+/// The task checklists, by wave and by workstream.
+fn checklists(document: &Value) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
     out.extend(["", "## Task Checklist by Wave", ""].map(str::to_owned));
     let waves = waves(document);
     for (name, items) in &waves {
@@ -709,6 +735,12 @@ fn roadmap_block(document: &Value) -> String {
         }
         out.push(String::new());
     }
+    out
+}
+
+/// The uncoloured flowchart and the edge accounting.
+fn dag_and_edges(document: &Value) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
     out.extend(
         [
             "## Transitively-Reduced Dependency DAG",
@@ -751,9 +783,7 @@ fn roadmap_block(document: &Value) -> String {
             ));
         }
     }
-    out.push(String::new());
-    out.push(ROADMAP_END.to_owned());
-    out.join("\n")
+    out
 }
 
 #[cfg(test)]

@@ -545,7 +545,10 @@ fn without_emit_a_plan_writes_no_rendering() {
     let fixture = Fixture::new("rich_state()");
     let run = fixture.plan(&["--sem-capacity", "gpu=1"]);
     assert_eq!(run.status(), 0, "{}", run.explain());
-    assert!(of(&run.stdout(), "taskalisk.rendering").is_empty());
+    assert_eq!(
+        of(&run.stdout(), "taskalisk.rendering"),
+        Vec::<&Value>::new()
+    );
     assert_eq!(run.receipt()[0]["resolved"]["options"]["emit"], Value::Null);
 }
 

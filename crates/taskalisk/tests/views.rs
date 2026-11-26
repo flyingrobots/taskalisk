@@ -46,7 +46,7 @@ fn rust_hash(case: &str, display: &Display) -> String {
 
 /// What a Mermaid label also drops: the C0 and C1 controls and the
 /// bidirectional controls, as a Markdown cell does (threat model C5).
-fn dropped(c: char) -> bool {
+const fn dropped(c: char) -> bool {
     matches!(c, '\0'..='\x1f' | '\x7f'..='\u{9f}' | '\u{61c}' | '\u{200e}' | '\u{200f}' | '\u{202a}'..='\u{202e}' | '\u{2066}'..='\u{2069}')
 }
 
@@ -204,13 +204,14 @@ fn every_status_diagram_is_its_golden_file() {
             ));
         }
     }
-    let on_disk: BTreeSet<String> = fs::read_dir(&dir)
-        .map(|entries| {
+    let on_disk: BTreeSet<String> = fs::read_dir(&dir).map_or_else(
+        |_| BTreeSet::new(),
+        |entries| {
             entries
                 .map(|e| e.expect("entry").file_name().into_string().expect("UTF-8"))
                 .collect()
-        })
-        .unwrap_or_default();
+        },
+    );
     assert!(failures.is_empty(), "{}", failures.join("\n"));
     assert_eq!(
         on_disk, want_files,
@@ -285,8 +286,7 @@ fn done_prerequisites_are_dashed_nodes_with_dotted_edges() {
             .lines()
             .find(|l| l.contains(&format!("[\"{id}:")))
             .and_then(|l| l.trim().split_once("[\""))
-            .map(|(k, _)| k.to_owned())
-            .unwrap_or_else(|| panic!("no node {id}:\n{diagram}"))
+            .map_or_else(|| panic!("no node {id}:\n{diagram}"), |(k, _)| k.to_owned())
     };
     for (done, open) in [
         ("flyingrobots/bunny#7", "flyingrobots/echo#5"),
@@ -327,7 +327,7 @@ fn the_legend_names_each_state_and_its_colour() {
 
 /// Characters no label may hold: they could end the label, start a tag,
 /// open a directive or hide text (threat model T08, C5).
-fn unsafe_in_label(c: char) -> bool {
+const fn unsafe_in_label(c: char) -> bool {
     matches!(c, '"' | '<' | '>' | '[' | ']' | '{' | '}')
         || dropped(c)
         || c.is_whitespace() && c != ' '

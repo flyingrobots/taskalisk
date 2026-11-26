@@ -299,26 +299,7 @@ fn parse(raw: &[String]) -> Result<Arguments, StartupFailure> {
             return Err(unsupported(flag));
         }
         parsed.given.insert(flag.to_owned());
-        if matches!(
-            flag,
-            "--from-github"
-                | "--trust-codeowners"
-                | "--capture-bundle"
-                | "--offline"
-                | "--emit-roadmap"
-                | "--emit-mermaid"
-        ) {
-            if inline.is_some() {
-                return Err(usage(format!("{flag} takes no value")));
-            }
-            parsed.trust_codeowners |= flag == "--trust-codeowners";
-            match flag {
-                "--emit-roadmap" => parsed.emit = Some(View::Roadmap),
-                // The status-coloured diagram: the Python's flowchart with
-                // each node coloured by its state, posted with its legend.
-                "--emit-mermaid" => parsed.emit = Some(View::StatusMermaid),
-                _ => {}
-            }
+        if switch(&mut parsed, flag, inline)? {
             continue;
         }
         if !VALUE_FLAGS.contains(&flag) && !OWN_VALUE_FLAGS.contains(&flag) {
@@ -369,6 +350,29 @@ fn parse(raw: &[String]) -> Result<Arguments, StartupFailure> {
         )));
     }
     Ok(parsed)
+}
+
+/// A flag that takes no value, recorded in `parsed`: `true` when `flag` is
+/// one.
+fn switch(
+    parsed: &mut Arguments,
+    flag: &str,
+    inline: Option<&str>,
+) -> Result<bool, StartupFailure> {
+    let view = match flag {
+        "--emit-roadmap" => Some(View::Roadmap),
+        // The status-coloured diagram: the Python's flowchart with each
+        // node coloured by its state, posted with its legend.
+        "--emit-mermaid" => Some(View::StatusMermaid),
+        "--from-github" | "--trust-codeowners" | "--capture-bundle" | "--offline" => None,
+        _ => return Ok(false),
+    };
+    if inline.is_some() {
+        return Err(usage(format!("{flag} takes no value")));
+    }
+    parsed.trust_codeowners |= flag == "--trust-codeowners";
+    parsed.emit = view.or(parsed.emit);
+    Ok(true)
 }
 
 /// The capture and replay flags that contradict each other or the run
