@@ -27,6 +27,9 @@ normative cases. On 2026-11-26 the 54 normative cases added for the
 unread, the same lookups. Also on 2026-11-26 the normative cases added for
 the amended rules C7 and V10 (`flyingrobots/taskalisk#104`) found
 differences 20, 21 and 22, and two more instances of differences 4 and 19.
+Also on 2026-11-26 the normative cases added for the amended rules I4, I5,
+D8, AD3, AD4 and CC6 (`flyingrobots/taskalisk#110`) found differences 23 and
+24; the compiler agrees with the amended AD3, AD4 and CC6.
 
 None of these differences changes the verdict on any document in the
 [census of 2026-11-12](../evidence/2026-11-12-frontmatter-shapes.md): the
@@ -89,6 +92,8 @@ for its warnings.
 | 10 | A `.blocked_by` lists the same closed `not_planned` prerequisite twice | One pair listed for review | One pair per occurrence | G3 | compatibility-exception |
 | 16 | Two documents name the same reference outside the scope, or the same transferred reference | Each document that names it receives a violation, whatever the order of visits | Only the documents visited before the reference is reached receive one (`referenced_by[ref] or [nid]`); a later one does not | D2, D3, D5 | defect |
 | 18 | A plan with a container | The container is reported with its children | The container is reported without its children: the compiler computes them but `containers_excluded`, and so the `container.excluded` finding, keeps only the identifier, number and title | W1 | defect |
+| 23 | An admitted pull request of `H` whose draft flag is not a boolean, and that closes no open node | The draft flag is not read (S2 reads it only for a linked pull request of an open node); the run is planned | Every admitted pull request that closes an issue must have a boolean draft flag; the run is incomplete | I4, I5, S2 | defect |
+| 24 | A document gives `.blocked_by` (or `.children`) twice, and the first line names an issue whose observation is unavailable | The repeated key contributes no reference: the issue is not read, and the run is invalid under C7 | The first line sets the key, its references are followed, and the run is incomplete | D8, C7, F1 | defect |
 
 Difference 9 also contradicts `docs/frontmatter-model.md` in Taskalisk,
 which says a referenced issue without frontmatter becomes an opaque node. The
@@ -106,6 +111,21 @@ and the run stay invalid on a violation it was never told about.
 
 Difference 18 is in what the Python reports, not in what it computes; the
 corpus's expected results hold the computed plan, so no case shows it.
+
+Difference 23 is a defect: rule I5 makes an observation required only when a
+rule reads it, and no rule reads the draft flag of a pull request that links
+no open node. The Python refuses the run on an observation no rule reads.
+The normative case `graph/i5-draft-flag-of-a-pull-request-closing-no-node`
+shows it.
+
+Difference 24 is a defect: the outcome classes of F1 differ. Under C7 a
+repeated key has no value, so D8 adds none of its references and the run is
+invalid on the document's C7 violation; the Python keeps the first line's
+value, reads the issue it names, and reports an incomplete run that does not
+name the document's violation. The normative case
+`graph/d8-repeated-blocked-by-is-not-followed` shows it. Where every issue
+the first line names is available, both runs are invalid under C7; the
+Python's also reads and reports those issues.
 
 ## Edge edit
 

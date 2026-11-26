@@ -1,0 +1,12 @@
+{
+  "cites": [
+    "AD3",
+    "AD4",
+    "AD5"
+  ],
+  "id": "graph/ad4-entry-suffix-ignores-case",
+  "kind": "normative",
+  "level": "graph",
+  "source": "constructed from the rule text",
+  "title": "Allowlisting `HELPER[Bot]` trusts the app `helper`"
+}

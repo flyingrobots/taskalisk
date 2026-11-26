@@ -15,5 +15,5 @@
   "level": "document",
   "normative_case": "document/c7-repeated-dag-other-version-first",
   "source": "the Python compiler, on the input of document/c7-repeated-dag-other-version-first",
-  "title": "What the compiler does: A repeated `.dag` with another version first is C7 alone, not P3"
+  "title": "Where document/c7-repeated-dag-other-version-first differs: the compiler reads the first `.dag`, issue-dag/3, and also reports P3"
 }

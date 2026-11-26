@@ -1,7 +1,7 @@
 [package]
 name = "issue-dag-bundle"
 version = "0.1.0"
-description = "Reads an issue-dag-observations/1 bundle (JSON) into the issue-dag-core domain, checking the bundle rules OB1 to OB13."
+description = "Reads an issue-dag-observations/1 bundle (JSON) into the issue-dag-core domain, checking the bundle rules OB1 to OB15."
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true

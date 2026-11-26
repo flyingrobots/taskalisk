@@ -263,7 +263,7 @@ class ForgeFidelity(unittest.TestCase):
 
 # The digest of the corpus this suite checks: the issue-dag repository's corpus/DIGEST and the
 # version table name the same value. A change to the corpus changes this constant in the same commit.
-CORPUS_DIGEST = "sha256:aa21c114800a94020f0e66944e9820a99aa08982a6d3dab81d7c3c81de5dc6a7"
+CORPUS_DIGEST = "sha256:aed5aeaa3f09b4a22da06a3c41184e25f1d0f0ac4dd465ccd2345866b102a543"
 
 
 class CorpusPin(unittest.TestCase):
@@ -449,6 +449,19 @@ class Generator(unittest.TestCase):
             (out / "corpus" / "DIGEST").unlink()
             generate.write(out)
             self.assertEqual((out / "corpus" / "DIGEST").read_text(), (SPEC_COPY / "corpus" / "DIGEST").read_text())
+
+    def test_a_twin_title_states_what_the_compiler_does(self):
+        # A twin records the Python's result, which differs from its normative
+        # case, so its title is the disagreement's note, never the normative
+        # title (CodeRabbit on flyingrobots/issue-dag#7).
+        twins = sorted((SPEC_COPY / "corpus" / "cases").glob("*/*--python/case.json"))
+        self.assertTrue(twins)
+        for path in twins:
+            meta = json.loads(path.read_text())
+            normative = json.loads(path.parents[1].joinpath(meta["normative_case"].split("/")[1], "case.json").read_text())
+            with self.subTest(case=meta["id"]):
+                self.assertEqual(meta["title"], f"Where {meta['normative_case']} differs: {meta['disagreement']['note']}")
+                self.assertNotIn(normative["title"], meta["title"])
 
 
 if __name__ == "__main__":

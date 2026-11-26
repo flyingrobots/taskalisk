@@ -13,5 +13,5 @@
   "level": "document",
   "normative_case": "document/c1-nbsp-before-fence",
   "source": "the Python compiler, on the input of document/c1-nbsp-before-fence",
-  "title": "What the compiler does: U+00A0 before the fence is an ordinary character: no frontmatter"
+  "title": "Where document/c1-nbsp-before-fence differs: the compiler skips any Unicode white space before the fence"
 }

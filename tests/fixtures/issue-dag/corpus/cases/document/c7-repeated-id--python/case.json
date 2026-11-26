@@ -16,5 +16,5 @@
   "level": "document",
   "normative_case": "document/c7-repeated-id",
   "source": "the Python compiler, on the input of document/c7-repeated-id",
-  "title": "What the compiler does: A repeated `.id` leaves the identity unknown: no V7 and no X1"
+  "title": "Where document/c7-repeated-id differs: the compiler judges the first `.id` and also reports V7"
 }

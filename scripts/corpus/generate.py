@@ -63,7 +63,7 @@ def write_cases(corpus: pathlib.Path) -> dict[str, int]:
         counts["document normative"] += 1
         if doc.disagreement is not None:
             twin = _meta("characterisation", doc, normative_case=f"document/{doc.name}")
-            twin["title"] = f"What the compiler does: {doc.title}"
+            twin["title"] = f"Where document/{doc.name} differs: {doc.disagreement['note']}"
             twin["source"] = f"the Python compiler, on the input of document/{doc.name}"
             _write_case(base, "document", f"{doc.name}--python", twin, inputs, forge.run_document(doc.body, doc.address))
             counts["document characterisation"] += 1
@@ -77,7 +77,7 @@ def write_cases(corpus: pathlib.Path) -> dict[str, int]:
         counts["graph normative"] += 1
         if graph.disagreement is not None:
             twin = _meta("characterisation", graph, normative_case=f"graph/{graph.name}")
-            twin["title"] = f"What the compiler does: {graph.title}"
+            twin["title"] = f"Where graph/{graph.name} differs: {graph.disagreement['note']}"
             twin["source"] = f"the Python compiler, on the bundle of graph/{graph.name}"
             _write_case(base, "graph", f"{graph.name}--python", twin, inputs, forge.run_graph(graph.bundle))
             counts["graph characterisation"] += 1

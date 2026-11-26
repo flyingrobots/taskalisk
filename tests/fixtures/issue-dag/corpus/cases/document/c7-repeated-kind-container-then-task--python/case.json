@@ -16,5 +16,5 @@
   "level": "document",
   "normative_case": "document/c7-repeated-kind-container-then-task",
   "source": "the Python compiler, on the input of document/c7-repeated-kind-container-then-task",
-  "title": "What the compiler does: A repeated `.kind` in the other order gives the same labels"
+  "title": "Where document/c7-repeated-kind-container-then-task differs: the compiler judges the first `.kind`, container, and reports V6 because the container has no `.children` (its truthiness check accepts the empty `.blocked_by`)"
 }

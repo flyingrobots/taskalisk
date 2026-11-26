@@ -13,5 +13,5 @@
   "level": "graph",
   "normative_case": "graph/d7-named-seed-is-opaque",
   "source": "the Python compiler, on the bundle of graph/d7-named-seed-is-opaque",
-  "title": "What the compiler does: A seed without frontmatter that a document names is an opaque node"
+  "title": "Where graph/d7-named-seed-is-opaque differs: the compiler lists the issue as unmodeled and the prerequisite as unknown; the run is invalid"
 }
