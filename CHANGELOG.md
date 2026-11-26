@@ -9,6 +9,52 @@ schema version under `Unreleased` is a draft and may change in place.
 
 ### Added
 
+- **Capture an observation bundle and replan from it offline** (flyingrobots/taskalisk#59). The
+  Rust binary's `plan --capture-bundle` (off by default) writes the `issue-dag-observations/1`
+  bundle a live plan was made from, and its retained `taskalisk-evaluation/1` record, to
+  `.parley/receipts/<run>/bundle.json` and `evaluation.json`, beside the receipt, gitignored and
+  retained with it, every declared secret redacted. `plan --from-bundle FILE` and
+  `plan --from-record FILE` replan with no `gh` or `git` read (the record through
+  `issue-dag-bundle::replay`, decision D14); `--offline` disables those reads, and without a
+  recorded source exits 2 (`plan.reads_disabled`). A missing slot is `bundle.incomplete` (OB5),
+  an unavailable one `observation.unavailable`; neither is read as empty. `issue-dag-bundle` gains
+  `dump`, the inverse of `load`, which writes every corpus bundle back to the same JSON. A replayed
+  node's title is `(title not recorded in the bundle)` and its URL null, because a bundle holds no
+  display (OB12); the renderer now writes `url: null` for a shown issue whose URL is unknown
+  rather than leaving the required member out. `tests/fixtures/bundles/` holds a bundle of
+  flyingrobots/taskalisk and the result it planned to. See `docs/topics/output/README.md`, *The
+  Rust binary*.
+
+- **An invalid run reports what discovery read** (flyingrobots/taskalisk#44). Under decision D13 a
+  run whose edges form a cycle or name an unknown prerequisite, which reports no graph (profile
+  rule F3), still reports its containers, unmodeled, untrusted and opaque issues, untrusted pull
+  requests and not-planned prerequisites: `issue-dag-core` gains `Discovered`, carried by
+  `Outcome::Invalid::discovered` and given by `Graph::discovered`, and the Rust renderer lists
+  them as the Python does. This closes the renderer's gap for such runs: the parity test no longer
+  leaves their discovery findings out, and a cyclic run's `artifact_hash` now equals the Python's,
+  in 87 of the 171 cases. Four capture variants reach a three-issue cycle beside an unmodeled
+  issue, a cycle beside not-planned prerequisites read out of order, and an unknown prerequisite
+  beside a stranger's pull request and beside untrusted issues. New core tests keep and break each
+  cross-document rule (X1, X2, X3) and G4; a three-issue cycle gives each of its issues a G4
+  finding (F5). The renderer's intended difference stays: with an unknown prerequisite and a cycle
+  together, the 1.x document names no cyclic node.
+
+- **Which part of a reference could not be found** (flyingrobots/taskalisk#126). The vendored
+  issue-dag specification (flyingrobots/issue-dag#9) adds bundle rule OB17: an unavailable issue
+  slot may record `not_found` (`owner`, `repository` or `number`) beside its free-text reason, and
+  any other value or placement is refused. Profile rules D11 to D13 name the three causes; D10
+  keeps the run incomplete whatever the cause, and a cause is no finding. `issue-dag-core` gains
+  `NotFound`, `Observations::not_found`, `Forge::not_found` (default `None`) and
+  `Outcome::Incomplete::cause`, reported under OB16 for the slot with the least reason (no cause
+  first); its codes `profile.D11`, `profile.D12` and `profile.D13` are in `CODES` and
+  `docs/topics/findings/README.md`. `issue-dag-bundle` reads and checks OB17. The corpus tooling
+  validates OB17, allows `cause` only in normative cases, compares findings with repeats (CC8), and
+  keeps one X3 per occurrence in the Python projection. #125's D10 test now pins the causes. A task
+  that names the same unknown prerequisite twice gets one X3 finding (F5); the Python's one per
+  occurrence is difference 27. 25 new graph cases; corpus digest
+  `sha256:4f008167c292e543961fbdd3604bfc96267323e86ce52fa37c5ccccb22674ab3`. The `gh` adapter
+  records no cause yet (flyingrobots/taskalisk#51).
+
 - **The Rust document core** (flyingrobots/taskalisk#27). A Cargo workspace at the repository root
   (Rust 1.100.0, pinned in `rust-toolchain.toml`) holds `crates/issue-dag-core`, a library with no
   I/O and no dependencies: a hand-written `issue-dag/2` carrier parser and validator, the typed
@@ -272,6 +318,7 @@ schema version under `Unreleased` is a draft and may change in place.
   `taskalisk.isolated-task`, given once per open node with no edge in or out, when the plan has at
   least two open nodes; a plan of a single task draws none. Edges are those between open nodes, as
   for the Python compiler's `isolated_open_nodes` metric. `ShapeFinding::detail` becomes an
+  `Option<Detail>`: `None` for a warning that measures nothing beyond its finding.
 - **A warning for a container with one child or none** (flyingrobots/taskalisk#63).
   `shape_warnings` gains `taskalisk.small-container`, given once per open container whose
   `.children` names fewer than two distinct issues. `Graph` gains `closed_containers`, the
@@ -287,6 +334,10 @@ schema version under `Unreleased` is a draft and may change in place.
   places with ties to even (as Python's `round`, and now also the renderer's metric), is outside
   `DENSITY_BAND`, `0.01` to `0.50` inclusive; the detail gives the reduced edges, the open nodes,
   the density and the band. The Python compiler's `edge_density` and band are the same.
+- **A warning for an open task with no estimate** (flyingrobots/taskalisk#64). `shape_warnings`
+  gains `taskalisk.estimate-missing`, given once per open task with a document whose
+  `Node::size_hours` (#114) is absent; closed tasks, opaque nodes and containers draw none. Its
+  detail is `None`.
 
 - **Why a reference could not be read, in part** (flyingrobots/taskalisk#45). The test
   `unreadable_references` pins the three causes today's observations tell apart: outside the read
@@ -302,6 +353,43 @@ schema version under `Unreleased` is a draft and may change in place.
   `scripts/check_vendored_writer.py` fetches the writer from flyingrobots/parley at the pinned
   commit and requires it to equal the pin and the copy; CI runs it. The offline pin test proves
   only that copy and pin agree, and the output reference now says which check proves what.
+
+- **The Rust binary plans a live backlog** (flyingrobots/taskalisk#31). `crates/taskalisk` gains a
+  binary, `taskalisk`, with one command, `plan` (`taskalisk plan --repo <checkout>`, or the 1.x
+  `--from-github`). It resolves the home repository with `gh repo view`, reads the branches through
+  `issue-dag-git` and the backlog through `issue-dag-gh`, plans with the core, and writes the
+  renderer's lines with the display input filled from the adapters (decision D13): issue titles and
+  URLs, recoverable branches, and the CODEOWNERS persons and teams. It accepts `--repo`, `--root`,
+  `--sem-capacity`, `--trust`, `--trust-owner`, `--trust-repo`, `--trust-codeowners`, `--human`
+  and `--help`; every other flag of the Python's (`--emit-roadmap`, `--emit-mermaid`,
+  `--since-last`, `--compare-relationships`, `--min-confidence`, `--milestone`, `--dry-run`,
+  `--schema`, the edge flags) and the `edit`, `verify` and `inventory` commands are a startup
+  failure, exit 3, never ignored. The Parley envelope is a Rust port of the vendored writer's, not
+  a call to it: the bootstrap line, one sequence across stdout, stderr and the receipt,
+  `.parley/receipts/<run>.jsonl` with the head, steps, a copy of every result and error, the
+  declared input `github:issues` and `inv`, and `end`; the `gh` token variables redacted; sidecars;
+  retention by count (50); `--human`. A failed `gh` or `git` read exits 2 with `parley.error` lines
+  and no plan; a cycle, an unresolved prerequisite or invalid frontmatter exits 2 after the plan's
+  lines; a sink failure exits 4. Every plan records its evaluation (`taskalisk-evaluation/1`, from
+  `issue-dag-bundle`'s `unretained`) as a receipt step; the live bundle is not retained, so its
+  replay is unavailable until #59. A declared secret's value is redacted from `resolved` too,
+  before the head and `inv`, with its pointers in `redacted.resolved`. Where the Python writer
+  relocates a receipt, the binary refuses to start (exit 3): `startup.secret_in_path` when the
+  working directory's path holds a token's value, `startup.receipt_stageable` when a user's
+  `.parley/.gitignore` has no line `*` or a negation that can re-include `receipts/`. An incomplete run whose not-found cause
+  the core records (#133) reports `issue.not_found`, with the rule (`D11`, `D12` or `D13`), the
+  cause and the reference in its `detail`. A plan the core makes while the gh
+  adapter recorded a failed read exits 2 with the failures and no plan. Against
+  `tests/fake_gh.py` its result lines equal the Python's on the same backlog but for one gap: an
+  untrusted issue's or pull request's finding lacks the trust gate's reasons (#46), so those lines
+  do not validate yet. A live run on this
+  repository's backlog (`crates/taskalisk/tests/live.rs`, opt-in) gives the Python's outcome,
+  frontier, batch and metrics, with no untrusted issue. `issue-dag-gh` now keeps each issue's title
+  and URL from the answers it already has, and each open pull request's URL, now asked of
+  `gh pr list` (`url` joins its `--json` fields), in `GhForge::shown`; the URL is shown only,
+  never in `PullRequest`, so the bundle format and the corpus digest do not change. It runs `gh` in a given directory
+  (`current_dir`), and resolves a directory's repository (`repository_of`). The skill still runs
+  the Python.
 
 ### Changed
 

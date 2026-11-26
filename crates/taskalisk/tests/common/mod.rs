@@ -152,17 +152,18 @@ pub fn display_of(python: &[Value]) -> Display {
 /// Whether the case's 1.x document holds an intended difference or a gap:
 /// then the Rust `artifact_hash` digests the Rust document, and is not the
 /// Python's (`docs/topics/output/README.md`). Only its form is asserted.
+/// A plan that did not compile is no exception: its document lists what
+/// discovery read (decision D13).
 pub fn hash_differs(python: &[Value]) -> bool {
-    python[0]["outcome"] != "compiled"
-        || python.iter().any(|l| {
-            matches!(
-                l["code"].as_str(),
-                Some(
-                    "frontmatter.violation"
-                        | "frontmatter.warning"
-                        | "issue.untrusted"
-                        | "pull_request.untrusted"
-                )
+    python.iter().any(|l| {
+        matches!(
+            l["code"].as_str(),
+            Some(
+                "frontmatter.violation"
+                    | "frontmatter.warning"
+                    | "issue.untrusted"
+                    | "pull_request.untrusted"
             )
-        })
+        )
+    })
 }

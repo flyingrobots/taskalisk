@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://flyingrobots.dev/parley/schemas/parley.startup.failed/1.0.0",
+  "title": "parley startup failed",
+  "description": "The single line a run emits, on stderr, when it cannot reach the bootstrap line; exit status 3 (spec \u00a73.2).",
+  "type": "object",
+  "required": [
+    "event",
+    "t",
+    "seq",
+    "run",
+    "tool",
+    "v",
+    "code",
+    "problem",
+    "_schema"
+  ],
+  "properties": {
+    "event": {
+      "const": "startup.failed"
+    },
+    "t": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "seq": {
+      "const": 0,
+      "description": "The only line the run emits (spec \u00a71.3, \u00a73.2)."
+    },
+    "run": {
+      "type": "string",
+      "minLength": 1
+    },
+    "tool": {
+      "type": "string",
+      "minLength": 1
+    },
+    "v": {
+      "type": "string",
+      "minLength": 1
+    },
+    "code": {
+      "type": "string",
+      "pattern": "^startup\\.[a-z0-9_]+(\\.[a-z0-9_]+)*$",
+      "description": "A \u00a76 code in the startup namespace."
+    },
+    "problem": {
+      "type": "string",
+      "minLength": 1
+    },
+    "remedy": {
+      "type": "string"
+    },
+    "remedy_target": {
+      "type": "string"
+    },
+    "_schema": {
+      "type": "object",
+      "required": [
+        "id",
+        "version"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "const": "parley.startup.failed"
+        },
+        "version": {
+          "const": "1.0.0",
+          "description": "Full validation is against the schema for this exact id and version (spec \u00a74.5, \u00a74.6)."
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "cites": [
+    "D13",
+    "D10",
+    "OB17",
+    "OB16",
+    "F2"
+  ],
+  "disagreement": {
+    "classification": "compatibility-exception",
+    "difference": 26,
+    "note": "the compiler reports an incomplete run without the reason recorded in any slot, and no cause (OB17)"
+  },
+  "id": "graph/d13-issue-number-not-found",
+  "kind": "normative",
+  "level": "graph",
+  "source": "constructed from the rule text",
+  "title": "A reference whose issue number was not found: the run is incomplete, with cause D13"
+}

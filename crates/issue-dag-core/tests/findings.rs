@@ -9,7 +9,7 @@ use std::fs;
 use std::path::Path;
 
 use issue_dag_core::{
-    BODY_WARNINGS, CODES, Finding, IssueRef, LABELS, Label, PLAN_WARNINGS, PROFILE_RULES,
+    BODY_WARNINGS, CODES, Finding, IssueRef, LABELS, Label, NotFound, PLAN_WARNINGS, PROFILE_RULES,
     SHAPE_WARNINGS, Severity, code, findings,
 };
 
@@ -241,7 +241,9 @@ fn codes_are_stable_strings_one_per_label() {
 
 /// `CODES` is the one public catalogue: the document codes in `LABELS`
 /// order with their severities, then the planning profile's in
-/// `PROFILE_RULES` order, all errors, then Taskalisk's body warnings in
+/// `PROFILE_RULES` order, all errors, then the causes of a reference not
+/// found in `NotFound::ALL` order, all errors (flyingrobots/taskalisk#126),
+/// then Taskalisk's body warnings in
 /// `BODY_WARNINGS` order (flyingrobots/taskalisk#48), then its shape warnings in
 /// `SHAPE_WARNINGS` order (flyingrobots/taskalisk#42), then its plan warnings in
 /// `PLAN_WARNINGS` order (flyingrobots/taskalisk#61), each code once.
@@ -258,6 +260,11 @@ fn codes_catalogue_registers_every_finding_family() {
             (code(*l), severity)
         })
         .chain(PROFILE_RULES.iter().map(|r| (r.code(), Severity::Error)))
+        .chain(
+            NotFound::ALL
+                .iter()
+                .map(|c| (c.code().as_str(), Severity::Error)),
+        )
         .chain(BODY_WARNINGS.iter().map(|w| (w.code(), Severity::Warning)))
         .chain(SHAPE_WARNINGS.iter().map(|w| (w.code(), Severity::Warning)))
         .chain(PLAN_WARNINGS.iter().map(|c| (*c, Severity::Warning)))

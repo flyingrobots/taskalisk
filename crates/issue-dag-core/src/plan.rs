@@ -11,7 +11,9 @@ use crate::carrier::{Parse, Slot, Value, parse};
 use crate::finding::{Finding, Rule, Severity};
 use crate::forge::Forge;
 use crate::label::Label;
-use crate::observation::{Issue, IssueState, Missing, Observed, Parameters, Repo, TRUST_POLICY};
+use crate::observation::{
+    Issue, IssueState, Missing, NotFound, Observed, Parameters, Repo, TRUST_POLICY,
+};
 use crate::record::{Kind, MeterClaim, Status, TaskType};
 use crate::reference::{IssueRef, MAX_NUMBER};
 use crate::{Judgement, judge};
@@ -133,7 +135,49 @@ pub struct Graph {
     pub not_planned_order: Vec<Edge>,
 }
 
+/// What discovery read (rules D3 to D9) and the lists rule W1 makes of it,
+/// which do not depend on the edges: an invalid run reports them whether or
+/// not it reports its graph (rule F3, decision D13).
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Discovered {
+    /// Every reference the closure visited, in the order it read them.
+    pub visit_order: Vec<IssueRef>,
+    /// The containers, with their children in written order.
+    pub containers: BTreeMap<IssueRef, Vec<IssueRef>>,
+    /// The unmodeled issues (rule D7).
+    pub unmodeled: BTreeSet<IssueRef>,
+    /// Every issue that is not admitted (rule D6).
+    pub untrusted: BTreeSet<IssueRef>,
+    /// The numbers of the pull requests that close an issue and are not
+    /// admitted, in the order observed (rule AD9).
+    pub untrusted_pull_request_order: Vec<u64>,
+    /// The opaque nodes (rules D6, D7), untrusted ones included.
+    pub opaque: BTreeMap<IssueRef, Node>,
+    /// The satisfied edges whose prerequisite was closed as `not_planned`,
+    /// in the order of [`Graph::not_planned_order`].
+    pub not_planned_order: Vec<Edge>,
+}
+
 impl Graph {
+    /// What discovery read, as an invalid run reports it.
+    #[must_use]
+    pub fn discovered(&self) -> Discovered {
+        Discovered {
+            visit_order: self.visit_order.clone(),
+            containers: self.containers.clone(),
+            unmodeled: self.unmodeled.clone(),
+            untrusted: self.untrusted.clone(),
+            untrusted_pull_request_order: self.untrusted_pull_request_order.clone(),
+            opaque: self
+                .nodes
+                .iter()
+                .filter(|(_, n)| n.opaque)
+                .map(|(id, n)| (id.clone(), n.clone()))
+                .collect(),
+            not_planned_order: self.not_planned_order.clone(),
+        }
+    }
+
     /// The dispatchable subset of the ready set (rule Q2).
     #[must_use]
     pub fn dispatchable(&self) -> BTreeSet<IssueRef> {
@@ -169,6 +213,10 @@ pub enum Outcome {
     Incomplete {
         /// Why the observation was unavailable, as recorded.
         unavailable: String,
+        /// Which part of a reference was not found, when the slot reported
+        /// records it (bundle rules OB16 and OB17, profile rules D11 to
+        /// D13); its code is [`NotFound::code`]. A cause is no finding.
+        cause: Option<NotFound>,
     },
     /// Some rule fails. The graph is reported for diagnosis (rule F3) unless
     /// the edges could not all be resolved (X3) or form a cycle (G4).
@@ -181,6 +229,9 @@ pub enum Outcome {
         /// that names it: by task in the order the closure read them, then
         /// in the task's `.blocked_by` order, the order a report lists them.
         unknown: Vec<Edge>,
+        /// What discovery read, reported with or without the graph
+        /// (decision D13); with it, it is [`Graph::discovered`].
+        discovered: Discovered,
     },
     /// A plan.
     Planned {
@@ -217,7 +268,14 @@ pub fn plan<F: Forge + ?Sized>(parameters: &Parameters, forge: &F) -> Result<Out
     }
     match Run::new(parameters, forge).execute(roots) {
         Ok(outcome) => Ok(outcome),
-        Err(Undecided::Unavailable(unavailable)) => Ok(Outcome::Incomplete { unavailable }),
+        Err(Undecided::Unavailable(unavailable)) => Ok(Outcome::Incomplete {
+            unavailable,
+            cause: None,
+        }),
+        Err(Undecided::NotFound(unavailable, cause)) => Ok(Outcome::Incomplete {
+            unavailable,
+            cause: Some(cause),
+        }),
         Err(Undecided::Missing(missing)) => Err(missing),
     }
 }
@@ -499,7 +557,17 @@ impl<'a, F: Forge + ?Sized> Run<'a, F> {
         if !self.parameters.read_scope.contains(&repo) {
             return Ok(Visit::OutOfScope);
         }
-        let issue = lookup(self.forge.issue(reference))?;
+        // D10 to D13: a reference that resolves to no issue is unavailable,
+        // with the cause its slot records, if any (OB17).
+        let issue = match self.forge.issue(reference)? {
+            Observed::Value(issue) => issue,
+            Observed::Unavailable(why) => {
+                return Err(match self.forge.not_found(reference) {
+                    Some(cause) => Undecided::NotFound(why, cause),
+                    None => Undecided::Unavailable(why),
+                });
+            }
+        };
         if issue.pull_request {
             return Ok(Visit::PullRequest);
         }
@@ -788,6 +856,7 @@ impl<'c> Assembly<'c> {
         if findings.iter().any(|f| f.severity() == Severity::Error) {
             Outcome::Invalid {
                 findings,
+                discovered: graph.discovered(),
                 graph: (!unresolved).then_some(graph),
                 unknown: self.unknown,
             }

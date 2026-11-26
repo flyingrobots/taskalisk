@@ -16,10 +16,9 @@
 //! - the rendering without a display input is the rendering with one, less
 //!   exactly the fields in [`display_fields`].
 //!
-//! When the Python's plan did not compile (a cycle, an unknown
-//! prerequisite), its findings about what discovery read are left out: the
-//! core reports no graph for such a run (rule F3), so it has none of them
-//! (flyingrobots/taskalisk#44).
+//! A plan that did not compile (a cycle, an unknown prerequisite) is held
+//! to its findings about what discovery read like any other: the core
+//! reports them without the graph (decision D13, flyingrobots/taskalisk#44).
 //!
 //! One intended difference, which is not a gap: [`INTENDED_DIFFERENCE`].
 
@@ -149,22 +148,6 @@ fn without(line: &Value, fields: &[&str], problems: &mut Vec<String>) -> Value {
     out
 }
 
-/// A finding about what discovery read (rule W1).
-fn is_discovery_finding(line: &Value) -> bool {
-    line["event"] == "finding"
-        && matches!(
-            line["code"].as_str(),
-            Some(
-                "container.excluded"
-                    | "issue.unmodeled"
-                    | "issue.untrusted"
-                    | "pull_request.untrusted"
-                    | "issue.opaque"
-                    | "parent.not_planned"
-            )
-        )
-}
-
 /// The intended difference: a `frontmatter.violation` or
 /// `frontmatter.warning` compares by its `code` and `subject` alone, as a
 /// set. Reason: the skill reads those two, and the message is prose that
@@ -242,10 +225,8 @@ fn every_agreed_case_renders_as_the_python_does() {
         let got = lines(&text);
 
         // With a display input, against the Python.
-        let compiled = python[0]["outcome"] == "compiled";
         let mut want: Vec<Value> = python
             .iter()
-            .filter(|l| compiled || !is_discovery_finding(l))
             .map(|l| without(l, &gaps(l), &mut problems))
             .collect();
         let mut theirs = got.clone();
@@ -286,14 +267,16 @@ fn every_agreed_case_renders_as_the_python_does() {
         names.len(),
         failures.join("\n")
     );
-    // 76 corpus cases, the one planned again with hostile titles, and the
+    // 79 corpus cases (graph-cycle, g4-cycle and g4-downstream-of-a-cycle
+    // among them), the one planned again with hostile titles, and the
     // variants d9-container--opaque-child, --opaque-children-in-order-read,
-    // --traversal-order, --not-planned-in-blocked-by-order and
-    // --not-planned-per-task-order (the pull request and untrusted variants
-    // hold untrusted issues or pulls; the unknown-and-cycle one compiles
-    // nothing).
+    // --traversal-order, --not-planned-in-blocked-by-order,
+    // --not-planned-per-task-order and --traversal-order-and-cycle, and
+    // discovery-unmodeled-home-issue--three-issue-cycle. The other variants
+    // hold untrusted issues or pulls, or a frontmatter finding, as every run
+    // with an unknown prerequisite does.
     assert_eq!(
-        equal_hashes, 82,
+        equal_hashes, 87,
         "the cases whose artifact_hash is the Python's"
     );
 }

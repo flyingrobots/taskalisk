@@ -1,0 +1,20 @@
+{
+  "cites": [
+    "D11",
+    "D10",
+    "OB17",
+    "OB16",
+    "F2"
+  ],
+  "disagreement": {
+    "classification": "compatibility-exception",
+    "difference": 26,
+    "note": "the compiler reports an incomplete run without the reason recorded in any slot, and no cause (OB17)"
+  },
+  "id": "graph/d11-owner-not-found--python",
+  "kind": "characterisation",
+  "level": "graph",
+  "normative_case": "graph/d11-owner-not-found",
+  "source": "the Python compiler, on the bundle of graph/d11-owner-not-found",
+  "title": "Where graph/d11-owner-not-found differs: the compiler reports an incomplete run without the reason recorded in any slot, and no cause (OB17)"
+}

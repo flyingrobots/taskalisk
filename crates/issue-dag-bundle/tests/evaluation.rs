@@ -86,7 +86,7 @@ fn expected_of(dir: &Path) -> Value {
 /// `unusable`, bundle rule OB5), twins included, and the cases that have a
 /// result. A case cannot move between the two without changing these.
 const UNUSABLE_CASES: usize = 22;
-const RECORDED_CASES: usize = 205;
+const RECORDED_CASES: usize = 230;
 
 #[test]
 fn every_graph_case_replays_byte_for_byte() {

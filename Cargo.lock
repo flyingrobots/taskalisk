@@ -209,6 +209,8 @@ version = "0.1.0"
 dependencies = [
  "issue-dag-bundle",
  "issue-dag-core",
+ "issue-dag-gh",
+ "issue-dag-git",
  "serde_json",
  "sha2",
 ]

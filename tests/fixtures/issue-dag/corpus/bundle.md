@@ -90,10 +90,11 @@ members, which are the run parameters of profile rule I1:
 **OB4. Observation slots.** Each observation is held in a *slot*: an object
 with exactly one member, either `value`, holding what was observed, or
 `unavailable`, holding a non-empty string that says why the observation could
-not be made. An observation that the planner could not make, or could not
-show to be complete, is recorded as unavailable (profile rule I5). It is
-never recorded as an empty value, and an observed empty value is never
-recorded as unavailable.
+not be made. The one exception is the slot of an issue that was not found,
+which may also hold `not_found` beside `unavailable` (OB17). An observation
+that the planner could not make, or could not show to be complete, is
+recorded as unavailable (profile rule I5). It is never recorded as an empty
+value, and an observed empty value is never recorded as unavailable.
 
 **OB5. Missing slots.** A slot that a bundle does not hold was not recorded.
 A reader that needs it MUST reject the bundle as incomplete evidence. It MUST
@@ -146,7 +147,8 @@ value is an object with these members, `body` optional, and no other:
   member MAY be absent when the run does not read the body (OB14).
 
 A reference that resolves to no issue that the planner can see is recorded as
-unavailable (profile rule D10).
+unavailable (profile rule D10). Its slot MAY also record which part of the
+reference was not found (OB17).
 
 **OB9. Actors.** An actor is an object with exactly the members `login`, as
 GitHub returns it, and `type`, the actor type GitHub reports, such as `User`
@@ -185,7 +187,27 @@ and `codeowners`, the members OB6 to OB11 define. A reader MUST reject a
 bundle whose `observations` holds any other member, rather than ignore it:
 a misspelt slot would otherwise be read as a slot that was not recorded.
 
-> *Commentary.* A bundle that OB1 or OB15 rejects is not a bundle, so no
+**OB17. Not found.** The unavailable slot of a member of
+`observations.issues` whose reference resolves to no issue (OB8, profile rule
+D10) MAY hold, beside `unavailable`, the member `not_found`: the part of the
+reference that the lookup did not find. Its value is one of these strings:
+
+- `owner`: no account has the reference's owner as its login (profile rule
+  D11);
+- `repository`: the owner was found, and has no repository of that name
+  (D12);
+- `number`: the repository was found, and has no issue or pull request with
+  that number (D13).
+
+A reader MUST reject a bundle whose `not_found` has any other value, and a
+bundle that holds `not_found` anywhere else: in a slot that holds `value`, in
+the `body` slot of an issue, or in any slot outside `observations.issues`. A
+slot without `not_found` records no cause, which is how a slot recorded
+before this rule reads. The cause is the value of `not_found` alone: a planner
+MUST NOT read a cause out of the reason, and when the reason says otherwise,
+`not_found` is the cause.
+
+> *Commentary.* A bundle that OB1, OB15 or OB17 rejects is not a bundle, so no
 > graph case of the corpus can hold one: a case's input is a bundle (corpus
 > rule CC2) and its expected result is the outcome of a run (CC6). A bundle
 > that lacks a slot its run reads breaks OB14 but is still a bundle: OB5
@@ -206,6 +228,15 @@ a misspelt slot would otherwise be read as a slot that was not recorded.
 > bundle of the corpus names it. A bundle carries the observations a policy
 > reads and names the policy; a case whose expected plan depends on an
 > admission decision depends on that policy too.
+>
+> OB17 records what the lookup answered, not what exists. GitHub answers a
+> lookup of a private repository the token cannot see exactly as it answers
+> one of a repository that does not exist, so `repository` means *not found
+> by this planner*, and so does `number` for an issue the planner cannot see.
+> This is why the cause does not change the outcome of a run (profile rule
+> D10). The reason stays free text for a person to read; the cause is the
+> part a planner reads, so no planner parses English, or an HTTP status, out
+> of the reason.
 
 ## 3. What a run reports
 
@@ -226,7 +257,11 @@ not read, it reports exactly one:
    slot and has no outcome under profile rule F1.
 2. Otherwise the run is *incomplete* (F1) and reports the least of the
    reasons (OB4) recorded in the unavailable slots it reached, as strings
-   compared by their UTF-8 bytes.
+   compared by their UTF-8 bytes, and with it a cause (OB17, profile rules
+   D11 to D13) or no cause: the least of the slots that hold that reason,
+   where a slot that records no cause comes first, and then the causes in
+   the order of the UTF-8 bytes of their values, `number`, `owner`,
+   `repository`.
 
 A missing slot is identified by its path: the member names that lead to it
 from `observations`, in canonical form (OB13), as corpus rule CC6 writes it,
@@ -245,5 +280,7 @@ order of the nodes changes the slot a run reports.
 > first because it says the evidence is unusable, and an unavailable slot
 > must not hide that. Ordering by path needs no list of kinds: it is the
 > order of the bundle's own member names, and the path is what a case
-> reports. Two unavailable slots with the same reason are not told apart,
-> since the reason is what is reported.
+> reports. Two unavailable slots with the same reason are told apart only by
+> their causes, since the reason and the cause are what is reported. A slot
+> with no cause comes first for the same reason a path that begins another
+> does: it says less.

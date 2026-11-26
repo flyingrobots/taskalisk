@@ -1,0 +1,17 @@
+{
+  "cites": [
+    "OB17",
+    "D13",
+    "D11"
+  ],
+  "disagreement": {
+    "classification": "compatibility-exception",
+    "difference": 26,
+    "note": "the compiler reports an incomplete run without the reason recorded in any slot, and no cause (OB17)"
+  },
+  "id": "graph/d13-cause-is-not-read-from-the-reason",
+  "kind": "normative",
+  "level": "graph",
+  "source": "constructed from the rule text",
+  "title": "The cause is `not_found`, never read out of the reason: a reason that says the owner was not found, with `not_found: number`, is cause D13"
+}
