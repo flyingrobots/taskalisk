@@ -217,9 +217,12 @@ impl Shown<'_> {
         }
     }
 
+    /// Adds an issue's URL to an object, when a display input is given:
+    /// null when it holds none, such as a replay's, whose bundle records no
+    /// URL (bundle rule OB12).
     fn url(&self, fields: &mut Map<String, Value>, id: &IssueRef) {
-        if let Some(url) = self.get(|d| &d.urls, id) {
-            fields.insert("url".into(), json!(url));
+        if self.display.is_some() {
+            fields.insert("url".into(), json!(self.get(|d| &d.urls, id)));
         }
     }
 }
