@@ -14,8 +14,11 @@
 //! did not trust it, and a fixed message. Never a title or a line of a body
 //! (threat model C1, C3): the admission policy reads neither to decide.
 
+use core::fmt;
+
 use crate::admission::{Distrusted, NotAdmitted};
-use crate::finding::{Code, Finding, Severity};
+use crate::finding::{Code, Severity};
+use crate::observation::Repo;
 use crate::plan::Discovered;
 use crate::reference::IssueRef;
 
@@ -37,12 +40,47 @@ pub const TRUST_CODES: [(&str, Severity); TRUST_WARNINGS.len()] = [
     (UNTRUSTED_PULL_REQUEST, Severity::Warning),
 ];
 
-/// One issue or pull request the trust gate kept out, for one actor.
+/// What a trust finding is about: an issue, or a pull request of the home
+/// repository. A pull request's number is any number GitHub gives, so it is
+/// held as observed, never parsed into a reference (rule L1 bounds those).
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum TrustSubject {
+    /// An issue the trust gate did not admit.
+    Issue(IssueRef),
+    /// A pull request that closes an issue and is not admitted.
+    PullRequest {
+        /// Its repository, the home repository.
+        repository: Repo,
+        /// Its number, as observed.
+        number: u64,
+    },
+}
+
+impl fmt::Display for TrustSubject {
+    /// `owner/repo#N`, for an issue and a pull request alike.
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Issue(id) => write!(f, "{id}"),
+            Self::PullRequest { repository, number } => write!(f, "{repository}#{number}"),
+        }
+    }
+}
+
+/// One issue or pull request the trust gate kept out, for one actor: a
+/// catalogued code, its severity, a fixed message, the subject, the login
+/// and the rule. It is not a [`crate::Finding`], whose subject is always a
+/// reference: a pull request's number need not fit one, and its finding is
+/// never dropped for that.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TrustFinding {
-    /// The finding: its subject (the issue, or the pull request's own
-    /// address), its code and a fixed message. It concerns no reference.
-    pub finding: Finding,
+    /// The issue or pull request it is about.
+    pub subject: TrustSubject,
+    /// The stable code, an entry of [`crate::CODES`]; read with
+    /// [`TrustFinding::code`].
+    code: Code,
+    /// Fixed text for the code. It never carries a login, a title or a line
+    /// of a body.
+    pub message: &'static str,
     /// The login that failed, as recorded: the author's or the editor's, or
     /// a pull request's author; `None` for a deleted account.
     pub login: Option<String>,
@@ -52,13 +90,25 @@ pub struct TrustFinding {
     pub rule: &'static str,
 }
 
-const fn finding(subject: IssueRef, code: &str, message: &'static str) -> Finding {
-    Finding::coded(subject, Code::of(code), None, message)
+impl TrustFinding {
+    /// The stable code, an entry of [`crate::CODES`].
+    #[must_use]
+    pub const fn code(&self) -> Code {
+        self.code
+    }
+
+    /// The severity of its code, [`Code::severity`]: a warning.
+    #[must_use]
+    pub const fn severity(&self) -> Severity {
+        self.code.severity()
+    }
 }
 
 fn of_actor(subject: &IssueRef, code: &str, message: &'static str, d: &Distrusted) -> TrustFinding {
     TrustFinding {
-        finding: finding(subject.clone(), code, message),
+        subject: TrustSubject::Issue(subject.clone()),
+        code: Code::of(code),
+        message,
         login: d.login.clone(),
         rule: d.why.rule(),
     }
@@ -73,11 +123,12 @@ fn of_actor(subject: &IssueRef, code: &str, message: &'static str, d: &Distruste
 ///   history, the issues in the order of their references.
 /// - `taskalisk.untrusted-pull-request`, once for each pull request that
 ///   closes an issue and is not admitted (AD9), in the order observed, after
-///   the issues. Its subject is the pull request's own address; its login is
+///   the issues. Its subject is the pull request itself; its login is
 ///   its author's, judged or not.
 ///
-/// Two findings can share an identity (profile rule F5) when two editors of
-/// one issue fail: the list keeps both, each with its own login.
+/// Two editors of one issue that fail give two findings, each with its own
+/// login. Nothing is left out: every untrusted issue and pull request in
+/// `discovered` gives at least one.
 #[must_use]
 pub fn trust_findings(discovered: &Discovered) -> Vec<TrustFinding> {
     let mut found = Vec::new();
@@ -105,18 +156,14 @@ pub fn trust_findings(discovered: &Discovered) -> Vec<TrustFinding> {
         }
     }
     for pull in &discovered.untrusted_pull_request_reasons {
-        // A pull request's number is an issue number of its repository;
-        // GitHub's numbers are far below the bound of format rule L1.
-        let Some(subject) = IssueRef::parse(&format!("{}#{}", pull.repository, pull.number)) else {
-            continue;
-        };
         found.push(TrustFinding {
-            finding: finding(
-                subject,
-                UNTRUSTED_PULL_REQUEST,
-                "the pull request closes an issue and is not admitted (admission rule AD9): it \
-                 has no effect on the status of what it closes",
-            ),
+            subject: TrustSubject::PullRequest {
+                repository: pull.repository.clone(),
+                number: pull.number,
+            },
+            code: Code::of(UNTRUSTED_PULL_REQUEST),
+            message: "the pull request closes an issue and is not admitted (admission rule AD9): \
+                      it has no effect on the status of what it closes",
             login: pull.author.clone(),
             rule: pull.reason.rule(),
         });

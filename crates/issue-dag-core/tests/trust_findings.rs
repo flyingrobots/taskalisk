@@ -17,7 +17,7 @@ use issue_dag_core::{
     Actor, Body, CODES, Discovered, Distrust, Distrusted, Issue, IssueRef, IssueState, NotAdmitted,
     Observations, Observed, Outcome, Parameters, PullNotAdmitted, PullRequest, ReadScope,
     RecordedForge, Repo, Severity, TRUST_POLICY, TRUST_WARNINGS, TrustFinding, TrustParameters,
-    UntrustedIssue, UntrustedPullRequest, plan, trust_findings,
+    TrustSubject, UntrustedIssue, UntrustedPullRequest, plan, trust_findings,
 };
 
 /// A marker that a hostile title or body carries; it must reach no finding.
@@ -170,8 +170,8 @@ fn summary(found: &[TrustFinding]) -> Vec<(String, String, Option<String>, &'sta
         .iter()
         .map(|f| {
             (
-                f.finding.code().to_string(),
-                f.finding.subject.to_string(),
+                f.code().to_string(),
+                f.subject.to_string(),
                 f.login.clone(),
                 f.rule,
             )
@@ -486,9 +486,9 @@ fn trust_findings_are_catalogued_warnings() {
     let all = trust_findings(&found);
     assert_eq!(all.len(), 2);
     for f in &all {
-        assert_eq!(f.finding.severity(), Severity::Warning);
-        assert!(TRUST_WARNINGS.contains(&f.finding.code().as_str()));
-        assert_ne!(f.finding.message, "");
+        assert_eq!(f.severity(), Severity::Warning);
+        assert!(TRUST_WARNINGS.contains(&f.code().as_str()));
+        assert_ne!(f.message, "");
     }
 }
 
@@ -510,11 +510,7 @@ fn no_title_or_body_text_enters_a_trust_finding() {
     assert!(!text.contains(HOSTILE), "{text}");
     assert!(!text.contains("rm -rf"), "{text}");
     for f in &all {
-        assert!(
-            !f.finding.message.contains("mallory"),
-            "{}",
-            f.finding.message
-        );
+        assert!(!f.message.contains("mallory"), "{}", f.message);
     }
 }
 
@@ -585,4 +581,12 @@ fn ad9_a_pull_request_whose_number_is_no_issue_number_is_still_reported() {
     assert_eq!(all.len(), 1, "{all:?}");
     assert_eq!(all[0].login.as_deref(), Some("dev"));
     assert_eq!(all[0].rule, "AD9");
+    assert_eq!(
+        all[0].subject,
+        TrustSubject::PullRequest {
+            repository: home(),
+            number
+        }
+    );
+    assert_eq!(all[0].subject.to_string(), format!("o/r#{number}"));
 }

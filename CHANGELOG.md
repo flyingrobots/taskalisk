@@ -15,11 +15,14 @@ schema version under `Unreleased` is a draft and may change in place.
   association, `AD5.7` a permission below `write` or none; `AD9` for a pull request whose head is
   not a branch of the home repository). A run keeps the reasons in `Graph` and `Discovered`
   (`untrusted_issue_reasons`, `untrusted_pull_request_reasons`), so an invalid run reports them
-  too (decision D13), and `issue-dag-core`'s new `trust_findings` reports one warning per actor
+  too (decision D13). In the public `Discovered`, these reason maps replace the fields `untrusted`
+  and `untrusted_pull_request_order` (their keys and numbers, in the same order), while `Graph` keeps both. `issue-dag-core`'s
+  new `trust_findings` reports one warning per actor
   that failed: `taskalisk.untrusted-author`, `taskalisk.untrusted-editor` and
   `taskalisk.untrusted-pull-request`, catalogued in `CODES` and documented in
-  `docs/topics/findings/README.md`. A finding carries the subject, the login and the rule, and
-  never a title or a line of a body; tests check this with hostile body text and hostile titles.
+  `docs/topics/findings/README.md`. A `TrustFinding` carries its subject (a `TrustSubject`: an
+  issue, or a pull request by repository and number as observed, so none is dropped for a number
+  no reference can hold), the login and the rule, and never a title or a line of a body; tests check this with hostile body text and hostile titles.
   The Rust renderer writes the trust gate's message and reasons in `issue.untrusted` and
   `pull_request.untrusted` as the Python does, which closes the renderer's last gap: the parity
   tests and the Python fixture check allow no missing field, the binary's CLI tests validate every
