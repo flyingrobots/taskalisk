@@ -56,10 +56,11 @@ for their own reasons (Decision 7).
 
 Taskalisk is rewritten in Rust. A core crate holds the domain and the ports
 and performs no I/O; it plans over a recorded set of observations. Each port
-adapter is its own crate: `issue-dag-gh` implements `Forge` and
-`issue-dag-git` implements `LocalRepository`. The in-memory forge for tests
-(`RecordedForge`) is in the core, and the renderers and the command line are
-in the binary crate. Ports: `Forge` and `LocalRepository`; later
+adapter is its own crate: the git adapter is `issue-dag-git` (#57), which
+implements `LocalRepository`, and the `gh` adapter is to be its own crate,
+`issue-dag-gh` (#56), implementing `Forge`. The in-memory forge for tests
+(`RecordedForge`) is in the core. The renderers and the command line go in
+the binary crate (#31). Ports: `Forge` and `LocalRepository`; later
 `AgentLauncher` and `Locks`.
 
 Amended 2026-11-26: one crate per adapter (#57).

@@ -84,8 +84,11 @@ documents and plans the graph and readiness over recorded observations, with no 
 and graph case of the vendored corpus. `crates/issue-dag-git` answers the core's
 `LocalRepository` port (branches, worktrees, ahead/behind) by running `git`; its tests build
 temporary repositories, so `git` 2.36 or later must be on `PATH`. A path that is not a
-repository's top level, or a `git` call that fails, is an error, never an empty answer; the
-adapter only reads. The toolchain is pinned in `rust-toolchain.toml`, and CI runs the same three
+repository's top level, or a `git` call that fails, is an error, never an empty answer. The
+adapter only reads, and turns off a configured `core.fsmonitor` command; a clean filter
+(`filter.<driver>.clean`) the user configured can still run during `status` when a file's stat
+data changed, with the same trust as the user's own `git status`, because a clone cannot set one.
+The toolchain is pinned in `rust-toolchain.toml`, and CI runs the same three
 checks:
 
 ```sh

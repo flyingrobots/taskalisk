@@ -60,12 +60,16 @@ schema version under `Unreleased` is a draft and may change in place.
   `.git` directory and a bare repository are refused. Every read runs against the recorded
   `--git-dir` and `--work-tree` and never discovers again, so a repository whose `.git` is gone
   fails instead of reading the repository above it; each worktree's `status` names that
-  worktree's own `.git` the same way. It fails closed: each `read_*` method returns a `GitError`
+  worktree's own `.git` the same way, after checking that it belongs to the opened repository (a
+  worktree directory replaced by another repository fails as `ForeignWorktree`); a submodule's or
+  `--separate-git-dir` repository's main worktree, which git lists at its git directory, is read
+  through the recorded work tree. It fails closed: each `read_*` method returns a `GitError`
   when `git` fails or answers in a shape it cannot read (an empty worktree listing included), for
   a caller that needs the kind of failure, and the port answers `Unavailable` with the error's
   text, never an empty list. It only reads: every call passes `--no-optional-locks` and turns off
   `core.fsmonitor` and `core.untrackedCache`, so `status` neither rewrites the index nor runs a
-  configured monitor command, and removes every inherited `GIT_*` variable (`GIT_DIR`,
+  configured monitor command (a clean filter the user configured can still run, with the trust of
+  the user's own `git status`), and removes every inherited `GIT_*` variable (`GIT_DIR`,
   `GIT_CONFIG_*`, `GIT_CEILING_DIRECTORIES`, `GIT_NO_REPLACE_OBJECTS` and the rest), so a run
   inside a hook reads the repository it was given. A missing worktree directory is reported
   (`path_exists` false, `dirty` unknown), not dropped.
@@ -112,8 +116,9 @@ schema version under `Unreleased` is a draft and may change in place.
 ### Changed
 
 - **One crate per port adapter** (flyingrobots/taskalisk#57). Decision 0001, section 2, is amended:
-  `issue-dag-gh` implements `Forge`, `issue-dag-git` implements `LocalRepository`, the in-memory
-  `RecordedForge` is in the core, and the renderers and command line are in the binary crate.
+  the git adapter is `issue-dag-git` (#57); the `gh` adapter is to be its own crate, `issue-dag-gh`
+  (#56); the renderers and the command line go in the binary crate (#31); the in-memory
+  `RecordedForge` is in the core.
 
 ### Fixed
 
