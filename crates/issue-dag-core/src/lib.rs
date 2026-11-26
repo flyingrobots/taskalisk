@@ -4,7 +4,8 @@
 //! ([`parse`]), validity ([`validate`]), the decoded record ([`admit`]), and
 //! the `.blocked_by` rewrite of the edge-edit contract ([`rewrite_blocked_by`]).
 //! A body becomes findings with stable codes ([`findings`]); the codes
-//! are tabled on [`code`].
+//! are tabled on [`code`]. A task body also gets Taskalisk's own body
+//! warnings ([`body_warnings`]).
 //! The crate performs no I/O and has no dependencies.
 mod body;
 mod carrier;

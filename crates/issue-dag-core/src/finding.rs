@@ -67,6 +67,13 @@ pub struct Finding {
 /// is `version.P3` when it names a format (`issue-dag/N`) and `format.V1`
 /// otherwise (V12).
 ///
+/// The table ends with Taskalisk's own body warnings
+/// ([`crate::body_warnings`], flyingrobots/taskalisk#48): its writing
+/// convention for a task body, `skills/taskalisk/WRITING-TASKS.md`, not a
+/// rule of any specification. Their code is `taskalisk.<name>`, given by
+/// [`crate::BodyWarning::code`], listed in [`crate::BODY_WARNINGS`]; they are
+/// stable on the same terms.
+///
 /// | Code | Rule | Severity |
 /// | --- | --- | --- |
 /// | `format.C4` | a line break the carrier does not allow | error |
@@ -88,6 +95,12 @@ pub struct Finding {
 /// | `format.V7` | a self reference | error |
 /// | `format.V8` | an optional key | error |
 /// | `profile.X1` | a `.id` that is not the issue's address | error |
+/// | `taskalisk.acceptance-missing` | a task body without `## Acceptance` | warning |
+/// | `taskalisk.outcome-items` | an Outcome of more than one list item | warning |
+/// | `taskalisk.outcome-missing` | a task body without `## Outcome` | warning |
+/// | `taskalisk.outcome-sentences` | an Outcome of more than one sentence | warning |
+/// | `taskalisk.scope-missing` | a task body without `## Scope` | warning |
+/// | `taskalisk.title-joins` | a title joining two things with "and" or `;` | warning |
 #[must_use]
 pub const fn code(label: Label) -> &'static str {
     match label {
