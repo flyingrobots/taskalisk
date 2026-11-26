@@ -53,6 +53,14 @@ def _labels_in(expected: dict[str, Any]) -> list[str]:
     return found
 
 
+def _comparable(key: str, value: Any) -> Any:
+    """A member of an expected result as CC6 defines it: findings are a set, compared in a canonical
+    order; every other member, such as ready, scores and batch, is compared as written."""
+    if key == "findings" and isinstance(value, list):
+        return sorted({json.dumps(item, sort_keys=True) for item in value})
+    return value
+
+
 def check_case(level: str, where: pathlib.Path, labels: dict[str, str], diffs: dict[int, str], all_cases: dict[str, dict[str, Any]]) -> list[str]:
     name = f"{level}/{where.name}"
     p: list[str] = []
@@ -114,10 +122,11 @@ def check_case(level: str, where: pathlib.Path, labels: dict[str, str], diffs: d
             p.append(f"{name}: expected result {expected.get('result')!r} is not allowed (CC5)")
         actual = forge.run_document(given["body"], given["address"])
     else:
+        before = len(p)
         bundle = _load(where / "bundle.json", p, name)
-        if bundle is None:
+        if len(p) > before:
             return p
-        for problem in ob.validate(bundle):
+        for problem in ob.validate(bundle):  # rejects null and every other non-object
             p.append(f"{name}: bundle.json: {problem}")
         if p:
             return p
@@ -134,7 +143,7 @@ def check_case(level: str, where: pathlib.Path, labels: dict[str, str], diffs: d
         if dis is not None and twin is None:
             p.append(f"{name}: a characterisation case records a disagreement only as the twin of a normative case (CC4)")
         return p
-    differs = sorted(k for k in expected if expected[k] != actual.get(k))
+    differs = sorted(k for k in expected if _comparable(k, expected[k]) != _comparable(k, actual.get(k)))
     if differs and dis is None:
         p.append(f"{name}: unclassified disagreement with the compiler on {', '.join(differs)}: "
                  f"{json.dumps({k: actual.get(k) for k in differs}, sort_keys=True)[:400]}")
