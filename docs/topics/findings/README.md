@@ -53,6 +53,27 @@ judged with the address `o/r#1`; the crate's corpus test runs every case. A
 run finding's example names a case under `corpus/cases/graph/`, whose issues
 are `o/r#1`, `o/r#2` and so on.
 
+## A reference that cannot be read
+
+A run reports why a reference does not resolve to an issue it can read when
+the observations say why. Three causes have a finding of their own:
+
+| Cause | Code | Receives it |
+| --- | --- | --- |
+| outside the read scope | `profile.D3` | each document that writes it, concerning the reference |
+| a pull request | `profile.D4` | the pull request; each open task that writes it in `.blocked_by` also receives `profile.X3` concerning it |
+| transferred | `profile.D5` | each document that writes it, concerning the old reference |
+
+A reference in the read scope that resolves to no issue the planner can see
+has no finding: rule
+[D10](../../../tests/fixtures/issue-dag/profiles/issue-dag-planning-2.md#3-discovery)
+makes the run incomplete, and the run reports the reason recorded for it. The
+bundle records that reason as free text
+([OB8](../../../tests/fixtures/issue-dag/corpus/bundle.md#2-observations)), so
+the crate does not tell an owner, a repository or an issue number that was not
+found apart. The test `crates/issue-dag-core/tests/unreadable_references.rs`
+pins all four cases.
+
 ## Entries
 
 The entries are in the catalogue's order (`CODES`): the document codes in the
