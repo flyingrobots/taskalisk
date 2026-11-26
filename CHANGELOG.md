@@ -13,7 +13,8 @@ schema version under `Unreleased` is a draft and may change in place.
   Every flag must be spelled in full: a prefix such as `--from` or `--verify` used to run
   `inventory` and exit 0. Under an explicit command, a mode flag naming another command
   (`inventory --from-github`, `verify … --from-github`) is refused. Both are startup failures,
-  exit 3. Every documented spelling selects the same command as before.
+  exit 3. Every documented spelling selects the same command as before. Compatibility: a call
+  that relied on an undocumented abbreviation (`--min-conf`, `--from`) must spell the flag out.
 
 - **A secret in a URL query string or fragment is redacted** (flyingrobots/taskalisk#78). The
   value of a query or fragment parameter named `token`, `access_token`, `key`, `secret`,

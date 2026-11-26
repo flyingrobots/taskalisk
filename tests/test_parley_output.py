@@ -269,7 +269,9 @@ class ModeFlags(Harness):
         }
         for args, command in cases.items():
             with self.subTest(args):
-                self.assertEqual(tk.infer_command(list(args))[0], command)
+                inferred = tk.infer_command(list(args))
+                self.assertEqual(inferred[0], command)
+                tk.resolve(inferred[1:], command)  # the full spelling is accepted, not only classified
 
 
 class Discovery(Harness):
