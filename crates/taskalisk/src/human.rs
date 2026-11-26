@@ -87,8 +87,8 @@ pub fn render(line: &Value) -> Option<String> {
                 Some(subject) if !message.contains(subject) => format!(" {}", hs(&line["subject"])),
                 _ => String::new(),
             };
-            // A finding the renderer cannot word yet (flyingrobots/taskalisk#46)
-            // prints its code and subject alone.
+            // A finding without a message prints its code and subject
+            // alone; the renderer words every finding it writes.
             let said = if message.is_empty() {
                 String::new()
             } else {

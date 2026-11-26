@@ -180,6 +180,89 @@ fn value<T>(slot: Observed<T>) -> Result<T, Undecided> {
     }
 }
 
+/// Why an actor is not trusted in a repository (rule AD5): the step that
+/// decided. Each variant holds what that step read, never issue text.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Distrust {
+    /// AD5 step 1: the actor is null, a deleted account.
+    Deleted,
+    /// AD2: the repository is outside the read scope, where nobody is
+    /// trusted.
+    OutOfScope,
+    /// AD5 step 3: a bot that is not on the allowlist.
+    Bot,
+    /// AD5 step 6: an author association other than `OWNER`, `MEMBER` or
+    /// `COLLABORATOR`, as recorded.
+    Association(String),
+    /// AD5 step 7: the permission on the repository is below `write`, as
+    /// recorded, or `None`: not a collaborator.
+    Permission(Option<String>),
+}
+
+impl Distrust {
+    /// The rule that did not trust the actor: `AD2`, or `AD5.<step>`.
+    #[must_use]
+    pub const fn rule(&self) -> &'static str {
+        match self {
+            Self::Deleted => "AD5.1",
+            Self::OutOfScope => "AD2",
+            Self::Bot => "AD5.3",
+            Self::Association(_) => "AD5.6",
+            Self::Permission(_) => "AD5.7",
+        }
+    }
+}
+
+/// An actor that is not trusted, with why (rule AD5).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Distrusted {
+    /// The actor's login as recorded; `None` for a deleted account.
+    pub login: Option<String>,
+    /// Why it is not trusted.
+    pub why: Distrust,
+}
+
+impl Distrusted {
+    fn of(actor: Option<&Actor>, why: Distrust) -> Self {
+        Self {
+            login: actor.map(|a| a.login.clone()),
+            why,
+        }
+    }
+}
+
+/// Why an issue is not admitted (rule AD8).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum NotAdmitted {
+    /// Step 1: its author is not trusted. The body was not read.
+    Author(Distrusted),
+    /// Step 3: these editors of its body are not trusted, each once, in
+    /// the order of the edit history. Never empty.
+    Editors(Vec<Distrusted>),
+}
+
+/// Why a pull request that closes an issue is not admitted (rule AD9).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum PullNotAdmitted {
+    /// Its head is not a branch of the home repository: `cross_repository`
+    /// is true or was not observed. Its author is not judged.
+    NotSameRepository,
+    /// Its author is not trusted in the home repository.
+    Author(Distrusted),
+}
+
+impl PullNotAdmitted {
+    /// The rule that did not admit it: `AD9` for its head, or its author's
+    /// [`Distrust::rule`].
+    #[must_use]
+    pub const fn rule(&self) -> &'static str {
+        match self {
+            Self::NotSameRepository => "AD9",
+            Self::Author(d) => d.why.rule(),
+        }
+    }
+}
+
 /// Admission decisions for one run.
 pub struct Admission<'a, F: Forge + ?Sized> {
     forge: &'a F,
@@ -213,35 +296,53 @@ impl<'a, F: Forge + ?Sized> Admission<'a, F> {
         repo: &Repo,
         association: Option<&str>,
     ) -> Result<bool, Undecided> {
+        Ok(self.distrust(actor, repo, association)?.is_none())
+    }
+
+    /// Rule AD5: why `actor` is not trusted in `repo`, or `None` when it is
+    /// trusted. The association is the author's, when the actor is an
+    /// issue's author. The reason is the step that decided (AD2 for a
+    /// repository outside the scope), never a guess: a lookup that cannot be
+    /// made is no reason (AD10).
+    ///
+    /// # Errors
+    ///
+    /// [`Undecided`] when a lookup the steps reach is unavailable or missing.
+    pub fn distrust(
+        &mut self,
+        actor: Option<&Actor>,
+        repo: &Repo,
+        association: Option<&str>,
+    ) -> Result<Option<Distrust>, Undecided> {
         let Some(actor) = actor else {
-            return Ok(false);
+            return Ok(Some(Distrust::Deleted));
         };
         if !self.scope.contains(repo) {
             // A repository outside the scope is never judged (AD2), so not
             // even the allowlist trusts anyone there.
-            return Ok(false);
+            return Ok(Some(Distrust::OutOfScope));
         }
         let identity = Identity::of(actor);
         if self.allowlist.contains(&identity) {
-            return Ok(true);
+            return Ok(None);
         }
         if identity.bot {
-            return Ok(false);
+            return Ok(Some(Distrust::Bot));
         }
         if self.read_codeowners && self.named_in_codeowners(repo, &identity.name)? {
-            return Ok(true);
+            return Ok(None);
         }
         match association {
-            Some("OWNER") => return Ok(true),
+            Some("OWNER") => return Ok(None),
             Some("MEMBER" | "COLLABORATOR") | None => {}
-            Some(_) => return Ok(false),
+            Some(other) => return Ok(Some(Distrust::Association(other.to_owned()))),
         }
         let login = actor.login.to_ascii_lowercase();
         let permission = value(self.forge.permission(repo, &login)?)?;
-        Ok(matches!(
-            permission.as_deref(),
-            Some("admin" | "maintain" | "write")
-        ))
+        if matches!(permission.as_deref(), Some("admin" | "maintain" | "write")) {
+            return Ok(None);
+        }
+        Ok(Some(Distrust::Permission(permission)))
     }
 
     fn named_in_codeowners(&mut self, repo: &Repo, name: &str) -> Result<bool, Undecided> {
@@ -266,8 +367,26 @@ impl<'a, F: Forge + ?Sized> Admission<'a, F> {
         body: &Body,
         repo: &Repo,
     ) -> Result<bool, Undecided> {
+        Ok(self.untrusted_editors(author, body, repo)?.is_empty())
+    }
+
+    /// Rule AD8, steps 2 and 3: each editor whose identity differs from the
+    /// author's and from every editor before it, and who is not trusted,
+    /// with why, in the order of the edit history. Every such editor is
+    /// judged, even after one is not trusted; the issue is admitted when the
+    /// list is empty.
+    ///
+    /// # Errors
+    ///
+    /// [`Undecided`] when a lookup is unavailable or missing.
+    pub fn untrusted_editors(
+        &mut self,
+        author: Option<&Actor>,
+        body: &Body,
+        repo: &Repo,
+    ) -> Result<Vec<Distrusted>, Undecided> {
         let mut seen: BTreeSet<Option<Identity>> = BTreeSet::from([author.map(Identity::of)]);
-        let mut all = true;
+        let mut untrusted = Vec::new();
         // Every editor is judged, even after one is undecided: a later
         // missing lookup must not hide behind an earlier unavailable one.
         let mut gaps = Gaps::default();
@@ -275,12 +394,12 @@ impl<'a, F: Forge + ?Sized> Admission<'a, F> {
             if !seen.insert(editor.as_ref().map(Identity::of)) {
                 continue;
             }
-            if let Some(trusted) = gaps.note(self.trusted(editor.as_ref(), repo, None)) {
-                all &= trusted;
+            if let Some(Some(why)) = gaps.note(self.distrust(editor.as_ref(), repo, None)) {
+                untrusted.push(Distrusted::of(editor.as_ref(), why));
             }
         }
         gaps.check()?;
-        Ok(all)
+        Ok(untrusted)
     }
 
     /// Rule AD9: whether a pull request of the home repository `home` is
@@ -294,10 +413,28 @@ impl<'a, F: Forge + ?Sized> Admission<'a, F> {
         pull: &PullRequest,
         home: &Repo,
     ) -> Result<bool, Undecided> {
+        Ok(self.pull_request_not_admitted(pull, home)?.is_none())
+    }
+
+    /// Rule AD9: why a pull request of the home repository `home` is not
+    /// admitted, or `None` when it is. The caller judges only one that
+    /// closes an issue.
+    ///
+    /// # Errors
+    ///
+    /// [`Undecided`] when a lookup is unavailable or missing.
+    pub fn pull_request_not_admitted(
+        &mut self,
+        pull: &PullRequest,
+        home: &Repo,
+    ) -> Result<Option<PullNotAdmitted>, Undecided> {
         if pull.cross_repository != Some(false) {
-            return Ok(false);
+            return Ok(Some(PullNotAdmitted::NotSameRepository));
         }
-        self.trusted(pull.author.as_ref(), home, None)
+        let author = pull.author.as_ref();
+        Ok(self
+            .distrust(author, home, None)?
+            .map(|why| PullNotAdmitted::Author(Distrusted::of(author, why))))
     }
 }
 

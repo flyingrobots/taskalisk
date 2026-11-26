@@ -250,22 +250,9 @@ fn of<'a>(lines: &'a [Value], id: &str) -> Vec<&'a Value> {
 /// Every line validates against the exact schema it names, by the vendored
 /// writer's checker (`tests/validate_lines.py`).
 fn assert_valid(lines: &[Value]) {
-    validate(lines, &[]);
-}
-
-/// As [`assert_valid`], except that an untrusted issue's or pull request's
-/// finding may lack the trust gate's reasons, which the core does not keep
-/// yet (flyingrobots/taskalisk#46; `FINDING_GAPS` in
-/// `tests/test_render_parity.py`).
-fn assert_valid_but_for_render_gaps(lines: &[Value]) {
-    validate(lines, &["--allow-render-gaps"]);
-}
-
-fn validate(lines: &[Value], flags: &[&str]) {
     let mut child = Command::new("python3")
         .current_dir(root().join("tests"))
         .arg("validate_lines.py")
-        .args(flags)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .spawn()
@@ -299,8 +286,8 @@ fn a_live_plan_writes_lines_that_validate_and_a_receipt() {
     let out = run.stdout();
     let receipt = run.receipt();
     assert!(run.stderr().is_empty(), "{}", run.explain());
-    assert_valid_but_for_render_gaps(&out);
-    assert_valid_but_for_render_gaps(&receipt);
+    assert_valid(&out);
+    assert_valid(&receipt);
 
     // The bootstrap line first, the plan next, the end last.
     assert_eq!(schema(&out[0]), "parley.run.bootstrap");
@@ -450,9 +437,24 @@ fn the_plan_matches_the_python_on_the_same_backlog() {
             .collect()
     };
     assert_eq!(results(&rust), results(&python));
-    // Findings: the same codes and subjects. The trust gate's reasons
-    // (flyingrobots/taskalisk#46) and the frontmatter messages (the core's
-    // fixed text) are the renderer's documented differences.
+    // Findings: the same codes and subjects. The frontmatter messages (the
+    // core's fixed text) are the renderer's documented difference; an
+    // untrusted issue or pull request is the Python's line, its reasons
+    // included (flyingrobots/taskalisk#46).
+    let untrusted = |run: &Run| -> Vec<Map<String, Value>> {
+        run.stdout()
+            .iter()
+            .filter(|l| {
+                matches!(
+                    l["code"].as_str(),
+                    Some("issue.untrusted" | "pull_request.untrusted")
+                )
+            })
+            .map(|l| payload(l, &[]))
+            .collect()
+    };
+    assert!(!untrusted(&rust).is_empty(), "the backlog holds a stranger");
+    assert_eq!(untrusted(&rust), untrusted(&python));
     let findings = |run: &Run| -> Vec<(Value, Value)> {
         run.stdout()
             .iter()
@@ -678,7 +680,7 @@ fn human_prints_prose_and_keeps_the_receipt() {
     let receipts = run.receipts();
     assert_eq!(receipts.len(), 1);
     let receipt = parse(&fs::read(&receipts[0]).expect("the receipt"));
-    assert_valid_but_for_render_gaps(&receipt);
+    assert_valid(&receipt);
     assert_eq!(of(&receipt, "taskalisk.plan").len(), 1);
 }
 

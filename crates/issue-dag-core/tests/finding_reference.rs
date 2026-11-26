@@ -5,7 +5,7 @@
 //!
 //! The codes are enumerated from [`CODES`], the one public catalogue of every
 //! family of findings (document codes, the planning profile's codes and
-//! Taskalisk's body, shape and plan warnings), so a code that is added to the catalogue fails
+//! Taskalisk's body, shape, plan and trust warnings), so a code that is added to the catalogue fails
 //! here until its entry is written. An entry is a heading `` ### `<code>` ``
 //! followed by a line `**Severity:** <severity>. **Rule:** [<label>](<link>)...`.
 //! Its severity must equal the one the catalogue gives it. Every link of the
@@ -15,7 +15,7 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use issue_dag_core::{CODES, PLAN_WARNINGS, SHAPE_WARNINGS};
+use issue_dag_core::{CODES, PLAN_WARNINGS, SHAPE_WARNINGS, TRUST_WARNINGS};
 
 /// The reference page, relative to the crate.
 const PAGE: &str = "../../docs/topics/findings/README.md";
@@ -155,6 +155,18 @@ fn every_entry_states_its_code_s_severity_and_cites_its_rule() {
                 entry.rule.starts_with('[')
                     && entry.rule.contains("](../../../skills/taskalisk/SKILL.md#"),
                 "{}: the rule {:?} does not cite SKILL.md",
+                entry.code,
+                entry.rule
+            );
+        } else if TRUST_WARNINGS.contains(&entry.code.as_str()) {
+            // The admission policy's rules, which give no finding of their
+            // own in the planning profile.
+            assert!(
+                entry.rule.starts_with("[AD")
+                    && entry
+                        .rule
+                        .contains("](../../../tests/fixtures/issue-dag/profiles/admission.md#"),
+                "{}: the rule {:?} does not cite the admission policy",
                 entry.code,
                 entry.rule
             );
