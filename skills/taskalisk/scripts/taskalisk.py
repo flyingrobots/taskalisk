@@ -1348,21 +1348,36 @@ def _resources_cell(holds: list[str], meters: list[dict[str, Any]], empty: str) 
 
 
 MD_LINE_BREAK_RE = re.compile("\r\n|[\n\r\x0b\x0c\x85\u2028\u2029]")
-MD_CONTROL_RE = re.compile("[\x00-\x1f\x7f-\x9f]")
-MD_AUTOLINK_RE = re.compile(r"(?i)\b([a-z][a-z0-9+.-]{0,31}:)(//)|\b(www)(\.)")  # a bounded scheme keeps the scan linear
+# C0 and C1 controls and the bidirectional controls (embeddings, overrides, isolates, marks).
+MD_CONTROL_RE = re.compile(r"[\x00-\x1f\x7f-\x9f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]")
+# Where GFM can start a link: a scheme's `://` or `www.` not preceded by an ASCII letter or digit
+# (GFM starts one after `_`, punctuation or a non-ASCII letter, which `\b` misses), and an `@`
+# before a name (an email address, `mailto:` or a mention). A bounded scheme keeps the scan linear.
+MD_AUTOLINK_RE = re.compile(r"(?i)(?<![a-z0-9])([a-z][a-z0-9+.-]{0,31}:)(//)|(?<![a-z0-9])(www)(\.)|(@)(?=[a-z0-9])")
+ZERO_WIDTH_SPACE = "\u200b"
+
+
+def _unlink(m: re.Match[str]) -> str:
+    """The match with a zero-width space where GFM would see the start of a link."""
+    if m.group(1):
+        return m.group(1) + ZERO_WIDTH_SPACE + m.group(2)
+    if m.group(3):
+        return m.group(3) + ZERO_WIDTH_SPACE + m.group(4)
+    return m.group(5) + ZERO_WIDTH_SPACE
 
 
 def _md_cell(text: str) -> str:
     """Issue text in a rendered table cell: no pipes, no HTML, no links, no line breaks, no control
     characters (C5). In order: the backslash is escaped first, so a title's own backslash cannot
     cancel a later escape; every Unicode line break becomes a space; every other C0 or C1 control
-    character (ESC included) is dropped; `|`, `[`, `]` are escaped and `<`, `>` become entities;
-    and a bare URL cannot autolink, because a zero-width space (U+200B) follows the colon of
-    `scheme://` and the `www` of `www.`. Text that needs none of this is returned unchanged."""
+    character (ESC included) and every bidirectional control is dropped; `|`, `[`, `]` are escaped
+    and `<`, `>` become entities; and nothing can autolink, because a zero-width space (U+200B)
+    follows the colon of `scheme://`, the `www` of `www.` and an `@` before a name (`_unlink`).
+    Text that needs none of this is returned unchanged."""
     text = str(text).replace("\\", "\\\\")
     text = MD_CONTROL_RE.sub("", MD_LINE_BREAK_RE.sub(" ", text))
     text = text.replace("|", "\\|").replace("<", "&lt;").replace(">", "&gt;").replace("[", "\\[").replace("]", "\\]")
-    return MD_AUTOLINK_RE.sub(lambda m: f"{m.group(1)}\u200b{m.group(2)}" if m.group(1) else f"{m.group(3)}\u200b{m.group(4)}", text)
+    return MD_AUTOLINK_RE.sub(_unlink, text)
 
 
 def render_roadmap_block(result: dict[str, Any]) -> str:

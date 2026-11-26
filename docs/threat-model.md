@@ -208,8 +208,10 @@ missing field is untrusted.
 
 Rendered Markdown cells escape the backslash first, then `|`, `[` and `]`, turn
 `<` and `>` into entities, fold every Unicode line break into a space, drop
-every other C0 and C1 control character, and keep a bare URL from
-autolinking with a zero-width space after `scheme:` and `www`. Mermaid labels replace
+every other C0 and C1 control character and every bidirectional control, and
+keep text from linking with a zero-width space after the colon of `scheme://`,
+the `www` of `www.` and an `@` before a name (an email address, `mailto:` or a
+mention), wherever GFM could start a link. Mermaid labels replace
 quotes and angle brackets, and fold line breaks into spaces. Untrusted titles are never rendered (C3).
 
 ### C6. Executable settings come only from the operator — planned (#13, #14)

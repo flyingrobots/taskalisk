@@ -11,9 +11,9 @@ schema version under `Unreleased` is a draft and may change in place.
 
 - **A ROADMAP cell keeps a hostile title inert** (flyingrobots/taskalisk#75). The backslash is
   escaped first, every Unicode line break (CR, NEL, U+2028 and the rest) becomes a space, every
-  other C0 or C1 control character (ESC included) is dropped, and a bare URL or `www.` address
-  gets a zero-width space so it does not autolink. A title that needs none of this renders
-  byte-for-byte as before.
+  other C0 or C1 control character (ESC included) and every bidirectional control is dropped, and
+  a bare URL, a `www.` address, an email address or a mention gets a zero-width space so it does
+  not link. A title that needs none of this renders byte-for-byte as before.
 
 ## 2.1.2 - 2026-11-24
 
