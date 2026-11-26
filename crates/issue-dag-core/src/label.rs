@@ -84,46 +84,36 @@ impl fmt::Display for Label {
 
 #[cfg(test)]
 mod tests {
-    use super::Label;
+    use super::VARIANTS;
+    use crate::LABELS;
 
-    const ALL: [Label; 19] = [
-        Label::C4,
-        Label::C6,
-        Label::C7,
-        Label::C8,
-        Label::L1,
-        Label::L2,
-        Label::L3,
-        Label::L4,
-        Label::P3,
-        Label::V1,
-        Label::V2,
-        Label::V3,
-        Label::V4,
-        Label::V5,
-        Label::V6,
-        Label::V7,
-        Label::V8,
-        Label::V10,
-        Label::X1,
-    ];
-
-    /// The test list and the crate's list hold the same labels.
+    /// LABELS is declared with the enum: one entry per variant, each once
+    /// (consecutive duplicates suffice: the next test proves it sorted).
     #[test]
-    fn all_is_the_crate_list() {
-        let mut sorted = ALL;
-        sorted.sort_unstable();
-        assert_eq!(sorted, crate::LABELS);
+    fn labels_has_one_entry_per_variant() {
+        assert_eq!(LABELS.len(), VARIANTS);
+        let mut distinct = LABELS.to_vec();
+        distinct.dedup();
+        assert_eq!(distinct.len(), VARIANTS);
     }
 
     /// A set of labels iterates in the ascending order corpus rule CC5 writes
-    /// them in: the order of their text, so `V10` comes before `V2`.
+    /// them in: the order of their text, so `V10` comes before `V2`. LABELS
+    /// is in that order.
     #[test]
     fn labels_order_as_their_text() {
-        let mut by_ord = ALL;
+        let mut by_ord = LABELS;
         by_ord.sort_unstable();
-        let mut by_text = ALL;
+        let mut by_text = LABELS;
         by_text.sort_unstable_by_key(|l| l.as_str());
         assert_eq!(by_ord, by_text);
+        assert_eq!(by_ord, LABELS);
+    }
+
+    #[test]
+    fn texts_are_the_variant_names() {
+        for label in LABELS {
+            assert_eq!(label.as_str(), format!("{label:?}"));
+        }
     }
 }
