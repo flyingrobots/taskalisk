@@ -69,6 +69,8 @@ becomes.
 **C4. Line breaks.** The content's lines are separated by line ends. If the
 content contains a CR that is not followed by LF, or any of U+000B, U+000C,
 U+001C, U+001D, U+001E, U+0085, U+2028 or U+2029, the document is invalid.
+Its lines cannot be told apart reliably, so no other rule is applied to it:
+C4 is its only violation (V12).
 
 **C5. Skipped lines.** A line that is empty or contains only blanks is
 skipped. A line whose first character that is not a blank is `#` is a comment
@@ -222,8 +224,9 @@ identity of a person. Whether an issue may be read as a document at all is
 decided outside the document; see the planning profile.
 
 **V12. Labels of violations.** A document receives one violation for each
-requirement it fails, and each violation carries the label of exactly one
-rule, the rule that states the requirement most specifically:
+requirement it fails (except under C4, which stops the reading), and each
+violation carries the label of exactly one rule, the rule that states the
+requirement most specifically:
 
 - a line of the block that fails C4, C6, C7 or C8 is labelled with that rule;
 - a format key outside M2 is labelled V2;
