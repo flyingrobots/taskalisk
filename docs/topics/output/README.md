@@ -130,7 +130,7 @@ a `frontmatter.violation` (the plan is not `ok`), and its line carries null; the
 | --- | --- | --- |
 | `gh.command_failed` | a `gh` call failed, a trust lookup included | true |
 | `gh.list_limit_reached` | a list filled its limit and may be truncated | false |
-| `gh.response_invalid` | a `gh` answer had the wrong shape (no `isDraft`, no edit-history connection, unparseable JSON) | false |
+| `gh.response_invalid` | a `gh` answer had the wrong shape (no `isDraft`, no edit-history connection, unparseable JSON), or an edit history repeated a cursor or ran past 1,000 pages | false |
 | `gh.mutation_failed` | the `PATCH` of a child's body failed | true |
 | `git.command_failed` | a `git` call failed (inventory, branches) | true |
 | `root.invalid_reference` | never from the command line: there a `--root` that is not `owner/repo#N` is a startup failure (`startup.arguments_invalid`, exit 3, no `retryable`, no receipt). The code remains for discovery called without that check | false |
