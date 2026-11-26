@@ -34,12 +34,12 @@
 //! A `frontmatter.violation` or `frontmatter.warning` carries the core's
 //! fixed message for its rule, one line per rule.
 
-use std::collections::{BTreeMap, BTreeSet, VecDeque};
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
 
 use issue_dag_core::{
-    Batch, Finding, Graph, Identity, IssueRef, NodeStatus, Outcome, Parameters, Ranking, Severity,
-    Skip, Terms, rank, select,
+    Batch, Edge, Finding, Graph, Identity, IssueRef, NodeStatus, Outcome, Parameters, Ranking,
+    Severity, Skip, Terms, rank, select,
 };
 use serde_json::{Map, Value, json};
 
@@ -371,15 +371,16 @@ struct Compiled<'a> {
     batch: Batch,
     /// The open nodes, sorted as text.
     open: Vec<&'a IssueRef>,
-    /// The children of each node in the graph, redundant edges included,
-    /// sorted as text.
-    raw_children: BTreeMap<&'a IssueRef, Vec<&'a IssueRef>>,
     /// The children in the reduced graph (G5), sorted as text.
     children: BTreeMap<&'a IssueRef, Vec<&'a IssueRef>>,
     /// The parents in the reduced graph, sorted as text.
     parents: BTreeMap<&'a IssueRef, Vec<&'a IssueRef>>,
     /// The wave of each open node (K7).
     wave: BTreeMap<&'a IssueRef, usize>,
+    /// The completed prerequisites of each open node.
+    completed: BTreeMap<&'a IssueRef, Vec<&'a IssueRef>>,
+    /// The redundant edges with the node each is implied through.
+    redundant: Vec<Value>,
     /// The 1.x node object of each open node.
     docs: BTreeMap<&'a IssueRef, Map<String, Value>>,
 }
@@ -392,7 +393,7 @@ impl<'a> Compiled<'a> {
             .filter(|(_, n)| !n.complete)
             .map(|(id, _)| id)
             .collect();
-        open.sort_by_key(ToString::to_string);
+        open.sort_by_cached_key(ToString::to_string);
         let mut raw_children: BTreeMap<&IssueRef, Vec<&IssueRef>> = BTreeMap::new();
         let mut children: BTreeMap<&IssueRef, Vec<&IssueRef>> = BTreeMap::new();
         let mut parents: BTreeMap<&IssueRef, Vec<&IssueRef>> = BTreeMap::new();
@@ -408,7 +409,7 @@ impl<'a> Compiled<'a> {
             .chain(children.values_mut())
             .chain(parents.values_mut())
         {
-            list.sort_by_key(ToString::to_string);
+            list.sort_by_cached_key(ToString::to_string);
         }
         let mut wave = BTreeMap::new();
         for (k, ids) in ranking.waves.iter().enumerate() {
@@ -418,15 +419,21 @@ impl<'a> Compiled<'a> {
                 }
             }
         }
+        let mut completed: BTreeMap<&IssueRef, Vec<&IssueRef>> = BTreeMap::new();
+        for e in &graph.satisfied {
+            completed.entry(&e.to).or_default().push(&e.from);
+        }
+        let redundant = redundant(graph, &open, &raw_children, &wave);
         let mut compiled = Self {
             graph,
             ranking,
             batch,
             open,
-            raw_children,
             children,
             parents,
             wave,
+            completed,
+            redundant,
             docs: BTreeMap::new(),
         };
         compiled.docs = compiled
@@ -500,12 +507,7 @@ impl<'a> Compiled<'a> {
     /// own fields.
     fn node_doc(&self, id: &IssueRef, shown: &Shown) -> Map<String, Value> {
         let node = &self.graph.nodes[id];
-        let completed = self
-            .graph
-            .satisfied
-            .iter()
-            .filter(|e| e.to == *id)
-            .map(|e| &e.from);
+        let completed = self.completed.get(id).into_iter().flatten().copied();
         let wave = self.wave.get(id).copied().unwrap_or(0);
         let terms = self.terms(id);
         let (kind, workstream) = match node.task_type {
@@ -691,44 +693,9 @@ impl<'a> Compiled<'a> {
             .collect()
     }
 
-    /// Whether `to` is reachable from `from` in the graph.
-    fn reaches(&self, from: &IssueRef, to: &IssueRef) -> bool {
-        let mut seen = BTreeSet::new();
-        let mut queue = VecDeque::from([from]);
-        while let Some(u) = queue.pop_front() {
-            for &c in self.raw_children.get(u).map_or(&[][..], Vec::as_slice) {
-                if c == to {
-                    return true;
-                }
-                if seen.insert(c) {
-                    queue.push_back(c);
-                }
-            }
-        }
-        false
-    }
-
-    /// The redundant edges (G5), each with the first child of its source,
-    /// as text, through which it is implied.
+    /// The redundant edges (G5), each with the node it is implied through.
     fn redundant(&self) -> Vec<Value> {
-        let mut out = Vec::new();
-        for &u in &self.open {
-            let raw = self.raw_children.get(u).map_or(&[][..], Vec::as_slice);
-            for &v in raw {
-                let redundant = self
-                    .graph
-                    .redundant
-                    .iter()
-                    .any(|e| e.from == *u && e.to == *v);
-                if !redundant {
-                    continue;
-                }
-                if let Some(w) = raw.iter().find(|&&w| w != v && self.reaches(w, v)) {
-                    out.push(json!({"from": u.to_string(), "to": v.to_string(), "implied_via": w.to_string()}));
-                }
-            }
-        }
-        out
+        self.redundant.clone()
     }
 
     /// The result document of a compiled plan, in the 1.x shape, as the
@@ -856,6 +823,66 @@ fn document(
     }
 }
 
+/// The redundant edges (G5) by source, then target, as text, each with
+/// the first child of its source, as text, that reaches its target.
+///
+/// Reachability is a bit set of descendants per node, built from the last
+/// wave back (every child is in a later wave than its parent), and each
+/// edge is looked up in the redundant set by key, so a dense graph costs
+/// O(N·E/64) to index and O(R·deg) to name.
+fn redundant<'a>(
+    graph: &'a Graph,
+    open: &[&'a IssueRef],
+    raw_children: &BTreeMap<&'a IssueRef, Vec<&'a IssueRef>>,
+    wave: &BTreeMap<&'a IssueRef, usize>,
+) -> Vec<Value> {
+    if graph.redundant.is_empty() {
+        return Vec::new();
+    }
+    let index: BTreeMap<&IssueRef, usize> =
+        open.iter().enumerate().map(|(i, &id)| (id, i)).collect();
+    let words = open.len().div_ceil(64);
+    let mut below = vec![vec![0_u64; words]; open.len()];
+    let mut by_wave: Vec<&IssueRef> = open.to_vec();
+    by_wave.sort_by_key(|id| std::cmp::Reverse(wave.get(id).copied().unwrap_or(0)));
+    for u in by_wave {
+        let Some(&ui) = index.get(u) else { continue };
+        let mut set = vec![0_u64; words];
+        for c in raw_children.get(u).into_iter().flatten() {
+            if let Some(&ci) = index.get(c) {
+                set[ci / 64] |= 1 << (ci % 64);
+                for (word, child) in set.iter_mut().zip(&below[ci]) {
+                    *word |= child;
+                }
+            }
+        }
+        below[ui] = set;
+    }
+    let reaches = |w: &IssueRef, v: usize| {
+        index
+            .get(w)
+            .is_some_and(|&wi| below[wi][v / 64] >> (v % 64) & 1 == 1)
+    };
+    let mut out = Vec::new();
+    for &u in open {
+        let raw = raw_children.get(u).map_or(&[][..], Vec::as_slice);
+        for &v in raw {
+            let edge = Edge {
+                from: u.clone(),
+                to: v.clone(),
+            };
+            let Some(&vi) = index.get(v) else { continue };
+            if !graph.redundant.contains(&edge) {
+                continue;
+            }
+            if let Some(w) = raw.iter().find(|&&w| w != v && reaches(w, vi)) {
+                out.push(json!({"from": u.to_string(), "to": v.to_string(), "implied_via": w.to_string()}));
+            }
+        }
+    }
+    out
+}
+
 /// A node's meter claims as written.
 fn meters(id: &IssueRef, graph: &Graph) -> Value {
     let claims = graph.nodes.get(id).map_or(&[][..], |n| n.meters.as_slice());
@@ -909,19 +936,17 @@ impl Discovery {
             .iter()
             .map(|n| json!({"number": n}))
             .collect();
+        let mut referencing: BTreeMap<&IssueRef, Vec<&IssueRef>> = BTreeMap::new();
+        for e in graph.edges.iter().chain(&graph.satisfied) {
+            referencing.entry(&e.from).or_default().push(&e.to);
+        }
         let opaque = graph
             .nodes
             .iter()
             .filter(|(_, n)| n.opaque && !n.untrusted)
             .map(|(id, node)| {
-                let referenced_by = sorted_texts(
-                    graph
-                        .edges
-                        .iter()
-                        .chain(&graph.satisfied)
-                        .filter(|e| e.from == *id)
-                        .map(|e| &e.to),
-                );
+                let referenced_by =
+                    sorted_texts(referencing.get(id).into_iter().flatten().copied());
                 let mut o = object(json!({
                     "id": id.to_string(),
                     "state": if node.complete { "closed" } else { "open" },

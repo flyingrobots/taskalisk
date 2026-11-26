@@ -145,7 +145,11 @@ schema version under `Unreleased` is a draft and may change in place.
   reported, a cycle or an unknown prerequisite (#44). Every rendered line validates against its
   schema except for those fields. One difference is intended, not a gap: a frontmatter finding
   compares by `code` and `subject`, which the skill reads; its message is prose the schema does
-  not fix, and the core writes fixed text, one line per rule.
+  not fix, and the core writes fixed text, one line per rule. On a dense graph the renderer no longer
+  scans per edge: redundant edges are looked up by key and reachability is a bit set per
+  node, so a 400-node graph where every node blocks every later one renders in under a second in a
+  release build, down from minutes. A new `perf_` test bounds it (`cargo test --release --
+  --ignored perf_`), with a default-suite twin that checks the result.
 
 - **Repeated keys, warnings and refusal order in the specification** (flyingrobots/taskalisk#104).
   The vendored issue-dag specification now states the rulings the Rust core implements: no rule of
