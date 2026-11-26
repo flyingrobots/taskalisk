@@ -828,6 +828,41 @@ class SchemaValidOnMalformedInput(Harness):
                 self.assertEqual(p.returncode, 2, p.stdout[-400:])
                 self.assertEqual([e["code"] for e in pl.of(err, "parley.error")], ["dag_spec.invalid"])
 
+    def test_a_bad_edge_confidence_or_is_hard_is_refused_before_any_plan_line(self):
+        """F-9 (flyingrobots/taskalisk#74): dag_spec.invalid, not uncaught.exception, and no plan line first."""
+        bad = {
+            "NaN on a soft edge": {"isHard": False, "confidence": float("nan")},
+            "NaN on a hard edge": {"isHard": True, "confidence": float("nan")},
+            "infinity": {"confidence": float("inf")},
+            "minus infinity": {"isHard": False, "confidence": float("-inf")},
+            "a string": {"confidence": "high"},
+            "a bool": {"confidence": True},
+            "null": {"confidence": None},
+            "isHard a string": {"isHard": "no"},
+            "isHard a number": {"isHard": 0},
+        }
+        for label, edge in bad.items():
+            with self.subTest(label):
+                spec = self.tmp / "dag.json"
+                spec.write_text(json.dumps({"nodes": {"A": {"title": "a"}, "B": {"title": "b", "depends_on": [dict({"from": "A"}, **edge)]}}}))
+                p = self.run_dag(plan_state(), "--verify-dag", str(spec))
+                out, err = self.streams(p)  # every line validates
+                self.assertEqual(p.returncode, 2, p.stdout[-400:] + p.stderr[-400:])
+                errors = pl.of(err, "parley.error")
+                self.assertEqual([e["code"] for e in errors], ["dag_spec.invalid"], label)
+                self.assertFalse(errors[0]["retryable"])
+                self.assertIn("'B'", errors[0]["problem"])
+                self.assertEqual(pl.of(out, "taskalisk.plan"), [], "a plan line was written before the refusal")
+
+    def test_a_good_edge_object_still_compiles(self):
+        for edge in ({"isHard": False, "confidence": 0.4}, {"isHard": True, "confidence": 1}, {"confidence": 0.9}, {}):
+            with self.subTest(edge):
+                spec = self.tmp / "dag.json"
+                spec.write_text(json.dumps({"nodes": {"A": {"title": "a"}, "B": {"title": "b", "depends_on": [dict({"from": "A"}, **edge)]}}}))
+                p = self.run_dag(plan_state(), "--verify-dag", str(spec))
+                self.assertEqual(p.returncode, 0, p.stderr[-400:])
+                self.assertTrue(pl.one(self.streams(p)[0], "taskalisk.plan")["ok"])
+
     def test_a_size_hours_typo_is_reported_and_every_line_validates(self):
         state = plan_state()
         state["issues"][f"{HOME}#1"]["body"] = fm(f"{HOME}#1", blocked_by=[f"{ECHO}#5"], extra=".size_hours: bad")
