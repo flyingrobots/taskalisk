@@ -885,8 +885,115 @@ fn has_ended(path: &Path) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{canonical, inv, scrub, ulid};
+    use super::{canonical, choose_id, hygiene, inv, negation_reaches_receipts, scrub, ulid};
     use serde_json::json;
+
+    /// The Python writer's `_negation_reaches_receipts`, case by case.
+    #[test]
+    fn a_negation_reaches_receipts_as_the_python_writer_decides() {
+        for (line, reaches) in [
+            ("*", false),
+            ("plain", false),
+            ("!.gitignore", false),
+            ("!*.tmp", false),
+            ("![!r]eceipts", false),
+            ("!receipt", false),
+            ("!receipts", true),
+            ("!RECEIPTS", true),
+            ("!rec*", true),
+            ("!/receipts/", true),
+            ("!**/receipts", true),
+            ("!receipts   ", true),
+            ("!r?ceipts", true),
+            ("![q-s]eceipts", true),
+            ("![]r]eceipts", true),
+            ("!x/y", true),
+            ("!a\\b", true),
+            ("!r\teceipts", true),
+            ("!réceipts", true),
+            ("![receipts", true),
+            ("![[:alpha:]]eceipts", true),
+            ("foo\0bar", true),
+        ] {
+            assert_eq!(negation_reaches_receipts(line), reaches, "{line:?}");
+        }
+    }
+
+    fn parley_dir(name: &str) -> std::path::PathBuf {
+        let dir =
+            std::env::temp_dir().join(format!("taskalisk-hygiene-{}-{name}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("a directory");
+        dir
+    }
+
+    #[test]
+    fn a_user_gitignore_is_judged_as_the_python_writer_judges_it() {
+        for (text, refused) in [
+            ("*\n!.gitignore\n", false),
+            ("*\r\n", false),
+            ("*\nfoo\0bar\n", true),
+            ("*\n!receipts/\n", true),
+            ("receipts/x\n", true),
+        ] {
+            let dir = parley_dir("judged");
+            std::fs::write(dir.join(".gitignore"), text).expect("a .gitignore");
+            let verdict = hygiene(&dir, "n").expect("read");
+            assert_eq!(verdict.is_some(), refused, "{text:?}: {verdict:?}");
+            let _ = std::fs::remove_dir_all(&dir);
+        }
+    }
+
+    #[test]
+    fn concurrent_first_runs_never_read_the_gitignore_empty() {
+        for round in 0..20 {
+            let dir = parley_dir(&format!("race-{round}"));
+            let verdicts: Vec<_> = (0..8)
+                .map(|n| {
+                    let dir = dir.clone();
+                    std::thread::spawn(move || hygiene(&dir, &format!("{round}-{n}")))
+                })
+                .collect::<Vec<_>>()
+                .into_iter()
+                .map(|t| t.join().expect("a thread"))
+                .collect();
+            for verdict in verdicts {
+                assert_eq!(verdict.expect("read"), None, "round {round}");
+            }
+            assert_eq!(
+                std::fs::read_to_string(dir.join(".gitignore")).expect("written"),
+                "*\n"
+            );
+            let left: Vec<_> = std::fs::read_dir(&dir)
+                .expect("the directory")
+                .map(|e| e.expect("an entry").file_name())
+                .collect();
+            assert_eq!(
+                left,
+                vec![std::ffi::OsString::from(".gitignore")],
+                "no temporary file left"
+            );
+            let _ = std::fs::remove_dir_all(&dir);
+        }
+    }
+
+    #[test]
+    fn a_run_id_that_always_carries_a_secret_refuses_the_run() {
+        let secrets = ["SECRET".to_owned()];
+        let mut tries = 0;
+        let refused = choose_id(&secrets, || {
+            tries += 1;
+            "01SECRET0000000000000000000".to_owned()
+        })
+        .expect_err("no clean id");
+        assert_eq!(refused.code, "startup.secret_in_path");
+        assert_eq!(tries, 17, "the first id and 16 more tries");
+        let mut ids = ["01SECRETX".to_owned(), "01CLEAN".to_owned()].into_iter();
+        assert_eq!(
+            choose_id(&secrets, || ids.next().expect("an id")).expect("a clean id"),
+            "01CLEAN"
+        );
+    }
 
     #[test]
     fn a_ulid_is_26_crockford_characters_led_by_the_time() {

@@ -1041,6 +1041,32 @@ mod tests {
         )
     }
 
+    /// Every line of a stream validates against the exact schema it names,
+    /// by the vendored writer's checker (`tests/validate_lines.py`).
+    fn assert_valid(stream: &str) {
+        use std::io::Write as _;
+        let tests = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests");
+        let mut child = std::process::Command::new("python3")
+            .current_dir(tests)
+            .arg("validate_lines.py")
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .spawn()
+            .expect("python3 runs");
+        child
+            .stdin
+            .as_mut()
+            .expect("stdin")
+            .write_all(stream.as_bytes())
+            .expect("the lines are written");
+        let out = child.wait_with_output().expect("the validator ends");
+        assert!(
+            out.status.success(),
+            "lines do not validate:\n{}",
+            String::from_utf8_lossy(&out.stdout)
+        );
+    }
+
     /// The `parley.error` lines of a stream.
     fn errors(stream: &str) -> Vec<serde_json::Value> {
         stream
@@ -1051,11 +1077,11 @@ mod tests {
     }
 
     #[test]
-    fn an_incomplete_run_with_a_cause_reports_the_cause_code() {
-        for (cause, code) in [
-            (NotFound::Owner, "profile.D11"),
-            (NotFound::Repository, "profile.D12"),
-            (NotFound::Number, "profile.D13"),
+    fn an_incomplete_run_with_a_cause_reports_issue_not_found_with_its_rule() {
+        for (cause, rule) in [
+            (NotFound::Owner, "D11"),
+            (NotFound::Repository, "D12"),
+            (NotFound::Number, "D13"),
         ] {
             let incomplete = Outcome::Incomplete {
                 unavailable: "o/r#9 resolves to no issue gh can see (HTTP 404)".to_owned(),
@@ -1063,10 +1089,13 @@ mod tests {
             };
             let (status, _, err) = concluded(&incomplete, &[]);
             assert_eq!(status, 2, "{err}");
+            assert_valid(&err);
             let errors = errors(&err);
             assert_eq!(errors.len(), 1, "{err}");
-            assert_eq!(errors[0]["code"], code, "{err}");
+            assert_eq!(errors[0]["code"], "issue.not_found", "{err}");
+            assert_eq!(errors[0]["detail"]["rule"], rule, "{err}");
             assert_eq!(errors[0]["detail"]["not_found"], cause.as_str(), "{err}");
+            assert_eq!(errors[0]["detail"]["reference"], "o/r#9", "{err}");
         }
         // Without a cause, an unavailable read the adapter did not record is
         // a malformed answer.

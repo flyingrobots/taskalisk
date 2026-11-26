@@ -936,3 +936,22 @@ fn a_closed_output_ends_the_run_with_4() {
     let receipt = parse(&fs::read(&run.receipts()[0]).expect("the receipt"));
     assert_eq!(receipt.last().expect("end")["status"], 4);
 }
+
+#[test]
+fn a_gitignore_is_judged_as_the_python_writer_judges_it() {
+    let fixture = Fixture::new("plan_state()");
+    let repo = fixture.repo();
+    for (n, (gitignore, status)) in [("*\n!.gitignore\n", 0), ("*\nfoo\0bar\n", 3)]
+        .iter()
+        .enumerate()
+    {
+        let cwd = fixture.dir.join(format!("judged-{n}"));
+        fs::create_dir_all(cwd.join(".parley")).expect("a directory");
+        fs::write(cwd.join(".parley/.gitignore"), gitignore).expect("a .gitignore");
+        let run = fixture.run_in(
+            &format!("judged-{n}"),
+            &["plan", "--repo", repo.to_str().expect("UTF-8")],
+        );
+        assert_eq!(run.status(), *status, "{gitignore:?}: {}", run.explain());
+    }
+}
