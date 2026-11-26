@@ -381,7 +381,7 @@ class QuerySecrets(unittest.TestCase):
             "a https://h/1?key=abc123secret b https://h/2?password=abc123secret c":
                 "a https://h/1?key=[redacted] b https://h/2?password=[redacted] c",
             "https://h/p?secret=abc123secret;https://h/q?signature=abc123secret":
-                "https://h/p?secret=[redacted];https://h/q?signature=[redacted]",
+                "https://h/p?secret=[redacted]",  # a value runs past ; so no part of a secret is left
             "https://h/cb?code=abc123secret&state=s1&auth=abc123secret":
                 "https://h/cb?code=[redacted]&state=s1&auth=[redacted]",
             # a secret that opens a fragment, as an OAuth implicit-flow callback puts it
@@ -406,7 +406,7 @@ class QuerySecrets(unittest.TestCase):
                 self.assertNotIn("abc123secret", self.tk.sanitize_text(given))
 
     def test_a_quote_or_bracket_inside_a_value_leaks_nothing(self):
-        for value in ("abc(def)TAILSECRET", "ab'cdTAILSECRET", 'ab"cdTAILSECRET', "ab<cd>TAILSECRET", "ab[cd]TAILSECRET", "ab)TAILSECRET"):
+        for value in ("abc(def)TAILSECRET", "abc;TAILSECRET", "abc;cdTAILSECRET&page=2", "ab'cdTAILSECRET", 'ab"cdTAILSECRET', "ab<cd>TAILSECRET", "ab[cd]TAILSECRET", "ab)TAILSECRET"):
             for wrap in ("{}", "'{}'", "({})", "<{}>"):
                 text = wrap.format(f"https://h/p?token={value}")
                 with self.subTest(text):
