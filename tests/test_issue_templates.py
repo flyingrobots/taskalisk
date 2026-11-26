@@ -83,5 +83,40 @@ class IssueTemplatesTest(unittest.TestCase):
                 self.assertRegex(filed_body(name), r"(?m)^## [0-9]+\. Definition of Done$")
 
 
+INSTALLED = ROOT / ".github" / "ISSUE_TEMPLATE"
+THIS_REPO = ("flyingrobots/taskalisk", 83)
+
+
+class InstalledTemplatesTest(unittest.TestCase):
+    """flyingrobots/taskalisk#83: this repository's issue forms are the canonical templates, installed with
+    the skill's snippet (OWNER/REPO replaced by this repository), and cannot drift from them."""
+
+    def test_the_installed_folder_holds_exactly_the_canonical_files(self):
+        self.assertTrue(INSTALLED.is_dir(), ".github/ISSUE_TEMPLATE/ is missing")
+        self.assertEqual(sorted(p.name for p in INSTALLED.iterdir()), sorted(p.name for p in TEMPLATES.iterdir()))
+
+    def test_each_installed_file_is_its_canonical_template_for_this_repository(self):
+        for canonical in sorted(TEMPLATES.iterdir()):
+            with self.subTest(canonical.name):
+                installed = INSTALLED / canonical.name
+                self.assertTrue(installed.is_file(), f"{canonical.name} is not installed")
+                expected = canonical.read_text(encoding="utf-8").replace("OWNER/REPO#NEW", f"{THIS_REPO[0]}#NEW")
+                self.assertEqual(installed.read_text(encoding="utf-8"), expected,
+                                 f"{canonical.name} differs from its canonical template; reinstall it with the skill's snippet")
+
+    def test_an_issue_filed_from_each_installed_form_compiles_as_a_valid_node(self):
+        tk = compiler()
+        for name in TYPES:
+            with self.subTest(form=name):
+                text = (INSTALLED / f"{name}.md").read_text(encoding="utf-8")
+                match = re.match(r"---\n.*?\n---\n", text, re.S)
+                self.assertIsNotNone(match, f"{name}.md has no GitHub template header")
+                body = text[match.end():].lstrip("\n").replace(f"{THIS_REPO[0]}#NEW", f"{THIS_REPO[0]}#{THIS_REPO[1]}")
+                fields, problems = tk.parse_frontmatter(body)
+                self.assertEqual(problems, [], name)
+                record, violations, _ = tk.validate_frontmatter(fields, THIS_REPO)
+                self.assertEqual(violations, [], name)
+
+
 if __name__ == "__main__":
     unittest.main()
