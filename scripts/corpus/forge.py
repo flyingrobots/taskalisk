@@ -19,6 +19,8 @@ import re
 import sys
 from typing import Any, Iterator
 
+from corpus.bundle import TRUST_POLICY
+
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 COMPILER = ROOT / "skills" / "taskalisk" / "scripts" / "taskalisk.py"
 API = "https://api.github.com/repos/"
@@ -373,6 +375,9 @@ def project_outcome(out: Any) -> dict[str, Any]:
 
 def run_graph(bundle: dict[str, Any]) -> dict[str, Any]:
     """The compiler's plan for one bundle, in the corpus's expected form."""
+    if bundle["parameters"]["trust"]["policy"] != TRUST_POLICY:
+        # Profile rule I2: the compiler implements one trust policy and is never run under another.
+        return {"outcome": "rejected"}
     try:
         out = compile_bundle(bundle)
     except BundleIncomplete:
