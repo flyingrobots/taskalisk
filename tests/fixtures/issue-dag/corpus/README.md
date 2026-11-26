@@ -69,8 +69,11 @@ whose `result` is one of:
   `warnings`, the labels of its warnings (V10), each once, in ascending
   order;
 - `invalid`, with `violations`, the labels of the rules the document fails,
-  each once, in ascending order. An invalid result has no `warnings`: a
-  warning is reported only for a valid document (V10);
+  each once, in ascending order. A warning is reported only for a document
+  with no violation (V10), so an invalid result has no warnings: a
+  normative invalid result MAY hold `warnings` as the empty list `[]`, and
+  when it does, CC8 compares it; a characterisation result holds the
+  `warnings` the implementation reports;
 - `error`, with `error`, the kind of failure, in characterisation cases only:
   the implementation produced no judgement.
 

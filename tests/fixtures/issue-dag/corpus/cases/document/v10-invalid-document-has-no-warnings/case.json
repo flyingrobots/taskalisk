@@ -4,6 +4,11 @@
     "V8",
     "CC5"
   ],
+  "disagreement": {
+    "classification": "compatibility-exception",
+    "difference": 22,
+    "note": "the compiler reports the V10 warning beside the violation"
+  },
   "id": "document/v10-invalid-document-has-no-warnings",
   "kind": "normative",
   "level": "document",

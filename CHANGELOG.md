@@ -21,13 +21,13 @@ schema version under `Unreleased` is a draft and may change in place.
   runs the job "Rust workspace": `cargo fmt`, `clippy -D warnings` and `cargo test`, all locked.
 
 - **Repeated keys, warnings and refusal order in the specification** (flyingrobots/taskalisk#104).
-  The vendored issue-dag specification now states the rulings the Rust core implements: C7 judges a
-  repeated key alone, so labels never depend on line order, and a repeated `.dag` gives C7 as the
-  document's only violation; V10 warns only on a valid document; edge-edit rule E3a refuses an
-  invalid document, then a non-task, then a self edge; CC5 sorts labels by their UTF-8 bytes. The
-  corpus gains 13 normative cases and 8 `--python` twins (differences 20 and 21; difference 22, a
-  warning on an invalid document, has no case), digest `sha256:a2da3b54…`. All 186 document cases
-  pass in the Rust core.
+  The vendored issue-dag specification now states the rulings the Rust core implements: no rule of
+  sections 3 to 5 labels a repeated key, so labels never depend on line order, while its lines keep
+  their C6 and C8 labels; a repeated `.dag` gives C7 as the document's only violation; V10 warns
+  only on a document with no violation, X1 included; edge-edit rule E3a refuses an invalid document,
+  then a non-task, then a self edge; CC5 sorts labels by their UTF-8 bytes and lets an invalid
+  result hold `"warnings": []`. The corpus gains 17 normative cases and 12 `--python` twins
+  (differences 4, 19, 20, 21 and 22), digest `sha256:7204de0f…`.
 
 - **A provenance check for the vendored Parley writer** (flyingrobots/taskalisk#77).
   `scripts/check_vendored_writer.py` fetches the writer from flyingrobots/parley at the pinned

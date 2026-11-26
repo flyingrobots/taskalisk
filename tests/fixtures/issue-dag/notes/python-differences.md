@@ -26,8 +26,7 @@ normative cases. On 2026-11-26 the 54 normative cases added for the
 `TrustPolicy` makes every decision those rules state, and reads, or leaves
 unread, the same lookups. Also on 2026-11-26 the normative cases added for
 the amended rules C7 and V10 (`flyingrobots/taskalisk#104`) found
-differences 20 and 21; difference 22 was observed by calling the compiler's
-validator on the input of one of them.
+differences 20, 21 and 22, and two more instances of differences 4 and 19.
 
 None of these differences changes the verdict on any document in the
 [census of 2026-11-12](../evidence/2026-11-12-frontmatter-shapes.md): the
@@ -45,10 +44,10 @@ specification and the Python accept the same 282 documents.
 | 6 | A list item spelled as an integer, such as `.holds: [007]` | The item is the string `007` | The item becomes `7` (`str(int(...))`); `-0` becomes `0` | C8 | defect |
 | 7 | A list as the value of `.dag`, `.kind`, `.type` or `.status`, such as `.type: [bug]` | Invalid | The validator raises `TypeError`; the run ends with a traceback and no outcome | V1, V4, V5, V8 | defect |
 | 8 | An item of `.blocked_by` or `.children` equal to the issue's address but not to its `.id`, or the reverse | V7 compares with `.id`; X1 reports the address mismatch | The self-reference check compares with the address | V7, X1 | compatibility-exception |
-| 19 | A key given twice, where one of the two lines opens a list without closing it, such as `.size_hours: [3` and `.size_hours: 3` | Invalid under C7 and C8: the unterminated line is still an entry line | Invalid under one of them: an unterminated line sets no field, so a later line with the key is no duplicate; a duplicate line is skipped before its list is judged | C7, C8 | compatibility-exception |
+| 19 | A key given twice, where one or both of the lines open a list without closing it, such as `.size_hours: [3` and `.size_hours: 3` | Invalid under C7 and C8: the unterminated line is still an entry line | Invalid under one of them: an unterminated line sets no field, so a later line with the key is no duplicate; a duplicate line is skipped before its list is judged | C7, C8 | compatibility-exception |
 | 20 | A key other than `.dag` given twice, such as `.kind: container` then `.kind: task`, `.children` twice on a task, an unknown format key twice, or `.id` twice | The key is judged by C7 alone: no V2, V5, V6 or V7 from it, and a repeated `.kind` or `.id` leaves V5, V6, V7 and X1 unapplied | The first line sets the key and later lines are skipped, so the first value is judged under sections 3 to 5 as well: the labels depend on line order | C7, V12 | compatibility-exception |
 | 21 | `.dag` given twice, with another violation in the document | C7 is the document's only violation | The first `.dag` sets the version and the document is judged under it: the other violations, including C6, C8 and P3, are reported beside C7 | C7, V1, V12 | compatibility-exception |
-| 22 | An invalid document with a `.size_hours` above 8 | Violations only, no warning | The V10 warning is reported beside the violations | V10 | compatibility-exception |
+| 22 | An invalid document, including one whose only violation is X1, with a `.size_hours` above 8 | Violations only, no warning | The V10 warning is reported beside the violations | V10 | compatibility-exception |
 
 Difference 1 is the one Decision 7 of the Taskalisk decision record names:
 the rule as written stands, and the Python's behaviour is a defect.
@@ -72,9 +71,13 @@ line order; the Python's depend on it, so `.kind: task` then
 `.kind: container` agrees with the specification and the reverse does not.
 
 Difference 22 is a compatibility exception. Its scope: the warnings of an
-invalid document. Validity and the violations are the same. No case shows
-it: an invalid result holds no `warnings` member (corpus rule CC5), and a
-member the expected result does not hold is not asserted (CC8).
+invalid document. Validity and the violations are the same. The normative
+cases `document/v10-invalid-document-has-no-warnings` and
+`document/v10-x1-document-has-no-warnings` show it: their expected results
+hold `"warnings": []`, which corpus rule CC5 allows and CC8 then compares,
+and their twins record the V10 the Python reports. The second is a document
+whose only violation is X1, which the Python also does not treat as invalid
+for its warnings.
 
 ## Planning profile
 
