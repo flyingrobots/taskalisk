@@ -141,7 +141,7 @@ fn judge(body: &str, title: Option<&str>) -> Vec<Finding> {
 }
 
 fn codes(found: &[Finding]) -> Vec<&'static str> {
-    found.iter().map(|f| f.code).collect()
+    found.iter().map(|f| f.code().as_str()).collect()
 }
 
 #[test]
@@ -201,7 +201,7 @@ fn every_finding_is_a_warning_filed_under_the_address() {
         ]
     );
     for f in &found {
-        assert_eq!(f.severity, Severity::Warning);
+        assert_eq!(f.severity(), Severity::Warning);
         assert_eq!(f.subject, address());
     }
 }
@@ -383,7 +383,7 @@ fn findings_of_several_documents_sort_by_subject_then_code() {
     all.sort();
     let order: Vec<(String, &str)> = all
         .iter()
-        .map(|f| (f.subject.to_string(), f.code))
+        .map(|f| (f.subject.to_string(), f.code().as_str()))
         .collect();
     assert_eq!(
         order,
@@ -410,7 +410,7 @@ fn no_message_carries_body_or_title_text() {
                         && !finding.message.contains("ZQX")
                         && !finding.message.contains("MARK"),
                     "{}: {:?}",
-                    finding.code,
+                    finding.code(),
                     finding.message
                 );
                 let lines = body.lines().chain(title.iter().copied());
@@ -418,7 +418,7 @@ fn no_message_carries_body_or_title_text() {
                     assert!(
                         !finding.message.contains(line),
                         "{}: {:?} carries {line:?}",
-                        finding.code,
+                        finding.code(),
                         finding.message
                     );
                 }
@@ -474,7 +474,7 @@ fn a_body_from_each_canonical_template_has_no_warnings() {
 fn warning_codes(body: &str, title: Option<&str>) -> Vec<&'static str> {
     body_warnings(body, &address(), title)
         .into_iter()
-        .map(|finding| finding.code)
+        .map(|finding| finding.code().as_str())
         .collect()
 }
 

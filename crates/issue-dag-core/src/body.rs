@@ -43,7 +43,7 @@
 
 use pulldown_cmark::{Event, HeadingLevel, Parser, Tag, TagEnd};
 
-use crate::finding::{Finding, Severity};
+use crate::finding::{Code, Finding, Severity};
 use crate::record::Kind;
 use crate::reference::IssueRef;
 use crate::{Judgement, admit};
@@ -155,12 +155,13 @@ pub fn body_warnings(body: &str, address: &IssueRef, title: Option<&str>) -> Vec
     }
     let mut findings: Vec<Finding> = found
         .into_iter()
-        .map(|warning| Finding {
-            subject: address.clone(),
-            code: warning.code(),
-            concerns: None,
-            severity: Severity::Warning,
-            message: warning.message(),
+        .map(|warning| {
+            Finding::coded(
+                address.clone(),
+                Code::of(warning.code()),
+                None,
+                warning.message(),
+            )
         })
         .collect();
     findings.sort();
