@@ -120,13 +120,17 @@ pub fn lines(
     outcome: &Outcome,
     display: Option<&Display>,
 ) -> Result<Vec<Value>, NotRendered> {
-    let (findings, graph) = match outcome {
+    let (findings, graph, unknown) = match outcome {
         Outcome::Rejected(_) => return Err(NotRendered::Rejected),
         Outcome::Incomplete { .. } => return Err(NotRendered::Incomplete),
-        Outcome::Invalid { findings, graph } => (findings, graph.as_ref()),
-        Outcome::Planned { findings, graph } => (findings, Some(graph)),
+        Outcome::Invalid {
+            findings,
+            graph,
+            unknown,
+        } => (findings, graph.as_ref(), unknown.as_slice()),
+        Outcome::Planned { findings, graph } => (findings, Some(graph), &[][..]),
     };
-    let report = Report::of(findings);
+    let report = Report::of(findings, unknown);
     let shown = Shown { display };
     let compiled = match graph {
         Some(graph) => {
@@ -250,8 +254,9 @@ fn sorted_texts<'a>(ids: impl IntoIterator<Item = &'a IssueRef>) -> Vec<String> 
 struct Report<'a> {
     /// G4: the nodes on or behind a cycle.
     cyclic: Vec<&'a Finding>,
-    /// X3: the unknown prerequisites.
-    unknown: Vec<&'a Finding>,
+    /// X3: each unknown prerequisite as (task, prerequisite), in the 1.x
+    /// order: by task as text, then in the task's `.blocked_by` order.
+    unknown: Vec<(&'a IssueRef, &'a IssueRef)>,
     /// Every other violation.
     violations: Vec<&'a Finding>,
     /// The warnings.
@@ -259,7 +264,7 @@ struct Report<'a> {
 }
 
 impl<'a> Report<'a> {
-    fn of(findings: &'a BTreeSet<Finding>) -> Self {
+    fn of(findings: &'a BTreeSet<Finding>, unknown: &'a [Edge]) -> Self {
         let mut report = Self {
             cyclic: Vec::new(),
             unknown: Vec::new(),
@@ -270,10 +275,16 @@ impl<'a> Report<'a> {
             match (f.severity(), f.label()) {
                 (Severity::Warning, _) => report.warnings.push(f),
                 (Severity::Error, "G4") => report.cyclic.push(f),
-                (Severity::Error, "X3") => report.unknown.push(f),
+                (Severity::Error, "X3") => {}
                 (Severity::Error, _) => report.violations.push(f),
             }
         }
+        // The core lists them by task as read, each task's as declared; a
+        // stable sort by the task as text gives the 1.x order.
+        report.unknown = unknown.iter().map(|e| (&e.to, &e.from)).collect();
+        report
+            .unknown
+            .sort_by_cached_key(|(task, _)| task.to_string());
         // 1.x checks unknown prerequisites before it looks for a cycle, so
         // a run with both is `unresolved` and names no cyclic node. The
         // core still reports every G4 finding (F4, F5); this is the 1.x
@@ -803,11 +814,7 @@ fn document(
         let unknown: Vec<Value> = report
             .unknown
             .iter()
-            .filter_map(|f| {
-                f.concerns.as_ref().map(|p| {
-                    json!({"node": f.subject.to_string(), "unknown_prerequisite": p.to_string()})
-                })
-            })
+            .map(|(task, p)| json!({"node": task.to_string(), "unknown_prerequisite": p.to_string()}))
             .collect();
         json!({
             "ok": false,
@@ -1058,19 +1065,15 @@ fn finding_lines(
             ));
         }
     }
-    for f in &report.unknown {
-        let Some(prerequisite) = &f.concerns else {
-            continue;
-        };
+    for (task, prerequisite) in &report.unknown {
         out.push(finding(
             "prerequisite.unknown",
-            Some(f.subject.to_string()),
+            Some(task.to_string()),
             Some(format!(
-                "{} names {prerequisite}, which is neither open nor completed",
-                f.subject
+                "{task} names {prerequisite}, which is neither open nor completed"
             )),
             Some(
-                json!({"node": f.subject.to_string(), "unknown_prerequisite": prerequisite.to_string()}),
+                json!({"node": task.to_string(), "unknown_prerequisite": prerequisite.to_string()}),
             ),
         ));
     }

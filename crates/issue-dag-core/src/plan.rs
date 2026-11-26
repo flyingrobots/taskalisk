@@ -175,6 +175,10 @@ pub enum Outcome {
         findings: BTreeSet<Finding>,
         /// The graph, for diagnosis only.
         graph: Option<Graph>,
+        /// Each unknown prerequisite (X3) as an edge from it to the task
+        /// that names it: by task in the order the closure read them, then
+        /// in the task's `.blocked_by` order, the order a report lists them.
+        unknown: Vec<Edge>,
     },
     /// A plan.
     Planned {
@@ -534,6 +538,8 @@ struct Assembly<'c> {
     findings: BTreeSet<Finding>,
     readings: BTreeMap<IssueRef, &'c Reading>,
     issues: BTreeMap<IssueRef, &'c Issue>,
+    /// The X3 edges, in the order of `Outcome::Invalid::unknown`.
+    unknown: Vec<Edge>,
 }
 
 impl<'c> Assembly<'c> {
@@ -548,6 +554,7 @@ impl<'c> Assembly<'c> {
                 ..Graph::default()
             },
             findings: BTreeSet::new(),
+            unknown: Vec::new(),
             readings: BTreeMap::new(),
             issues: BTreeMap::new(),
         };
@@ -667,9 +674,11 @@ impl<'c> Assembly<'c> {
             .enumerate()
             .map(|(i, id)| (id, i))
             .collect();
+        let key = |e: &Edge| read.get(&e.to).copied().unwrap_or(usize::MAX);
         let mut order = std::mem::take(&mut self.graph.not_planned_order);
-        order.sort_by_key(|e| read.get(&e.to).copied().unwrap_or(usize::MAX));
+        order.sort_by_key(key);
         self.graph.not_planned_order = order;
+        self.unknown.sort_by_key(key);
     }
 
     fn prerequisite(&mut self, prerequisite: &IssueRef, task: &IssueRef) {
@@ -679,6 +688,10 @@ impl<'c> Assembly<'c> {
         }
         let Some(node) = self.graph.nodes.get(prerequisite) else {
             self.finding(task, Rule::X3, Some(prerequisite));
+            self.unknown.push(Edge {
+                from: prerequisite.clone(),
+                to: task.clone(),
+            });
             return;
         };
         let edge = Edge {
@@ -771,6 +784,7 @@ impl<'c> Assembly<'c> {
             Outcome::Invalid {
                 findings,
                 graph: (!unresolved).then_some(graph),
+                unknown: self.unknown,
             }
         } else {
             Outcome::Planned { findings, graph }
@@ -1206,7 +1220,10 @@ mod tests {
             &RecordedForge::new(&observations),
         );
         let took = start.elapsed();
-        let Ok(Outcome::Invalid { findings, graph }) = outcome else {
+        let Ok(Outcome::Invalid {
+            findings, graph, ..
+        }) = outcome
+        else {
             panic!("expected an invalid run, got {outcome:?}");
         };
         assert!(graph.is_none());
