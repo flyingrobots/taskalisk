@@ -210,18 +210,30 @@ mod tests {
     }
 
     #[test]
-    fn two_blocked_by_lines_are_refused() {
+    fn two_blocked_by_lines_are_refused_as_invalid() {
+        // Validity is checked first: two lines are a C7 violation.
         let old = task(".blocked_by: []\n.blocked_by: [o/r#2]", "\n");
-        assert_eq!(add(&old, "o/r#3"), Err(Refusal::BlockedByLines(2)));
+        assert_eq!(add(&old, "o/r#3"), Err(Refusal::Invalid(vec![Label::C7])));
     }
 
     #[test]
-    fn no_blocked_by_line_is_refused() {
+    fn a_task_without_a_blocked_by_line_is_refused_as_invalid() {
         let old = task("note: none", "\n");
-        assert_eq!(add(&old, "o/r#3"), Err(Refusal::BlockedByLines(0)));
+        assert_eq!(add(&old, "o/r#3"), Err(Refusal::Invalid(vec![Label::V5])));
+    }
+
+    #[test]
+    fn a_container_is_refused_as_not_a_task() {
         let container =
             "```yaml\n.dag: issue-dag/2\n.id: o/r#1\n.kind: container\n.children: []\n```\n";
-        assert_eq!(add(container, "o/r#3"), Err(Refusal::BlockedByLines(0)));
+        assert_eq!(add(container, "o/r#3"), Err(Refusal::NotATask));
+        assert_eq!(add(container, "o/r#1"), Err(Refusal::NotATask));
+    }
+
+    #[test]
+    fn a_self_edge_on_an_invalid_document_is_refused_as_invalid() {
+        let old = task(".blocked_by: [#2]", "\n");
+        assert_eq!(add(&old, "o/r#1"), Err(Refusal::Invalid(vec![Label::L1])));
     }
 
     #[test]

@@ -275,3 +275,127 @@ fn is_format_name(text: &str) -> bool {
         .and_then(parse_number)
         .is_some()
 }
+
+#[cfg(test)]
+mod tests {
+    use std::collections::BTreeSet;
+
+    use crate::label::Label::{self, C4, C7, C8, V5};
+    use crate::reference::IssueRef;
+    use crate::{Judgement, admit};
+
+    const TASK: [&str; 5] = [
+        ".dag: issue-dag/2",
+        ".id: o/r#1",
+        ".kind: task",
+        ".type: feature",
+        ".blocked_by: []",
+    ];
+
+    /// A body whose block is the lines of `TASK` without the keys `lines`
+    /// sets, followed by `lines`.
+    fn body(lines: &[&str]) -> String {
+        let keys: Vec<&str> = lines
+            .iter()
+            .filter_map(|l| l.split(':').next())
+            .map(str::trim)
+            .collect();
+        let mut block: Vec<&str> = TASK
+            .iter()
+            .copied()
+            .filter(|l| !keys.contains(&l.split(':').next().unwrap_or_default()))
+            .collect();
+        block.extend_from_slice(lines);
+        format!("```yaml\n{}\n```\n\nFree text.\n", block.join("\n"))
+    }
+
+    fn judge(lines: &[&str]) -> Judgement {
+        let address = IssueRef::parse("o/r#1").expect("a reference");
+        admit(&body(lines), Some(&address))
+    }
+
+    fn violations(lines: &[&str]) -> Vec<Label> {
+        match judge(lines) {
+            Judgement::Invalid(v) => v.violations.into_iter().collect(),
+            other => panic!("expected an invalid document, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn the_base_task_is_valid() {
+        assert!(matches!(judge(&[]), Judgement::Valid { .. }));
+    }
+
+    #[test]
+    fn a_repeated_key_is_judged_by_no_other_rule() {
+        for lines in [
+            &[".type: feature", ".type: zzz"][..],
+            &[".type: [bug]", ".type: chore"],
+            &[".blocked_by: [#2]", ".blocked_by: o/r#3"],
+            &[".size_hours: 0", ".size_hours: x"],
+            &[".holds: [a,,b]", ".holds: c"],
+            &[".meters: [gpu:2]", ".meters: [gpu*0]"],
+            &[".status: done", ".status: [active]"],
+            &[".id: #1", ".id: 1"],
+            &[".id: o/r#2", ".id: o/r#2"],
+            &[".kind: epic", ".kind: [task]"],
+            &[".children: []", ".children: []"],
+            &[".bogus: 1", ".bogus: 2"],
+        ] {
+            assert_eq!(violations(lines), [C7], "{lines:?}");
+        }
+    }
+
+    #[test]
+    fn a_repeated_key_counts_as_present() {
+        // `.blocked_by` is required of a task: repeated, it is present, so
+        // there is no V5, even when one of its lines gives no value (C8).
+        assert_eq!(
+            violations(&[".blocked_by: [o/r#2", ".blocked_by: []"]),
+            [C7, C8]
+        );
+        assert_eq!(
+            violations(&[".blocked_by: [o/r#2", ".blocked_by: [o/r#3"]),
+            [C7, C8]
+        );
+    }
+
+    #[test]
+    fn a_single_unterminated_line_leaves_its_key_absent() {
+        assert_eq!(violations(&[".blocked_by: [o/r#2"]), [C8, V5]);
+    }
+
+    #[test]
+    fn two_dag_lines_are_c7_alone() {
+        assert_eq!(
+            violations(&[".dag: issue-dag/2", ".dag: issue-dag/3"]),
+            [C7]
+        );
+        assert_eq!(violations(&[".dag: issue-dag/3", ".dag: foo"]), [C7]);
+    }
+
+    #[test]
+    fn c4_is_still_the_only_violation() {
+        assert_eq!(
+            violations(&[".dag: issue-dag/2", ".dag: issue-dag/3", "area: a\u{2028}b"]),
+            [C4]
+        );
+    }
+
+    #[test]
+    fn an_invalid_document_has_no_warnings() {
+        match judge(&[".size_hours: 9", ".status: done"]) {
+            Judgement::Invalid(v) => {
+                assert_eq!(v.warnings, BTreeSet::new());
+                assert_eq!(v.violations, BTreeSet::from([Label::V8]));
+            }
+            other => panic!("expected an invalid document, got {other:?}"),
+        }
+        match judge(&[".size_hours: 9"]) {
+            Judgement::Valid { warnings, .. } => {
+                assert_eq!(warnings, BTreeSet::from([Label::V10]));
+            }
+            other => panic!("expected a valid document, got {other:?}"),
+        }
+    }
+}
