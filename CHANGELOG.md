@@ -122,6 +122,21 @@ schema version under `Unreleased` is a draft and may change in place.
   reports one); the critical path is empty when no node is open; `unknown_capacity` and each
   skip's semaphores are in ascending order.
 
+- **Evaluation records and offline replay** (flyingrobots/taskalisk#30). `issue-dag-bundle` gains
+  the evaluation record `taskalisk-evaluation/1`: the observation bundle a run planned from, held
+  whole in an observation slot, the evaluator's name and version, and the result in the corpus's
+  CC6 form, with the formats, the profile, the discovery scope (home, roots, read scope, trust
+  policy) and the facts not observed (every unavailable slot, by its path in the bundle) beside
+  them. A record is compact JSON with its members in ascending order. `evaluate` plans a bundle and
+  records it; `unretained` records a run that kept no bundle, the hook for the binary's live `plan`
+  (#31). `replay` takes no forge, so it plans only through `RecordedForge` over the retained bundle,
+  and reports the result reproduced or differing, byte for byte, with the recorded and the replaying
+  evaluator, so a difference shows whether the evaluator changed; when the bundle is not retained,
+  is not a bundle, lacks a slot the run reads, or names a format or profile this evaluator does not
+  implement, it reports replay unavailable and plans nothing. A record that contradicts its own
+  bundle is refused. Every graph case of the corpus replays from its record to the same bytes. The
+  CC6 projection moved from the corpus test into the crate (`outcome_json`), and that test uses it.
+
 - **Repeated keys, warnings and refusal order in the specification** (flyingrobots/taskalisk#104).
   The vendored issue-dag specification now states the rulings the Rust core implements: no rule of
   sections 3 to 5 labels a repeated key, so labels never depend on line order, while its lines keep
