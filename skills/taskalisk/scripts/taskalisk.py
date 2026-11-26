@@ -1347,9 +1347,22 @@ def _resources_cell(holds: list[str], meters: list[dict[str, Any]], empty: str) 
     return ", ".join(cells) or empty
 
 
+MD_LINE_BREAK_RE = re.compile("\r\n|[\n\r\x0b\x0c\x85  ]")
+MD_CONTROL_RE = re.compile("[\x00-\x1f\x7f-\x9f]")
+MD_AUTOLINK_RE = re.compile(r"(?i)\b([a-z][a-z0-9+.-]*:)(//)|\b(www)(\.)")
+
+
 def _md_cell(text: str) -> str:
-    """Issue text in a rendered table cell: no pipes, no HTML, no links, no line breaks (C5)."""
-    return str(text).replace("|", "\\|").replace("<", "&lt;").replace(">", "&gt;").replace("[", "\\[").replace("]", "\\]").replace("\n", " ")
+    """Issue text in a rendered table cell: no pipes, no HTML, no links, no line breaks, no control
+    characters (C5). In order: the backslash is escaped first, so a title's own backslash cannot
+    cancel a later escape; every Unicode line break becomes a space; every other C0 or C1 control
+    character (ESC included) is dropped; `|`, `[`, `]` are escaped and `<`, `>` become entities;
+    and a bare URL cannot autolink, because a zero-width space (U+200B) follows the colon of
+    `scheme://` and the `www` of `www.`. Text that needs none of this is returned unchanged."""
+    text = str(text).replace("\\", "\\\\")
+    text = MD_CONTROL_RE.sub("", MD_LINE_BREAK_RE.sub(" ", text))
+    text = text.replace("|", "\\|").replace("<", "&lt;").replace(">", "&gt;").replace("[", "\\[").replace("]", "\\]")
+    return MD_AUTOLINK_RE.sub(lambda m: f"{m.group(1)}​{m.group(2)}" if m.group(1) else f"{m.group(3)}​{m.group(4)}", text)
 
 
 def render_roadmap_block(result: dict[str, Any]) -> str:

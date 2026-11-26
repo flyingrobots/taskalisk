@@ -5,6 +5,16 @@ The Taskalisk skill's releases. The skill version (the release tag, and `__versi
 under `skills/taskalisk/schemas/` has its own version and moves only when that message changes. A
 schema version under `Unreleased` is a draft and may change in place.
 
+## Unreleased
+
+### Fixed
+
+- **A ROADMAP cell keeps a hostile title inert** (flyingrobots/taskalisk#75). The backslash is
+  escaped first, every Unicode line break (CR, NEL, U+2028 and the rest) becomes a space, every
+  other C0 or C1 control character (ESC included) is dropped, and a bare URL or `www.` address
+  gets a zero-width space so it does not autolink. A title that needs none of this renders
+  byte-for-byte as before.
+
 ## 2.1.2 - 2026-11-24
 
 ### Changed

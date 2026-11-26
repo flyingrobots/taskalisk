@@ -206,7 +206,10 @@ missing field is untrusted.
 
 ### C5. Output escaping — implemented
 
-Rendered Markdown escapes `|`, `<` and `>` in cells. Mermaid labels replace
+Rendered Markdown cells escape the backslash first, then `|`, `[` and `]`, turn
+`<` and `>` into entities, fold every Unicode line break into a space, drop
+every other C0 and C1 control character, and keep a bare URL from
+autolinking with a zero-width space after `scheme:` and `www`. Mermaid labels replace
 quotes and angle brackets, and fold line breaks into spaces. Untrusted titles are never rendered (C3).
 
 ### C6. Executable settings come only from the operator — planned (#13, #14)
