@@ -12,6 +12,8 @@ use crate::reference::IssueRef;
 pub struct Ranking {
     /// The score of each open node (rule K5).
     pub scores: BTreeMap<IssueRef, u64>,
+    /// The terms of each open node's score (rules K1 to K5).
+    pub terms: BTreeMap<IssueRef, Terms>,
     /// Every open node in rank order (rule K6).
     pub order: Vec<IssueRef>,
     /// The ready set in rank order (rules Q1 and K6).
@@ -22,6 +24,60 @@ pub struct Ranking {
     /// The critical path (rule K8), from its first node to its last; empty
     /// when the graph has no open node.
     pub critical_path: Vec<IssueRef>,
+}
+
+/// The terms of a score (rules K1 to K5): the value of each. The score is
+/// the sum of each value times its weight, [`Terms::WEIGHTS`].
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Terms {
+    /// K4: 1 when the status is in flight, else 0.
+    pub in_flight: u64,
+    /// K4: 1 when the status is `parked`, else 0.
+    pub parked: u64,
+    /// K1: the open nodes it transitively unblocks.
+    pub descendants: u64,
+    /// K2: the longest remaining chain from it, itself counted.
+    pub critical_path_depth: u64,
+    /// K3: its children in the reduced graph.
+    pub out_degree: u64,
+}
+
+impl Terms {
+    /// The weight of each term (rule K5), by name, in the order of
+    /// [`Terms::points`].
+    pub const WEIGHTS: [(&'static str, u64); 5] = [
+        ("in_flight", 1000),
+        ("parked", 500),
+        ("descendants", 100),
+        ("critical_path_depth", 10),
+        ("out_degree", 1),
+    ];
+
+    /// Each term as (name, value, weight, points), points being value
+    /// times weight.
+    #[must_use]
+    pub fn points(&self) -> [(&'static str, u64, u64, u64); 5] {
+        let values = [
+            self.in_flight,
+            self.parked,
+            self.descendants,
+            self.critical_path_depth,
+            self.out_degree,
+        ];
+        let mut out = [("", 0, 0, 0); 5];
+        for (slot, ((name, weight), value)) in
+            out.iter_mut().zip(Self::WEIGHTS.into_iter().zip(values))
+        {
+            *slot = (name, value, weight, value * weight);
+        }
+        out
+    }
+
+    /// The score (rule K5): the sum of the points.
+    #[must_use]
+    pub fn total(&self) -> u64 {
+        self.points().iter().map(|p| p.3).sum()
+    }
 }
 
 /// Ranks the open nodes of a graph. `None` when its edges form a cycle
@@ -75,17 +131,19 @@ pub fn rank(graph: &Graph) -> Option<Ranking> {
     }
 
     // K3 to K5.
-    let score: Vec<u64> = (0..n)
+    let terms: Vec<Terms> = (0..n)
         .map(|u| {
             let status = graph.nodes.get(&ids[u]).and_then(|node| node.status);
-            let descendants: u64 = below[u].iter().map(|w| u64::from(w.count_ones())).sum();
-            1000 * u64::from(in_flight(status))
-                + 500 * u64::from(status == Some(NodeStatus::Parked))
-                + 100 * descendants
-                + 10 * depth[u]
-                + children[u].len() as u64
+            Terms {
+                in_flight: u64::from(in_flight(status)),
+                parked: u64::from(status == Some(NodeStatus::Parked)),
+                descendants: below[u].iter().map(|w| u64::from(w.count_ones())).sum(),
+                critical_path_depth: depth[u],
+                out_degree: children[u].len() as u64,
+            }
         })
         .collect();
+    let score: Vec<u64> = terms.iter().map(Terms::total).collect();
 
     // K6.
     let mut order: Vec<usize> = (0..n).collect();
@@ -110,6 +168,7 @@ pub fn rank(graph: &Graph) -> Option<Ranking> {
 
     Some(Ranking {
         scores: (0..n).map(|u| (ids[u].clone(), score[u])).collect(),
+        terms: (0..n).map(|u| (ids[u].clone(), terms[u])).collect(),
         ready: order
             .iter()
             .filter(|&&u| graph.ready.contains(&ids[u]))
@@ -133,7 +192,7 @@ const fn in_flight(status: Option<NodeStatus>) -> bool {
 mod tests {
     use std::collections::{BTreeMap, BTreeSet};
 
-    use super::{Ranking, rank};
+    use super::{Ranking, Terms, rank};
     use crate::plan::{Edge, Graph, Node, NodeStatus};
     use crate::reference::IssueRef;
 
@@ -149,6 +208,7 @@ mod tests {
             status: Some(status),
             holds: BTreeSet::new(),
             meters: Vec::new(),
+            ..Node::default()
         }
     }
 
@@ -187,6 +247,41 @@ mod tests {
         assert_eq!(ranking.scores[&r(1)], 200 + 30 + 1);
         assert_eq!(ranking.scores[&r(2)], 100 + 20 + 1);
         assert_eq!(ranking.scores[&r(3)], 10);
+    }
+
+    #[test]
+    fn k5_the_terms_of_each_score_are_exposed_and_sum_to_it() {
+        // 1 -> 2 -> 3, and 1 -> 3, which the reduction removes; 1 is parked.
+        let mut g = graph(3, &[(1, 2), (2, 3), (1, 3)], &[(1, 3)]);
+        g.nodes.insert(r(1), open(NodeStatus::Parked));
+        g.nodes.insert(r(2), open(NodeStatus::Wip));
+        let ranking = ranked(&g);
+        let one = ranking.terms[&r(1)];
+        assert_eq!(
+            one,
+            Terms {
+                in_flight: 0,
+                parked: 1,
+                descendants: 2,
+                critical_path_depth: 3,
+                out_degree: 1,
+            }
+        );
+        assert_eq!(ranking.terms[&r(2)].in_flight, 1);
+        assert_eq!(
+            one.points(),
+            [
+                ("in_flight", 0, 1000, 0),
+                ("parked", 1, 500, 500),
+                ("descendants", 2, 100, 200),
+                ("critical_path_depth", 3, 10, 30),
+                ("out_degree", 1, 1, 1),
+            ]
+        );
+        for (id, terms) in &ranking.terms {
+            assert_eq!(terms.total(), ranking.scores[id], "{id}");
+        }
+        assert_eq!(ranking.terms.len(), ranking.scores.len());
     }
 
     #[test]

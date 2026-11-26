@@ -200,10 +200,36 @@ read is recorded with `error: dag_spec.unreadable` and no digest, and `inv` is o
 was read but is not JSON is recorded by the bytes read.
 
 `artifact_hash` on the plan line is the SHA-256 of the canonical result document (keys sorted,
-compact separators, a trailing newline), computed exactly as 1.x computed `meta.artifact_hash`, so
-the same backlog gives the same hash in both. `inv` names the question and its inputs;
-`artifact_hash` names the answer. The same `inv` with a different `artifact_hash` means live
-context outside the declared inputs changed.
+compact separators, a trailing newline), computed exactly as 1.x computed `meta.artifact_hash`; the
+Rust renderer's hash differs from it in the cases the next paragraph lists. `inv` names the question
+and its inputs; `artifact_hash` names the answer. The same `inv` with a different `artifact_hash`
+means live context outside the declared inputs changed.
+
+**The Rust renderer's `artifact_hash` (a permanent exception).** The Rust binary hashes the artifact
+it emits: the result document in the 1.x shape, built from its own lines, written as Python's
+`json.dumps` writes it (every character outside U+0020 to U+007E escaped, astral characters as
+surrogate pairs). The schema requires the field, so it is always present. It equals the Python's
+hash only when that document holds no intended difference and no gap: no frontmatter finding (whose
+message is prose the core writes as fixed text, one per rule), no untrusted issue or pull request
+(whose trust reasons the core does not keep), a compiled graph (a cycle or an unknown prerequisite
+leaves out what discovery read), and a display input that supplies the titles, URLs and branches
+(flyingrobots/taskalisk#31 fills it from the adapters). Otherwise it is a different, equally
+deterministic hash of a different document. Compare `artifact_hash` values from one implementation
+only. The parity tests (`crates/taskalisk/tests/parity.rs`) assert equality where it holds and,
+elsewhere, that the hash is 64 hexadecimal digits and the same on every run.
+
+Where the specification records a difference from the Python
+(`tests/fixtures/issue-dag/notes/python-differences.md`), the Rust binary follows the
+specification, and the parity tests leave that corpus case and its `--python` twin out. For
+example, a task that names the same not-planned prerequisite twice gives one `parent.not_planned`
+finding in Rust and one per mention in 1.x (difference 10, a compatibility exception; corpus
+`graph/g3-duplicate-not-planned-prerequisite`).
+
+One difference is the renderer's own, not the specification's: when a run has both an unknown
+prerequisite (X3) and a cycle (G4), the core reports every finding of both (F4, F5), but the 1.x
+document, like the Python, which checks prerequisites before cycles, is `unresolved` with
+`graph.unresolved_prerequisites` and names no cyclic node. Read the core's findings, not the
+1.x document, for the cycle in such a run.
 
 ## `--since-last`
 
