@@ -144,6 +144,24 @@ def _not_planned_read_first(bundle: dict[str, Any]) -> dict[str, Any]:
     return bundle
 
 
+def _not_planned_per_task(bundle: dict[str, Any]) -> dict[str, Any]:
+    """The traversal variant with o/r#4 waiting on [o/r#5, o/r#7] while o/r#30 waits on
+    [o/r#7, o/r#5]: 1.x lists each task's not-planned prerequisites in that task's own order."""
+    bundle = _traversal(bundle)
+    four = bundle["observations"]["issues"]["o/r#4"]["value"]["body"]["value"]
+    four["text"] = _doc("o/r#4", "task", ".blocked_by", ["o/r#5", "o/r#7"])
+    return bundle
+
+
+def _unknown_and_cycle(bundle: dict[str, Any]) -> dict[str, Any]:
+    """graph-cycle with flyingrobots/geordi#1 also waiting on x/y#1, outside the read scope: an
+    unknown prerequisite (X3) and a cycle (G4) in one run. 1.x checks the prerequisites first, so
+    the plan is `unresolved`, not `cycle`."""
+    one = bundle["observations"]["issues"]["flyingrobots/geordi#1"]["value"]["body"]["value"]
+    one["text"] = one["text"].replace(".blocked_by: [flyingrobots/echo#5]", ".blocked_by: [flyingrobots/echo#5, x/y#1]")
+    return bundle
+
+
 def _untrusted_in_order_read(bundle: dict[str, Any]) -> dict[str, Any]:
     """d9-container whose root names o/r#40 before o/r#30, both by a stranger: 1.x lists the
     untrusted issues in the order it read them, o/r#40 first, though o/r#30 sorts first."""
@@ -174,6 +192,8 @@ VARIANTS = {
     "d9-container--traversal-order": ("d9-container", _traversal),
     "d9-container--not-planned-in-blocked-by-order": ("d9-container", _not_planned_read_first),
     "d9-container--untrusted-in-order-read": ("d9-container", _untrusted_in_order_read),
+    "d9-container--not-planned-per-task-order": ("d9-container", _not_planned_per_task),
+    "graph-cycle--and-unknown-prerequisite": ("graph-cycle", _unknown_and_cycle),
     "d9-container--opaque-child": ("d9-container", _opaque_child),
     "d9-container--opaque-children-in-order-read": ("d9-container", _opaque_children),
 }
