@@ -60,10 +60,23 @@ BASIC = {"skills/taskalisk/SKILL.md": "See [model](references/model.md).\n", "do
 MODEL_LINK = ("skills/taskalisk/references/model.md", "../../../docs/model.md")
 
 
+def pinned_git(real):
+    """builder.git, refusing to list the checkout's tree at any revision but REV (flyingrobots/taskalisk#88).
+    Only `ls-tree` names a revision; `cat-file` reads blobs by content id, which a commit cannot move."""
+    def git(root, *args):
+        if pathlib.Path(root).resolve() == ROOT.resolve() and "ls-tree" in args and args[-1] != REV:
+            raise AssertionError(f"the checkout was read at {args[-1]!r}, not at the pinned revision {REV}")
+        return real(root, *args)
+    return git
+
+
 class BuildSkillReleaseTest(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.out = pathlib.Path(self.tmp.name)
+        patcher = mock.patch.object(builder, "git", pinned_git(builder.git))
+        patcher.start()
+        self.addCleanup(patcher.stop)
 
     def tearDown(self):
         self.tmp.cleanup()
