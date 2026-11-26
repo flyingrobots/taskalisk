@@ -32,6 +32,11 @@ FINDING_GAPS = {
     "pull_request.untrusted": {"/ is missing message"},
 }
 
+# Not a gap but an intended difference: a frontmatter finding is read by its `code` and `subject`;
+# its message is prose that neither the schema nor the specification fixes, so the Rust one (the
+# core's fixed text, one per rule) differs from the Python's (one per message, with the value).
+INTENDED_DIFFERENCES = {"frontmatter.violation": "message", "frontmatter.warning": "message"}
+
 
 def allowed(line):
     if line["_schema"]["id"] == "taskalisk.finding":
@@ -66,6 +71,17 @@ class RustRecordings(unittest.TestCase):
                 self.assertLessEqual(errors, allowed(line), f"{path.name}:{n}: {line}")
                 checked += 1
         self.assertGreater(checked, 1000)
+
+    def test_frontmatter_findings_differ_only_in_their_message(self):
+        def keys(path):
+            return {(l["code"], l["subject"]) for l in pl.parse(path.read_text(), path.name)
+                    if l["event"] == "finding" and l["code"] in INTENDED_DIFFERENCES}
+        compared = 0
+        for path in sorted(RUST.glob("*.jsonl")):
+            rust = keys(path)
+            self.assertEqual(rust, keys(capture.FIXTURES / "python" / path.name), path.name)
+            compared += len(rust)
+        self.assertGreater(compared, 10)
 
 
 if __name__ == "__main__":

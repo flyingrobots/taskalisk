@@ -21,9 +21,7 @@
 //! core reports no graph for such a run (rule F3), so it has none of them
 //! (flyingrobots/taskalisk#44).
 //!
-//! `frontmatter.violation` and `frontmatter.warning` compare as the set of
-//! their subjects: the Python writes one line per message, with the value
-//! in the message, and the core one per rule, with fixed text.
+//! One intended difference, which is not a gap: [`INTENDED_DIFFERENCE`].
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
@@ -195,8 +193,6 @@ fn gaps(line: &Value, hash_out_of_reach: bool) -> Vec<&'static str> {
                 "detail/closes",
                 "detail/reason",
             ],
-            // The core's message is fixed text for the rule.
-            Some("frontmatter.violation" | "frontmatter.warning") => vec!["message"],
             _ => Vec::new(),
         },
         _ => Vec::new(),
@@ -289,14 +285,23 @@ fn is_discovery_finding(line: &Value) -> bool {
         )
 }
 
+/// The intended difference: a `frontmatter.violation` or
+/// `frontmatter.warning` compares by its `code` and `subject` alone, as a
+/// set. Reason: the skill reads those two, and the message is prose that
+/// neither the schema nor the specification fixes (the Python writes one
+/// line per message with the value in it, the core one per rule with fixed
+/// text).
+const INTENDED_DIFFERENCE: &str = "frontmatter.";
+
 /// The lines in the form they compare in: every line but the
-/// `frontmatter.*` findings in order, and those as a set of (code, subject).
+/// `frontmatter.*` findings in order, and those as a set of (code, subject)
+/// ([`INTENDED_DIFFERENCE`]).
 fn comparable(lines: Vec<Value>) -> (Vec<Value>, BTreeSet<(String, String)>) {
     let mut ordered = Vec::new();
     let mut frontmatter = BTreeSet::new();
     for line in lines {
         match line["code"].as_str() {
-            Some(code) if line["event"] == "finding" && code.starts_with("frontmatter.") => {
+            Some(code) if line["event"] == "finding" && code.starts_with(INTENDED_DIFFERENCE) => {
                 let subject = line["subject"].as_str().unwrap_or_default().to_owned();
                 frontmatter.insert((code.to_owned(), subject));
             }

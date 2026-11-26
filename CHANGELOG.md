@@ -73,15 +73,17 @@ schema version under `Unreleased` is a draft and may change in place.
   draft flag), and `Ranking` exposes each node's score terms (`Terms`, with their weights and
   points). An optional `Display` input supplies what only the adapters read: issue and pull request
   titles and URLs, recoverable branches, and the CODEOWNERS persons and teams. With it the plan
-  line carries `artifact_hash`, the SHA-256 (written in the crate, no dependency) of the 1.x result
+  line carries `artifact_hash`, the SHA-256 (by the RustCrypto `sha2` crate, MIT or Apache-2.0) of the 1.x result
   document, whenever that document holds nothing the core lacks. On the 151 graph cases of the
   corpus where the Python and the specification agree, every line equals the Python's
   (`tests/capture_render_parity.py`), `artifact_hash` included in 71, once these fields are
   removed, and the suite checks the list is exact: the trust gate's reasons in `issue.untrusted`
   and `pull_request.untrusted` (#46); the discovery findings of a run whose graph is not reported,
-  a cycle or an unknown prerequisite (#44); the message of a frontmatter finding, which is the
-  core's fixed text, one per rule; and `artifact_hash` where the document holds any of those.
-  Every rendered line validates against its schema except for those fields.
+  a cycle or an unknown prerequisite (#44); and `artifact_hash` where the document holds any of
+  those or a frontmatter finding's message. Every rendered line validates against its schema
+  except for those fields. One difference is intended, not a gap: a frontmatter finding compares
+  by `code` and `subject`, which the skill reads; its message is prose the schema does not fix,
+  and the core writes fixed text, one line per rule.
 
 - **Repeated keys, warnings and refusal order in the specification** (flyingrobots/taskalisk#104).
   The vendored issue-dag specification now states the rulings the Rust core implements: no rule of
