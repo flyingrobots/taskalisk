@@ -159,7 +159,9 @@ against the rest) and `retryable` carry the distinction instead. The old argpars
 which printed text and exited 2, is now a startup failure, exit 3.
 
 Arguments are validated before the bootstrap line, as Parley asks (spec 3.2; decided on
-flyingrobots/parley#91 and #98): a flag that does not parse, flags that contradict each other, a
+flyingrobots/parley#91 and #98): a flag that does not parse (an abbreviated flag such as `--from`
+included: every flag must be spelled in full), flags that contradict each other (a mode flag
+naming another command than the one given, such as `inventory --from-github`, included), a
 `--root` or an edge that is not `owner/repo#N`, and a self-edge are startup failures, exit 3, with
 no receipt, because a mistaken call did no work. Whatever needs GitHub to decide (a root outside
 the scope, an untrusted child) is a command error with a receipt.
