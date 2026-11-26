@@ -41,9 +41,11 @@ use read::Label;
 pub use read::{CODEOWNERS_PATHS, EDIT_HISTORY_QUERY};
 use run::Runner;
 
-/// What the reads returned only to be shown, never to plan from: the title
-/// and web URL of each issue read, under the reference read. Kept from the
-/// answers the forge already has, so showing them costs no query.
+/// What the reads returned only to be shown, never to plan from.
+///
+/// The title and web URL of each issue read, under the reference read,
+/// kept from the answers the forge already has, so showing them costs no
+/// query.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Shown {
     /// The title of each issue read, as GitHub returned it.
