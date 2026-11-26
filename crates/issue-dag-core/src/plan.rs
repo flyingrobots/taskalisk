@@ -347,6 +347,10 @@ struct Document {
     reading: Reading,
 }
 
+/// For each issue, the draft flags of the admitted pull requests that
+/// close it (S1).
+type Linked = BTreeMap<IssueRef, Vec<bool>>;
+
 /// The closure of a run (D2): every reference visited, and the documents
 /// that name each one.
 struct Closure {
@@ -412,11 +416,8 @@ impl<'a, F: Forge + ?Sized> Run<'a, F> {
 
     /// I4 and AD9: for each issue, the draft flags of the admitted pull
     /// requests that close it; and the numbers of those not admitted.
-    #[allow(clippy::type_complexity)]
-    fn pull_requests(
-        &mut self,
-    ) -> Result<(BTreeMap<IssueRef, Vec<bool>>, BTreeSet<u64>), Undecided> {
-        let mut linked: BTreeMap<IssueRef, Vec<bool>> = BTreeMap::new();
+    fn pull_requests(&mut self) -> Result<(Linked, BTreeSet<u64>), Undecided> {
+        let mut linked = Linked::new();
         let mut untrusted = BTreeSet::new();
         let home = &self.parameters.home;
         for pull in value(self.forge.home_open_pull_requests()?)? {
@@ -655,7 +656,7 @@ impl<'c> Assembly<'c> {
 
     /// S1 and S2: the status of each open node, from the draft flags of the
     /// admitted pull requests that close each issue.
-    fn statuses(&mut self, linked: &BTreeMap<IssueRef, Vec<bool>>, home: &Repo) {
+    fn statuses(&mut self, linked: &Linked, home: &Repo) {
         for (id, node) in &mut self.graph.nodes {
             if node.complete {
                 continue;
