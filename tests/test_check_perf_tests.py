@@ -2,6 +2,7 @@
 passed (flyingrobots/taskalisk#120)."""
 import importlib.util
 import pathlib
+import re
 import unittest
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -93,6 +94,53 @@ class CheckPerfTests(unittest.TestCase):
                     code = checker.main([str(listed_path), str(ran_path)])
                 self.assertEqual(code, want, out.getvalue())
                 self.assertIn("perf_ tests passed:", out.getvalue())
+
+
+class PerfJob(unittest.TestCase):
+    """The workflow step that runs the check."""
+
+    def step(self):
+        workflow = (ROOT / ".github" / "workflows" / "test.yml").read_text(encoding="utf-8")
+        start = workflow.index("- name: Wall-clock bounds of large graphs")
+        return workflow[start:]
+
+    def test_the_step_runs_the_check_and_hardcodes_no_count(self):
+        step = self.step()
+        self.assertIn("python3 scripts/check_perf_tests.py perf-listed.log perf.log", step)
+        self.assertNotRegex(step, r"-ge\s+\d")
+
+    def test_the_list_includes_tests_that_lost_their_ignore(self):
+        # Listing with --ignored would drop a perf_ test whose #[ignore] was removed: it would
+        # leave the release run and flake in the default suite with nothing to notice.
+        step = self.step()
+        self.assertIn("-- --list perf_ > perf-listed.log 2>&1", step)
+        self.assertIn("-- --ignored perf_ 2>&1 | tee perf.log", step)
+
+    def test_a_failing_cargo_test_fails_the_step(self):
+        # The run is piped through tee; only pipefail, which `shell: bash` sets, keeps its status.
+        self.assertIn("shell: bash", self.step())
+
+
+class PerfNames(unittest.TestCase):
+    """The job finds the bounds by the name filter perf_, so a bound renamed out of it would leave
+    the run unseen. Every test ignored as a wall-clock bound is named perf_, and every perf_ test is
+    ignored as one."""
+
+    # The attributes before a fn, and its name.
+    ITEM = re.compile(r"((?:[ \t]*#\[[^\n]*\][ \t]*\n)+)[ \t]*(?:pub(?:\([^)]*\))?\s+)?fn\s+(\w+)")
+    MARK = '#[ignore = "wall-clock bound'
+
+    def items(self):
+        for path in sorted((ROOT / "crates").rglob("*.rs")):
+            text = path.read_text(encoding="utf-8")
+            for attributes, name in self.ITEM.findall(text):
+                yield path.relative_to(ROOT), attributes, name
+
+    def test_bounds_and_perf_names_agree(self):
+        marked = {(p, n) for p, a, n in self.items() if self.MARK in a}
+        named = {(p, n) for p, a, n in self.items() if n.startswith("perf_")}
+        self.assertTrue(marked, "no test is ignored as a wall-clock bound")
+        self.assertEqual(marked, named)
 
 
 if __name__ == "__main__":

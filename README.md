@@ -105,8 +105,14 @@ The wall-clock bounds of large graphs are not in the default suite, because a lo
 fail them. CI runs them in a job of their own, in a release build:
 
 ```sh
-cargo test --workspace --locked --release -- --ignored perf_
+cargo test --workspace --locked --release -- --list perf_ > perf-listed.log 2>&1
+cargo test --workspace --locked --release -- --ignored perf_ 2>&1 | tee perf.log
+python3 scripts/check_perf_tests.py perf-listed.log perf.log
 ```
+
+The check fails unless every `perf_` test that exists passed. A bound is a test named `perf_` and
+marked `#[ignore = "wall-clock bound; ..."]`. The offline suite fails when the name and the mark
+disagree.
 
 ## License
 

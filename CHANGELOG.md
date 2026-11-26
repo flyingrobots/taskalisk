@@ -181,6 +181,16 @@ schema version under `Unreleased` is a draft and may change in place.
 
 ### Fixed
 
+- **The release perf job checks every bound that exists** (flyingrobots/taskalisk#120). The job
+  "Rust planning bounds (release)" required at least six `perf_` tests to pass, a number written
+  into the workflow by hand. Once a seventh test existed, losing any one bound passed unnoticed.
+  It now lists the `perf_` tests, runs the ignored ones, and `scripts/check_perf_tests.py` fails
+  unless every listed test passed. A test is its binary and its name. The script names each test
+  that did not pass, and prints its count even when none did. A `perf_` test that loses its
+  `#[ignore]` is listed but not run, so the job fails on it. A new offline test requires every test
+  ignored as a wall-clock bound to be named `perf_`, and the reverse, so a bound renamed out of the
+  filter fails the Python suite.
+
 - **Review findings on the Rust graph core** (flyingrobots/taskalisk#105, merged before its review
   finished). Each fix has a test that failed before it. The planner no longer stops at the first
   lookup it cannot make. It reads every slot the rules reach, so neither the order of the roots
