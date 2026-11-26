@@ -310,9 +310,10 @@ fn observations(value: &Value, parameters: &Parameters) -> Read<Observations> {
         })
         .transpose()?;
 
-    let issues = o
-        .get("issues")
-        .map_or_else(|| Ok(BTreeMap::new()), |v| issues(v, parameters))?;
+    let (issues, bodies) = o.get("issues").map_or_else(
+        || Ok((BTreeMap::new(), BTreeMap::new())),
+        |v| issues(v, parameters),
+    )?;
     let permissions = o
         .get("permissions")
         .map_or_else(|| Ok(BTreeMap::new()), permissions)?;
@@ -330,26 +331,45 @@ fn observations(value: &Value, parameters: &Parameters) -> Read<Observations> {
         home_open_issues,
         home_open_pull_requests,
         issues,
+        bodies,
         permissions,
         codeowners,
     })
 }
 
-/// OB8: issues keyed by a reference in canonical form, in the read scope.
-fn issues(value: &Value, parameters: &Parameters) -> Read<BTreeMap<IssueRef, Observed<Issue>>> {
+type Issues = (
+    BTreeMap<IssueRef, Observed<Issue>>,
+    BTreeMap<IssueRef, Observed<Body>>,
+);
+
+/// OB8: issues keyed by a reference in canonical form, in the read scope,
+/// and the body slot each one holds, kept apart so that the body is read
+/// only through `Forge::body`.
+fn issues(value: &Value, parameters: &Parameters) -> Read<Issues> {
     let Some(map) = value.as_object() else {
         return fail("observations.issues", "not an object");
     };
     let mut issues = BTreeMap::new();
+    let mut bodies = BTreeMap::new();
     for (key, s) in map {
         let at = format!("observations.issues[{key:?}]");
         let r = reference(key, &at)?;
         if !parameters.read_scope.contains(&Repo::of(&r)) {
             return fail(&at, "is outside the read scope and is never read (OB8)");
         }
-        issues.insert(r, slot(s, &at, issue)?);
+        match slot(s, &at, issue)? {
+            Observed::Value((read, body)) => {
+                if let Some(body) = body {
+                    bodies.insert(r.clone(), body);
+                }
+                issues.insert(r, Observed::Value(read));
+            }
+            Observed::Unavailable(why) => {
+                issues.insert(r, Observed::Unavailable(why));
+            }
+        }
     }
-    Ok(issues)
+    Ok((issues, bodies))
 }
 
 type Permissions = BTreeMap<Repo, BTreeMap<String, Observed<Option<String>>>>;
@@ -460,7 +480,8 @@ fn draft(value: &Value, at: &str) -> Read<Observed<bool>> {
     slot(value, at, boolean)
 }
 
-fn issue(value: &Value, at: &str) -> Read<Issue> {
+/// An issue slot's value: the issue, and its `body` slot when it holds one.
+fn issue(value: &Value, at: &str) -> Read<(Issue, Option<Observed<Body>>)> {
     let i = exact(
         value,
         at,
@@ -471,9 +492,11 @@ fn issue(value: &Value, at: &str) -> Read<Issue> {
             "state_reason",
             "author",
             "author_association",
-            "body",
         ],
-        &[],
+        // OB14: a body the run never reads, such as that of an issue whose
+        // author is not trusted, may be left out; a run that reads it then
+        // finds it missing (OB5).
+        &["body"],
     )?;
     let address = reference(
         text(&i["address"], &format!("{at}.address"))?,
@@ -489,7 +512,7 @@ fn issue(value: &Value, at: &str) -> Read<Issue> {
             .map(|v| text(v, at).map(str::to_owned))
             .transpose()
     };
-    Ok(Issue {
+    let read = Issue {
         address,
         pull_request: boolean(&i["pull_request"], &format!("{at}.pull_request"))?,
         state,
@@ -499,8 +522,12 @@ fn issue(value: &Value, at: &str) -> Read<Issue> {
             &i["author_association"],
             &format!("{at}.author_association"),
         )?,
-        body: slot(&i["body"], &format!("{at}.body"), body)?,
-    })
+    };
+    let body = i
+        .get("body")
+        .map(|b| slot(b, &format!("{at}.body"), body))
+        .transpose()?;
+    Ok((read, body))
 }
 
 fn body(value: &Value, at: &str) -> Read<Body> {
