@@ -840,6 +840,8 @@ class SchemaValidOnMalformedInput(Harness):
             "null": {"confidence": None},
             "isHard a string": {"isHard": "no"},
             "isHard a number": {"isHard": 0},
+            "an integer too large for a float": {"confidence": 10 ** 400},
+            "a negative integer too large for a float": {"confidence": -(10 ** 400)},
         }
         for label, edge in bad.items():
             with self.subTest(label):
@@ -853,6 +855,16 @@ class SchemaValidOnMalformedInput(Harness):
                 self.assertFalse(errors[0]["retryable"])
                 self.assertIn("'B'", errors[0]["problem"])
                 self.assertEqual(pl.of(out, "taskalisk.plan"), [], "a plan line was written before the refusal")
+
+    def test_a_spec_nested_too_deeply_to_parse_is_unreadable(self):
+        """No spec reachable through --verify-dag ends in uncaught.exception (flyingrobots/taskalisk#74)."""
+        spec = self.tmp / "dag.json"
+        spec.write_text("[" * 100_000 + "]" * 100_000)
+        p = self.run_dag(plan_state(), "--verify-dag", str(spec))
+        out, err = self.streams(p)  # every line validates
+        self.assertEqual(p.returncode, 2, p.stderr[-400:])
+        self.assertEqual([e["code"] for e in pl.of(err, "parley.error")], ["dag_spec.unreadable"])
+        self.assertEqual(pl.of(out, "taskalisk.plan"), [])
 
     def test_a_good_edge_object_still_compiles(self):
         for edge in ({"isHard": False, "confidence": 0.4}, {"isHard": True, "confidence": 1}, {"confidence": 0.9}, {}):
