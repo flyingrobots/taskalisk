@@ -228,7 +228,7 @@ schema version under `Unreleased` is a draft and may change in place.
   them. Owner, repository and issue number not found are not told apart and get no code: bundle
   rule OB8 records a reference that resolves to no issue as one unavailable slot with a free-text
   reason, and profile rule D10 makes the run incomplete, with no findings. Telling them apart needs
-  a change to the issue-dag specification first.
+  a change to the issue-dag specification first, which is flyingrobots/taskalisk#126.
 
 - **A provenance check for the vendored Parley writer** (flyingrobots/taskalisk#77).
   `scripts/check_vendored_writer.py` fetches the writer from flyingrobots/parley at the pinned

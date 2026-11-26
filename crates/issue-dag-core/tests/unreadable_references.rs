@@ -12,7 +12,8 @@
 //! not told apart: bundle rule OB8 records a reference that resolves to no
 //! issue as one unavailable slot whose reason is free text, and profile rule
 //! D10 makes the run incomplete, with no findings (F2). The last tests pin
-//! that, so a change to it is deliberate.
+//! that, so a change to it is deliberate: flyingrobots/taskalisk#126 specifies
+//! the structured reason that will tell them apart.
 
 use std::collections::{BTreeMap, BTreeSet};
 

@@ -71,8 +71,9 @@ makes the run incomplete, and the run reports the reason recorded for it. The
 bundle records that reason as free text
 ([OB8](../../../tests/fixtures/issue-dag/corpus/bundle.md#2-observations)), so
 the crate does not tell an owner, a repository or an issue number that was not
-found apart. The test `crates/issue-dag-core/tests/unreadable_references.rs`
-pins all four cases.
+found apart; that needs a change to the specification first, which is
+flyingrobots/taskalisk#126 (decision D17). The test
+`crates/issue-dag-core/tests/unreadable_references.rs` pins all four cases.
 
 ## Entries
 
