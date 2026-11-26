@@ -1,0 +1,13 @@
+{
+  "cites": [
+    "C7",
+    "P3",
+    "V1",
+    "V12"
+  ],
+  "id": "document/c7-repeated-dag-then-other-version",
+  "kind": "normative",
+  "level": "document",
+  "source": "constructed from the rule text",
+  "title": "A repeated `.dag` with the accepted version first is C7 alone"
+}

@@ -1,0 +1,16 @@
+{
+  "cites": [
+    "C4",
+    "C7"
+  ],
+  "disagreement": {
+    "classification": "defect",
+    "difference": 4,
+    "note": "the compiler splits the line at the CR and reports C6 and C7"
+  },
+  "id": "document/c7-repeated-dag-under-c4",
+  "kind": "normative",
+  "level": "document",
+  "source": "constructed from the rule text",
+  "title": "A body that fails C4 is not read into lines: a repeated `.dag` leaves C4 the only violation"
+}

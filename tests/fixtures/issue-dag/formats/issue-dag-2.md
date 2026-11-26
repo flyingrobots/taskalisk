@@ -91,7 +91,25 @@ other than a line end. The key starts in the first column. The value is
 trimmed. A line that has another form makes the document invalid.
 
 **C7. Duplicate keys.** If two entry lines have the same key, the document is
-invalid. This applies to free keys as well as `.` keys.
+invalid. This applies to free keys as well as `.` keys. Such a key is
+*repeated*. A repeated key is present, but it has no value, and no rule of
+sections 3 to 5 judges it, its values or a requirement that depends on its
+value: it receives no label from those sections, whatever its lines hold and in
+whatever order they come. So a repeated format key outside M2 is labelled C7,
+not V2; a repeated key that a rule requires is present, so it is not absent
+under that rule; a repeated key that a rule forbids, such as `.children` on a
+task, is labelled C7, not V5 or V6; a repeated `.kind` leaves the kind unknown,
+so V5 and V6 are not applied; and a repeated `.id` leaves the identity unknown,
+so V3, V7 and X1 are not applied. Where C7 and a rule of sections 3 to 5 would
+both judge a repeated key, C7 governs. Each line of a repeated key is still a
+line of the block, and is still labelled under C6 and C8 when it fails them.
+
+A repeated `.dag` leaves the document's version unknown, so no format
+applies to it: C7 is the document's only violation, and no other rule,
+including C6 and C8 on its other lines, is applied to it. Every other
+repeated key is judged key by key as above. A document that fails C4 is not
+read into lines, so C4 remains its only violation even when a key would be
+repeated.
 
 **C8. Values.** A trimmed value is a list or a scalar.
 
@@ -103,7 +121,8 @@ invalid. This applies to free keys as well as `.` keys.
   quoted or not. An entry line whose value begins with `[` and does not end
   with `]` is still an entry line, so C7 applies to its key, but it gives its
   key no value: for the rules of sections 3 to 5 the key is absent unless
-  another entry line gives it a value.
+  another entry line gives it a value, or the key is repeated (C7), in which
+  case it is present.
 - Otherwise it is a scalar. A scalar is unquoted under C9. If the scalar was
   not quoted and consists of an optional `-` followed by one or more ASCII
   digits, it is an *integer*, whose value is the decimal number it spells.
@@ -177,7 +196,8 @@ Each failure is a *violation*.
 
 **V1. Version.** `.dag` MUST be present, and its value MUST be the string
 `issue-dag/2`. A document whose `.dag` names another version is judged under
-the [version policy](../versions.md), not by this document.
+the [version policy](../versions.md), not by this document. A document whose
+`.dag` is repeated names no version; C7 is its only violation.
 
 **V2. Unknown keys.** A format key that is not listed in M2 is a violation.
 
@@ -217,18 +237,26 @@ These keys are valid on a container as well as on a task.
 in one list. It does not make the document invalid.
 
 **V10. Advisory.** A `.size_hours` above 8 is reported as a warning: the
-task is probably not atomic. A warning never affects validity.
+task is probably not atomic. A warning never affects validity. Warnings are
+reported only for a document that has no violation at all, including the
+violation of profile rule X1 when the document is judged with its issue's
+address: a document with any violation has violations and no warnings,
+whatever its `.size_hours`.
 
 **V11. No trust.** No format key carries trust, approval, a signature or an
 identity of a person. Whether an issue may be read as a document at all is
 decided outside the document; see the planning profile.
 
 **V12. Labels of violations.** A document receives one violation for each
-requirement it fails (except under C4, which stops the reading), and each
-violation carries the label of exactly one rule, the rule that states the
-requirement most specifically:
+requirement it fails (except under C4, which stops the reading, and under C7
+for a repeated `.dag`, which stops the judging), and each violation carries
+the label of exactly one rule, the rule that states the requirement most
+specifically:
 
 - a line of the block that fails C4, C6, C7 or C8 is labelled with that rule;
+- a repeated key is labelled C7 and receives no label from the bullets
+  below, which apply only to keys that are not repeated (C7); its lines are
+  still labelled under C6 and C8;
 - a format key outside M2 is labelled V2;
 - an absent `.dag`, or a `.dag` that is not a string, is labelled V1. A
   `.dag` string other than `issue-dag/2` is labelled P3 when it is a format
