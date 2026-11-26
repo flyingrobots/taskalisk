@@ -28,15 +28,40 @@ mod read;
 mod run;
 
 use std::cell::RefCell;
+use std::collections::BTreeMap;
 use std::ffi::{OsStr, OsString};
+use std::path::{Path, PathBuf};
 
 use issue_dag_core::{
     Body, CodeownersFile, Forge, Issue, IssueRef, Lookup, Observations, Observed, PullRequest, Repo,
 };
 
 pub use error::GhError;
+use read::Label;
 pub use read::{CODEOWNERS_PATHS, EDIT_HISTORY_QUERY};
 use run::Runner;
+
+/// What the reads returned only to be shown, never to plan from: the title
+/// and web URL of each issue read, under the reference read. Kept from the
+/// answers the forge already has, so showing them costs no query.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Shown {
+    /// The title of each issue read, as GitHub returned it.
+    pub titles: BTreeMap<IssueRef, String>,
+    /// The web URL (`html_url`) of each issue read.
+    pub urls: BTreeMap<IssueRef, String>,
+}
+
+impl Shown {
+    fn keep(&mut self, reference: &IssueRef, label: Label) {
+        if let Some(title) = label.title {
+            self.titles.insert(reference.clone(), title);
+        }
+        if let Some(url) = label.url {
+            self.urls.insert(reference.clone(), url);
+        }
+    }
+}
 
 /// The bounds a read refuses to pass. A list that fills its limit may be
 /// truncated, and is an error (threat model C15).
@@ -70,6 +95,7 @@ pub struct GhForge {
     limits: Limits,
     read: RefCell<Observations>,
     failures: RefCell<Vec<GhError>>,
+    shown: RefCell<Shown>,
 }
 
 impl GhForge {
@@ -82,11 +108,44 @@ impl GhForge {
             runner: Runner {
                 program: OsString::from("gh"),
                 env: Vec::new(),
+                dir: None,
             },
             limits: Limits::default(),
             read: RefCell::new(Observations::default()),
             failures: RefCell::new(Vec::new()),
+            shown: RefCell::new(Shown::default()),
         }
+    }
+
+    /// Runs `gh` in `dir`, as the Python compiler runs it in `--repo`, so
+    /// that `gh` sees that repository's host and remotes.
+    #[must_use]
+    pub fn current_dir(mut self, dir: impl Into<PathBuf>) -> Self {
+        self.runner.dir = Some(dir.into());
+        self
+    }
+
+    /// The repository `gh` resolves from `dir` (`gh repo view --json
+    /// nameWithOwner`): the home repository of a run on `--repo dir`. Run
+    /// with this forge's program and environment, before a forge for that
+    /// home exists.
+    ///
+    /// # Errors
+    ///
+    /// A [`GhError`] when `gh` fails or does not answer `owner/name`.
+    pub fn repository_of(&self, dir: &Path) -> Result<Repo, GhError> {
+        let runner = Runner {
+            dir: Some(dir.to_owned()),
+            ..self.runner.clone()
+        };
+        read::repository(&runner)
+    }
+
+    /// The title and URL of every issue read so far, to be shown: never an
+    /// input to a plan. Makes no query.
+    #[must_use]
+    pub fn shown(&self) -> Shown {
+        self.shown.borrow().clone()
     }
 
     /// Runs `program` in place of `gh`: a name looked up on `PATH`, or a path.
@@ -153,12 +212,16 @@ impl Forge for GhForge {
         let listed = read::home_open_issues(&self.runner, &self.home, self.limits).map(|listed| {
             // Each listed issue is read: its own lookup makes no query.
             let mut read = self.read.borrow_mut();
+            let mut shown = self.shown.borrow_mut();
             listed
                 .into_iter()
-                .map(|(reference, issue)| {
-                    read.issues
-                        .entry(reference.clone())
-                        .or_insert(Observed::Value(issue));
+                .map(|(reference, issue, label)| {
+                    if let std::collections::btree_map::Entry::Vacant(slot) =
+                        read.issues.entry(reference.clone())
+                    {
+                        slot.insert(Observed::Value(issue));
+                        shown.keep(&reference, label);
+                    }
                     reference
                 })
                 .collect()
@@ -186,7 +249,11 @@ impl Forge for GhForge {
         let cached = self.read.borrow().issues.get(reference).cloned();
         let slot = cached.unwrap_or_else(|| {
             let slot = match read::issue(&self.runner, reference) {
-                Ok(slot) => slot,
+                Ok(Observed::Value((issue, label))) => {
+                    self.shown.borrow_mut().keep(reference, label);
+                    Observed::Value(issue)
+                }
+                Ok(Observed::Unavailable(why)) => Observed::Unavailable(why),
                 Err(error) => self.settle(Err(error)),
             };
             self.read

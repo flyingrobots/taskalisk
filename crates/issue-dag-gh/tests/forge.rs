@@ -865,3 +865,62 @@ fn c15_a_run_over_strangers_listed_issues_makes_no_query_beyond_the_lists() {
         Ok(outcome)
     );
 }
+
+#[test]
+fn the_titles_and_urls_read_are_kept_to_be_shown_without_another_query() {
+    let fake = Fake::new(&state());
+    let forge = fake.forge("o/r");
+    assert_fixture(&forge);
+    let calls = fake.calls().len();
+    let shown = forge.shown();
+    assert_eq!(fake.calls().len(), calls, "showing makes no query");
+    // Every issue read, listed or looked up, under the reference read.
+    assert_eq!(
+        shown.titles.get(&reference("o/r#1")).map(String::as_str),
+        Some("t")
+    );
+    assert_eq!(
+        shown.urls.get(&reference("o/r#2")).map(String::as_str),
+        Some("https://github.com/o/r/issues/2")
+    );
+    // A transferred issue is shown at its new address's URL, under the reference read.
+    assert_eq!(
+        shown.urls.get(&reference("o/r#5")).map(String::as_str),
+        Some("https://github.com/o/s/issues/9")
+    );
+    // An issue that could not be read has nothing to show.
+    assert!(!shown.titles.contains_key(&reference("o/r#404")));
+    assert_eq!(shown.titles.len(), 5);
+    assert_eq!(shown.urls.len(), 5);
+}
+
+#[test]
+fn the_home_repository_is_the_one_gh_resolves_from_a_directory() {
+    let fake = Fake::new(&state());
+    let forge = fake.forge("o/r");
+    let dir = std::env::temp_dir();
+    assert_eq!(forge.repository_of(&dir), Ok(repo("o/r")));
+    assert_eq!(
+        fake.calls().last().cloned(),
+        Some(vec![
+            "repo".to_owned(),
+            "view".to_owned(),
+            "--json".to_owned(),
+            "nameWithOwner".to_owned(),
+            "--jq".to_owned(),
+            ".nameWithOwner".to_owned(),
+        ])
+    );
+}
+
+#[test]
+fn a_home_repository_gh_cannot_resolve_is_an_error() {
+    let mut broken = state();
+    broken["home"] = json!("not a repository");
+    let fake = Fake::new(&broken);
+    let forge = fake.forge("o/r");
+    let error = forge
+        .repository_of(&std::env::temp_dir())
+        .expect_err("not owner/repo");
+    assert_eq!(error.code(), "gh.response_invalid");
+}

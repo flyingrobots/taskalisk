@@ -1,6 +1,7 @@
 //! Running `gh`: an argument vector, never a shell string.
 
 use std::ffi::OsString;
+use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
 use crate::error::{GhError, scrub, secrets};
@@ -26,6 +27,8 @@ const FORCED: [(&str, &str); 4] = [
 pub struct Runner {
     pub program: OsString,
     pub env: Vec<(OsString, OsString)>,
+    /// The working directory `gh` runs in; this process's when `None`.
+    pub dir: Option<PathBuf>,
 }
 
 /// A `gh` run that did not succeed.
@@ -56,6 +59,9 @@ impl Runner {
             command.env_remove(name);
         }
         command.envs(FORCED).stdin(Stdio::null());
+        if let Some(dir) = &self.dir {
+            command.current_dir(dir);
+        }
         let output = command.output().map_err(|error| {
             failed(format!(
                 "{} could not be run: {error}",
