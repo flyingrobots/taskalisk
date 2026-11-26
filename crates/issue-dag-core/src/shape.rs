@@ -7,7 +7,7 @@
 //! warnings never make a run invalid. [`shape_warnings`] reads them from a
 //! [`Graph`] that [`crate::plan`] returned.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use crate::finding::{Code, Finding, Severity};
 use crate::plan::{Edge, Graph, Indexed};
@@ -58,6 +58,9 @@ macro_rules! shape_warnings {
 }
 
 shape_warnings! {
+    /// An open node with no edge in or out, in a plan of two or more.
+    IsolatedTask => "taskalisk.isolated-task",
+        "the open task has no .blocked_by edge in or out: its prerequisites may not be recorded yet",
     /// An edge the transitive reduction removes (profile rule G5).
     RedundantEdge => "taskalisk.redundant-edge",
         "the .blocked_by edge is implied by a path of other edges; the reduction removes it",
@@ -79,12 +82,17 @@ pub enum Detail {
 pub struct ShapeFinding {
     /// The finding: its subject, code, the reference it concerns, message.
     pub finding: Finding,
-    /// What it measured.
-    pub detail: Detail,
+    /// What it measured, or `None` when the finding says it all.
+    pub detail: Option<Detail>,
 }
 
 /// The shape warnings of a plan's graph, sorted by their findings.
 ///
+/// - `taskalisk.isolated-task`, for each open node that no edge of the graph
+///   enters or leaves, when the graph has at least two open nodes: a plan of
+///   a single task draws none. Edges are those between open nodes (G3), so a
+///   task whose prerequisites are all complete is isolated, as the Python
+///   compiler's isolated nodes are. It has no detail.
 /// - `taskalisk.redundant-edge`, for each edge the reduction removes (G5):
 ///   the subject is the dependent, whose `.blocked_by` declares the edge,
 ///   the finding concerns the prerequisite, and the detail is the node the
@@ -96,11 +104,33 @@ pub fn shape_warnings(graph: &Graph) -> Vec<ShapeFinding> {
     for edge in &graph.redundant {
         found.push(ShapeFinding {
             finding: finding(ShapeWarning::RedundantEdge, &edge.to, Some(&edge.from)),
-            detail: Detail::ImpliedVia(via.of_edge(edge)),
+            detail: Some(Detail::ImpliedVia(via.of_edge(edge))),
         });
     }
+    isolated(graph, &mut found);
     found.sort_by(|a, b| a.finding.cmp(&b.finding));
     found
+}
+
+/// `taskalisk.isolated-task`: each open node no edge joins, in a graph of
+/// two or more open nodes.
+fn isolated(graph: &Graph, found: &mut Vec<ShapeFinding>) {
+    let open: Vec<&IssueRef> = graph
+        .nodes
+        .iter()
+        .filter(|(_, node)| !node.complete)
+        .map(|(id, _)| id)
+        .collect();
+    if open.len() < 2 {
+        return;
+    }
+    let joined: BTreeSet<&IssueRef> = graph.edges.iter().flat_map(|e| [&e.from, &e.to]).collect();
+    for id in open.into_iter().filter(|id| !joined.contains(id)) {
+        found.push(ShapeFinding {
+            finding: finding(ShapeWarning::IsolatedTask, id, None),
+            detail: None,
+        });
+    }
 }
 
 /// The finding of `warning` for `subject`, about `concerns`.

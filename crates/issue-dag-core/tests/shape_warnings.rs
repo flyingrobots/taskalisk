@@ -25,9 +25,24 @@ fn task(id: u32, blocked_by: &[u32], extra: &str) -> String {
     )
 }
 
+/// A container document for `o/r#<id>` with `children`.
+fn container(id: u32, children: &[u32]) -> String {
+    let refs: Vec<String> = children.iter().map(|n| format!("o/r#{n}")).collect();
+    format!(
+        "```yaml\n.dag: issue-dag/2\n.id: o/r#{id}\n.kind: container\n.children: [{}]\n```\n",
+        refs.join(", ")
+    )
+}
+
 /// The graph of a run over the open home issues `bodies`, by number, each
 /// written by the owner; the run must give a plan.
 fn graph(bodies: &[(u32, String)]) -> Graph {
+    graph_closing(bodies, &[])
+}
+
+/// As [`graph`], with the issues numbered in `closed` closed: they are not
+/// seeds, and are read only when a document names them.
+fn graph_closing(bodies: &[(u32, String)], closed: &[u32]) -> Graph {
     let owner = Actor {
         login: "o".to_owned(),
         actor_type: "User".to_owned(),
@@ -36,6 +51,7 @@ fn graph(bodies: &[(u32, String)]) -> Graph {
         home_open_issues: Some(Observed::Value(
             bodies
                 .iter()
+                .filter(|(n, _)| !closed.contains(n))
                 .map(|(n, _)| reference(&format!("o/r#{n}")))
                 .collect(),
         )),
@@ -49,7 +65,11 @@ fn graph(bodies: &[(u32, String)]) -> Graph {
             Observed::Value(Issue {
                 address: address.clone(),
                 pull_request: false,
-                state: IssueState::Open,
+                state: if closed.contains(n) {
+                    IssueState::Closed
+                } else {
+                    IssueState::Open
+                },
                 state_reason: None,
                 author: Some(owner.clone()),
                 author_association: Some("OWNER".to_owned()),
@@ -109,7 +129,7 @@ fn every_shape_warning_is_a_catalogued_warning() {
 /// The detail of a redundant-edge warning: the node it is implied via.
 fn via(warning: &ShapeFinding) -> &IssueRef {
     match &warning.detail {
-        Detail::ImpliedVia(node) => node,
+        Some(Detail::ImpliedVia(node)) => node,
         other => panic!("not a redundant edge's detail: {other:?}"),
     }
 }
@@ -162,7 +182,7 @@ fn a_redundant_edge_gives_one_warning_naming_it_and_its_implied_via() {
     assert_eq!(warning.finding.subject, r(3));
     assert_eq!(warning.finding.concerns, Some(r(1)));
     assert_eq!(warning.finding.severity(), Severity::Warning);
-    assert_eq!(warning.detail, Detail::ImpliedVia(r(2)));
+    assert_eq!(warning.detail, Some(Detail::ImpliedVia(r(2))));
 }
 
 /// #62: the same plan, reduced, gives no redundant-edge warning.
@@ -241,4 +261,96 @@ fn perf_redundant_edge_warnings_of_a_chain_with_a_hub_take_under_a_second() {
     let took = start.elapsed();
     assert!(took < std::time::Duration::from_secs(1), "took {took:?}");
     check_chain_with_a_hub(&found);
+}
+
+/// #47: `o/r#3` has no edge in or out while `o/r#1` and `o/r#2` are joined,
+/// so `o/r#3`, and only it, is isolated. The run is still a plan: the
+/// warning leaves it valid.
+#[test]
+fn an_isolated_open_task_gives_one_warning_naming_it() {
+    let found = shape_warnings(&graph(&[
+        (1, task(1, &[], "")),
+        (2, task(2, &[1], "")),
+        (3, task(3, &[], "")),
+    ]));
+    let isolated = of(&found, ShapeWarning::IsolatedTask);
+    assert_eq!(isolated.len(), 1, "{found:?}");
+    let warning = isolated[0];
+    assert_eq!(warning.finding.subject, reference("o/r#3"));
+    assert_eq!(warning.finding.concerns, None);
+    assert_eq!(warning.finding.severity(), Severity::Warning);
+    assert_eq!(warning.detail, None);
+}
+
+/// #47: the same task with one edge, in or out, draws no warning.
+#[test]
+fn the_same_task_with_one_edge_gives_no_isolated_task_warning() {
+    // An edge in: 3 is blocked by 2. An edge out: 2 is blocked by 3.
+    for (second, third) in [
+        (task(2, &[1], ""), task(3, &[2], "")),
+        (task(2, &[1, 3], ""), task(3, &[], "")),
+    ] {
+        let found = shape_warnings(&graph(&[(1, task(1, &[], "")), (2, second), (3, third)]));
+        assert!(
+            of(&found, ShapeWarning::IsolatedTask).is_empty(),
+            "{found:?}"
+        );
+    }
+}
+
+/// #47: a plan of a single task draws no warning.
+#[test]
+fn a_plan_of_a_single_task_gives_no_isolated_task_warning() {
+    let found = shape_warnings(&graph(&[(1, task(1, &[], ""))]));
+    assert!(
+        of(&found, ShapeWarning::IsolatedTask).is_empty(),
+        "{found:?}"
+    );
+}
+
+/// The subjects of the isolated-task warnings among `found`.
+fn isolated(found: &[ShapeFinding]) -> Vec<IssueRef> {
+    of(found, ShapeWarning::IsolatedTask)
+        .into_iter()
+        .map(|f| f.finding.subject.clone())
+        .collect()
+}
+
+/// #47: two open tasks with no edge between them are both isolated: a plan
+/// of two open nodes is checked.
+#[test]
+fn two_unconnected_open_tasks_give_two_warnings() {
+    let found = shape_warnings(&graph(&[(1, task(1, &[], "")), (2, task(2, &[], ""))]));
+    assert_eq!(isolated(&found), [r(1), r(2)]);
+}
+
+/// #47: open o/r#2 is blocked by closed o/r#1, and open o/r#3 stands alone.
+/// An edge to a closed prerequisite is satisfied, not an edge of the graph,
+/// so o/r#2 is isolated as o/r#3 is; the closed o/r#1 is not an open node and
+/// draws none.
+#[test]
+fn a_closed_prerequisite_neither_joins_nor_counts() {
+    let found = shape_warnings(&graph_closing(
+        &[
+            (1, task(1, &[], "")),
+            (2, task(2, &[1], "")),
+            (3, task(3, &[], "")),
+        ],
+        &[1],
+    ));
+    assert_eq!(isolated(&found), [r(2), r(3)]);
+}
+
+/// #47: an open issue without frontmatter that only a container names is an
+/// opaque node; with no edge in or out it is isolated, as the Python
+/// compiler's isolated open nodes include opaque ones.
+#[test]
+fn an_opaque_node_only_a_container_names_is_isolated() {
+    let found = shape_warnings(&graph(&[
+        (1, task(1, &[], "")),
+        (2, task(2, &[1], "")),
+        (5, "Plain body.".to_owned()),
+        (9, container(9, &[2, 5])),
+    ]));
+    assert_eq!(isolated(&found), [r(5)]);
 }

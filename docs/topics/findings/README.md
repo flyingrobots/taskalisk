@@ -670,6 +670,25 @@ observation bundle records none.
 To fix: if the title names two outcomes, split the task. If `and` is part of
 one name, rephrase the title or put the name in a code span.
 
+### `taskalisk.isolated-task`
+
+**Severity:** warning. **Rule:** [Isolated nodes](../../../skills/taskalisk/SKILL.md#core-doctrine), Core Doctrine 4 of the skill.
+
+An open node of the plan's graph has no edge in or out: no open task is
+blocked by it, and it is blocked by no open node. Edges are those between
+open nodes, so a task whose prerequisites have all closed counts as isolated,
+as the Python compiler's `isolated_open_nodes` metric counts it. A plan with
+fewer than two open nodes draws no warning: a single task has nothing to be
+joined to.
+
+In a plan where `o/r#2` is blocked by `o/r#1` and `o/r#3` names no
+prerequisite and is named by none, `o/r#3` receives `taskalisk.isolated-task`.
+
+To fix: read the task's body, review follow-ups and unmerged branches for a
+real prerequisite or dependent, and propose the edge. Many isolated tasks
+mean the dependencies have not been recorded yet, not that the work is
+independent. A task that is truly independent can keep the warning.
+
 ### `taskalisk.redundant-edge`
 
 **Severity:** warning. **Rule:** [Transitive reduction](../../../skills/taskalisk/SKILL.md#core-doctrine), Core Doctrine 4 of the skill.

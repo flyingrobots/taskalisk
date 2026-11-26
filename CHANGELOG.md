@@ -267,7 +267,12 @@ schema version under `Unreleased` is a draft and may change in place.
   prerequisite, in reference text order, that reaches the dependent, the Python compiler's
   `implied_via` for the same edge, `edge.redundant`. The descendant sets are built once, so the
   4,998 redundant edges of a 5,000-task chain whose every task is also blocked by its first take
-  well under a second; a `perf_` test guards it, and the CI perf guard now expects 7.
+  well under a second; a `perf_` test guards it, and the CI perf guard now expects 8.
+- **A warning for an open task with no edges** (flyingrobots/taskalisk#47). `shape_warnings` gains
+  `taskalisk.isolated-task`, given once per open node with no edge in or out, when the plan has at
+  least two open nodes; a plan of a single task draws none. Edges are those between open nodes, as
+  for the Python compiler's `isolated_open_nodes` metric. `ShapeFinding::detail` becomes an
+  `Option<Detail>`: `None` for a warning that measures nothing beyond its finding.
 
 - **Why a reference could not be read, in part** (flyingrobots/taskalisk#45). The test
   `unreadable_references` pins the three causes today's observations tell apart: outside the read
