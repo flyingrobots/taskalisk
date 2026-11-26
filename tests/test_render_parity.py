@@ -1,0 +1,72 @@
+"""The fixtures of the Rust renderer's parity test (crates/taskalisk/tests/parity.rs).
+
+- `tests/fixtures/render/python/` is what `tests/capture_render_parity.py` writes now: the
+  Python's result lines for each agreed graph case of the corpus. A change to the compiler's
+  output fails here until the fixtures are recaptured.
+- `tests/fixtures/render/rust/` is the Rust rendering of the same cases, which the Rust test
+  holds byte for byte. Each of its lines must validate against the exact schema its `_schema`
+  names, once the writer's envelope (`t`, `seq`, `run`) is added, except that a field the Rust
+  renderer does not write yet (RUST_GAPS, flyingrobots/taskalisk#58) may be missing.
+"""
+import json
+import re
+import unittest
+
+import capture_render_parity as capture
+import parley_lines as pl
+from parley_emit import validate_line
+
+RUST = capture.FIXTURES / "rust"
+
+NODE_GAPS = {"title", "url", "type", "workstream", "size_hours", "linked_open_prs", "recoverable_branches"}
+
+# {schema id: the paths that may be missing}; `*` is any list index. A finding's gaps depend on its code.
+RUST_GAPS = {
+    "taskalisk.plan": {"/ is missing artifact_hash", "/source/trust is missing codeowners",
+                       "/source/trust is missing codeowners_teams_not_expanded"},
+    "taskalisk.frontier_node": {f"/ is missing {f}" for f in NODE_GAPS},
+    "taskalisk.node": {f"/ is missing {f}" for f in NODE_GAPS},
+    "taskalisk.batch": {f"/members/* is missing {f}" for f in ("title", "url", "workstream")},
+}
+FINDING_GAPS = {
+    "issue.untrusted": {f"/detail is missing {f}" for f in ("url", "state", "author", "reasons", "referenced_by")},
+}
+
+
+def allowed(line):
+    if line["_schema"]["id"] == "taskalisk.finding":
+        return FINDING_GAPS.get(line["code"], set())
+    return RUST_GAPS.get(line["_schema"]["id"], set())
+
+
+class PythonFixtures(unittest.TestCase):
+    def test_fixtures_are_what_the_compiler_writes_now(self):
+        expected = capture.expected_fixtures()
+        on_disk = {p.stem: p.read_text() for p in (capture.FIXTURES / "python").glob("*.jsonl")}
+        self.assertEqual(sorted(on_disk), sorted(expected), "recapture: python3 tests/capture_render_parity.py")
+        stale = [name for name in expected if on_disk[name] != expected[name]]
+        self.assertEqual(stale, [], "recapture: python3 tests/capture_render_parity.py")
+
+
+class RustRecordings(unittest.TestCase):
+    def test_one_recording_per_python_fixture(self):
+        self.assertEqual(sorted(p.stem for p in RUST.glob("*.jsonl")),
+                         sorted(p.stem for p in (capture.FIXTURES / "python").glob("*.jsonl")))
+
+    def test_every_line_validates_but_for_the_declared_gaps(self):
+        checked = 0
+        for path in sorted(RUST.glob("*.jsonl")):
+            for n, line in enumerate(pl.parse(path.read_text(), path.name), 1):
+                for key in ("t", "seq", "run"):
+                    self.assertNotIn(key, line, f"{path.name}:{n}: the envelope is the writer's")
+                full = {**line, "t": 0, "seq": n, "run": "parity"}
+                result = validate_line(full, pl.TOOL_SCHEMAS)
+                errors = {re.sub(r"/\d+", "/*", str(e)) for e in result.errors}
+                self.assertFalse(result.unsupported, f"{path.name}:{n}: {result.unsupported}")
+                self.assertLessEqual(errors, allowed(line), f"{path.name}:{n}: {line}")
+                checked += 1
+        self.assertGreater(checked, 1000)
+
+
+if __name__ == "__main__":
+    unittest.main()

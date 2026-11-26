@@ -1,0 +1,18 @@
+[package]
+name = "taskalisk"
+version = "0.1.0"
+description = "Taskalisk: renders a plan computed by issue-dag-core to the JSON lines the Taskalisk skill reads. No I/O."
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+issue-dag-core = { path = "../issue-dag-core" }
+serde_json = "1"
+
+[dev-dependencies]
+issue-dag-bundle = { path = "../issue-dag-bundle" }
+
+[lints]
+workspace = true
