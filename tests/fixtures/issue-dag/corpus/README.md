@@ -96,11 +96,16 @@ holds every slot its run reads (OB14). It may also hold:
   `["permissions", "o/r", "carol"]`;
 - `unavailable`, for an incomplete run, in normative cases only: the reason
   recorded in the slot the run reports (OB16);
+- `cause`, for an incomplete run, in normative cases only: the label of the
+  profile rule of the cause the run reports with that reason (OB16, OB17),
+  `D11`, `D12` or `D13`, or null when it reports no cause;
 
 - `findings`: the violations, unknown prerequisites, cyclic nodes and
   warnings of the run, each `{"subject", "rule"}` with `concerns` when the
   rule concerns a reference: the issue that receives it, the label, and the
-  reference (profile rule F5). They form a set;
+  reference (profile rule F5). In a normative case they form a set, each
+  finding once. A characterisation case lists an unknown prerequisite (X3)
+  as often as the implementation reports it, and every other finding once;
 - `nodes`: each node, `{"id", "complete", "opaque", "untrusted"}`, with
   `status` (rule S2) for an open node;
 - `containers`, each with its `children` (rule W1); `unmodeled` and
@@ -119,7 +124,7 @@ holds every slot its run reads (OB14). It may also hold:
   sorts before `gpu`.
 
 A rejected run has only `outcome`, and an incomplete run no member but
-`outcome` and `unavailable` (rule F2). An unusable run has no member but
+`outcome`, `unavailable` and `cause` (rule F2). An unusable run has no member but
 `outcome` and `missing` (bundle rules OB5 and OB16).
 
 **CC7. Labels.** The labels in `violations`, `warnings` and `findings` are
@@ -131,7 +136,9 @@ the ones profile rule F5 states. The corpus defines no label of its own.
 implementation's result equals the expected result. A normative case passes
 when every member of the expected result equals the implementation's; a
 member that the expected result does not hold is not asserted. An invalid
-run's graph is not asserted by normative cases (rule F3).
+run's graph is not asserted by normative cases (rule F3). Two lists of
+`findings` are equal when they hold the same findings, each as often, in any
+order, so a finding reported twice differs from one reported once.
 
 ## Digest
 

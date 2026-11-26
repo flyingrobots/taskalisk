@@ -35,6 +35,8 @@ DOCUMENT_RESULTS = ("valid", "invalid", "no-document", "error")
 GRAPH_OUTCOMES = ("planned", "invalid", "incomplete", "rejected", "unusable", "error")
 CASE_KEYS = {"id", "level", "kind", "title", "cites", "source"}
 CASE_OPTIONAL = {"disagreement", "normative_case"}
+# CC6: the cause an incomplete run reports, the label of profile rule D11, D12 or D13, or null.
+CAUSES = ("D11", "D12", "D13", None)
 
 
 def _load(path: pathlib.Path, problems: list[str], name: str) -> Any:
@@ -54,10 +56,11 @@ def _labels_in(expected: dict[str, Any]) -> list[str]:
 
 
 def _comparable(key: str, value: Any) -> Any:
-    """A member of an expected result as CC6 defines it: findings are a set, compared in a canonical
-    order; every other member, such as ready, scores and batch, is compared as written."""
+    """A member of an expected result as CC8 compares it: findings in a canonical order, each as often
+    as listed, so a finding reported twice differs from one reported once; every other member, such
+    as ready, scores and batch, is compared as written."""
     if key == "findings" and isinstance(value, list):
-        return sorted({json.dumps(item, sort_keys=True) for item in value})
+        return sorted(json.dumps(item, sort_keys=True) for item in value)
     return value
 
 
@@ -139,6 +142,10 @@ def check_case(level: str, where: pathlib.Path, labels: dict[str, str], diffs: d
             p.append(f"{name}: only a normative case and its twin may expect an unusable bundle (CC6)")
         if "unavailable" in expected and meta["kind"] != "normative":
             p.append(f"{name}: only a normative case may expect the unavailable slot reported (CC6)")
+        if "cause" in expected and meta["kind"] != "normative":
+            p.append(f"{name}: only a normative case may expect the cause reported (CC6)")
+        elif "cause" in expected and expected["cause"] not in CAUSES:
+            p.append(f"{name}: expects cause {expected['cause']!r}, which is not one of {', '.join(c for c in CAUSES if c)} or null (CC6)")
         try:
             actual = forge.replay(bundle) if may_be_unusable else forge.run_graph(bundle)
         except forge.BundleIncomplete as exc:

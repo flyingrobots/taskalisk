@@ -1,0 +1,20 @@
+{
+  "cites": [
+    "D13",
+    "D10",
+    "OB17",
+    "OB16",
+    "F2"
+  ],
+  "disagreement": {
+    "classification": "compatibility-exception",
+    "difference": 26,
+    "note": "the compiler reports an incomplete run without the reason recorded in any slot, and no cause (OB17)"
+  },
+  "id": "graph/d13-issue-number-not-found--python",
+  "kind": "characterisation",
+  "level": "graph",
+  "normative_case": "graph/d13-issue-number-not-found",
+  "source": "the Python compiler, on the bundle of graph/d13-issue-number-not-found",
+  "title": "Where graph/d13-issue-number-not-found differs: the compiler reports an incomplete run without the reason recorded in any slot, and no cause (OB17)"
+}

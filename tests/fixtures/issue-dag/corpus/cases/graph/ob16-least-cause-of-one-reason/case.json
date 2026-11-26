@@ -1,0 +1,18 @@
+{
+  "cites": [
+    "OB16",
+    "OB17",
+    "D11",
+    "D12"
+  ],
+  "disagreement": {
+    "classification": "compatibility-exception",
+    "difference": 26,
+    "note": "the compiler reports an incomplete run without the reason recorded in any slot, and no cause (OB17)"
+  },
+  "id": "graph/ob16-least-cause-of-one-reason",
+  "kind": "normative",
+  "level": "graph",
+  "source": "constructed from the rule text",
+  "title": "Of two slots with one reason, the least cause is reported: `owner` before `repository`"
+}

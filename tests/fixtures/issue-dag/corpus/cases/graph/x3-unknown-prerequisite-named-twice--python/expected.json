@@ -1,0 +1,20 @@
+{
+  "findings": [
+    {
+      "concerns": "x/y#1",
+      "rule": "D3",
+      "subject": "o/r#1"
+    },
+    {
+      "concerns": "x/y#1",
+      "rule": "X3",
+      "subject": "o/r#1"
+    },
+    {
+      "concerns": "x/y#1",
+      "rule": "X3",
+      "subject": "o/r#1"
+    }
+  ],
+  "outcome": "invalid"
+}
