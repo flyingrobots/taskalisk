@@ -1,0 +1,19 @@
+{
+  "cites": [
+    "C7",
+    "C8",
+    "V5",
+    "V12"
+  ],
+  "disagreement": {
+    "classification": "compatibility-exception",
+    "difference": 19,
+    "note": "the compiler counts neither unterminated line as an entry, so it reports V5 and no duplicate"
+  },
+  "id": "document/c8-repeated-unterminated-key-is-present--python",
+  "kind": "characterisation",
+  "level": "document",
+  "normative_case": "document/c8-repeated-unterminated-key-is-present",
+  "source": "the Python compiler, on the input of document/c8-repeated-unterminated-key-is-present",
+  "title": "Where document/c8-repeated-unterminated-key-is-present differs: the compiler counts neither unterminated line as an entry, so it reports V5 and no duplicate"
+}

@@ -1,0 +1,11 @@
+{
+  "cites": [
+    "AD3",
+    "AD5"
+  ],
+  "id": "graph/ad3-app-prefix-in-any-case-is-a-bot",
+  "kind": "normative",
+  "level": "graph",
+  "source": "constructed from the rule text",
+  "title": "A login beginning with `APP/` is a bot: its OWNER association does not trust it"
+}

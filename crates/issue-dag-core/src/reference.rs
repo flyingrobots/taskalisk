@@ -59,8 +59,11 @@ impl fmt::Display for IssueRef {
     }
 }
 
-/// `name = 1*( ALPHA / DIGIT / "_" / "." / "-" )`.
-fn is_name(text: &str) -> bool {
+/// Whether `text` is a `name` of rule L1, exactly as written (no trimming):
+/// `name = 1*( ALPHA / DIGIT / "_" / "." / "-" )`. An owner or a repository
+/// name is one.
+#[must_use]
+pub fn is_name(text: &str) -> bool {
     !text.is_empty()
         && text
             .bytes()

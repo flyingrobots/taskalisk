@@ -1,0 +1,17 @@
+{
+  "cites": [
+    "V10",
+    "V8",
+    "CC5"
+  ],
+  "disagreement": {
+    "classification": "compatibility-exception",
+    "difference": 22,
+    "note": "the compiler reports the V10 warning beside the violation"
+  },
+  "id": "document/v10-invalid-document-has-no-warnings",
+  "kind": "normative",
+  "level": "document",
+  "source": "constructed from the rule text",
+  "title": "An invalid document with a `.size_hours` above 8 has violations and no warnings"
+}

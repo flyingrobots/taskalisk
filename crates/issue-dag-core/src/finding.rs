@@ -1,10 +1,18 @@
-//! Findings of one document (flyingrobots/taskalisk#43).
+//! Findings of a document (flyingrobots/taskalisk#43) and of a planning run
+//! (flyingrobots/taskalisk#28).
 //!
-//! A [`Finding`] states one violation or warning of a document judgement
-//! ([`crate::admit`]) as a stable code, a severity, a subject and a message.
+//! A [`Finding`] states one violation or warning, of a document judgement
+//! ([`crate::admit`]) or of a run ([`crate::plan`]), as a stable code, a
+//! severity, a subject, the reference it concerns when its rule has one, and
+//! a message. One type serves both, because profile rule F5 gives a run's
+//! findings the document's labels and identifies every finding the same way.
 //!
-//! The codes are tabled on [`code`].
+//! The codes are tabled on [`code`] and [`Rule::code`], and listed, with
+//! every other family of findings, in the catalogue [`CODES`].
 
+use core::fmt;
+
+use crate::body::BODY_CODES;
 use crate::label::{self, Label};
 use crate::reference::IssueRef;
 use crate::{Judgement, admit};
@@ -12,6 +20,75 @@ use crate::{Judgement, admit};
 /// Every label a document judgement can carry, once each, in the order of
 /// its text. Declared with [`Label`] itself, so no label can be missing.
 pub const LABELS: [Label; label::VARIANTS] = label::ALL;
+
+/// The catalogue of every finding code the crate can report.
+///
+/// Each code comes with its severity: the document codes in [`LABELS`] order, then the planning
+/// profile's in [`PROFILE_RULES`] order, then Taskalisk's body warnings in
+/// [`crate::BODY_WARNINGS`] order. Each code appears once.
+///
+/// This is the one public source of the codes; the table on [`code`] and
+/// any reference page are checked against it. Every family of findings must
+/// register its codes here: a family supplies an array of its codes with
+/// their severities, and registers it with one line in `FAMILIES` (in this module).
+pub const CODES: &[(&str, Severity)] = &CATALOGUE;
+
+/// Each family's codes with their severities, in catalogue order. A new
+/// family of findings is one more line here.
+const FAMILIES: &[&[(&str, Severity)]] = &[&LABEL_CODES, &PROFILE_CODES, &BODY_CODES];
+
+/// The document codes in [`LABELS`] order, with [`Rule::severity`].
+const LABEL_CODES: [(&str, Severity); LABELS.len()] = {
+    let mut out = [("", Severity::Error); LABELS.len()];
+    let mut i = 0;
+    while i < LABELS.len() {
+        let rule = Rule::Document(LABELS[i]);
+        out[i] = (rule.code(), rule.severity());
+        i += 1;
+    }
+    out
+};
+
+/// The planning profile's codes in [`PROFILE_RULES`] order, with
+/// [`Rule::severity`].
+const PROFILE_CODES: [(&str, Severity); PROFILE_RULES.len()] = {
+    let mut out = [("", Severity::Error); PROFILE_RULES.len()];
+    let mut i = 0;
+    while i < PROFILE_RULES.len() {
+        out[i] = (PROFILE_RULES[i].code(), PROFILE_RULES[i].severity());
+        i += 1;
+    }
+    out
+};
+
+/// The number of codes over all [`FAMILIES`].
+const CODE_COUNT: usize = {
+    let mut total = 0;
+    let mut f = 0;
+    while f < FAMILIES.len() {
+        total += FAMILIES[f].len();
+        f += 1;
+    }
+    total
+};
+
+/// [`CODES`] as an array: the [`FAMILIES`] concatenated in order.
+const CATALOGUE: [(&str, Severity); CODE_COUNT] = {
+    let mut out = [("", Severity::Error); CODE_COUNT];
+    let mut k = 0;
+    let mut f = 0;
+    while f < FAMILIES.len() {
+        let family = FAMILIES[f];
+        let mut i = 0;
+        while i < family.len() {
+            out[k] = family[i];
+            k += 1;
+            i += 1;
+        }
+        f += 1;
+    }
+    out
+};
 
 /// How much a finding matters.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -33,23 +110,175 @@ impl Severity {
     }
 }
 
-/// One violation or warning of a document.
+/// One violation or warning: of a document, or of a planning run.
 ///
-/// The subject is the address of the issue that holds the document, never
-/// the document's own `.id` (a `.id` that differs is finding `profile.X1`). A message is fixed text for its code:
-/// it may name a key, and never carries a value or a line of the body.
-/// The fields are in sort order: findings sort by subject, then code, so two
-/// runs give the same report.
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+/// It is identified as profile rule F5 identifies a finding: the issue that
+/// receives it, its rule (here as a stable code, whose suffix is the rule's
+/// label), and for D3, D5, X2 and X3 the reference it concerns. Severity and
+/// message follow from the code.
+///
+/// For a document finding, the subject is the address of the issue that
+/// holds the document, never the document's own `.id` (a `.id` that differs
+/// is finding `profile.X1`), and `concerns` is `None`. A message is fixed
+/// text for its code: it may name a key or a rule, and never carries a
+/// value, a reference or a line of the body; the one reference a finding
+/// publishes is `concerns`, which profile rule T1 allows.
+/// Equality, order and hash follow that identity alone: findings sort by
+/// subject, then code, then the reference concerned, so two runs give the
+/// same report, and a finding with other wording is the same finding.
+#[derive(Clone, Debug)]
 pub struct Finding {
-    /// The address of the issue that holds the document.
+    /// The issue that receives it.
     pub subject: IssueRef,
-    /// The stable code (see the table on [`code`]).
+    /// The stable code (see the table on [`code`] and [`Rule::code`]).
     pub code: &'static str,
+    /// The reference it concerns, for D3, D5, X2 and X3; otherwise `None`.
+    pub concerns: Option<IssueRef>,
     /// Error for a violation, warning for the advisory.
     pub severity: Severity,
     /// Fixed text for the code. It may name a key, never a value or a line.
     pub message: &'static str,
+}
+
+impl Finding {
+    /// Its identity under profile rule F5.
+    const fn identity(&self) -> (&IssueRef, &'static str, Option<&IssueRef>) {
+        (&self.subject, self.code, self.concerns.as_ref())
+    }
+}
+
+impl PartialEq for Finding {
+    fn eq(&self, other: &Self) -> bool {
+        self.identity() == other.identity()
+    }
+}
+
+impl Eq for Finding {}
+
+impl PartialOrd for Finding {
+    fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for Finding {
+    fn cmp(&self, other: &Self) -> core::cmp::Ordering {
+        self.identity().cmp(&other.identity())
+    }
+}
+
+impl core::hash::Hash for Finding {
+    fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+        self.identity().hash(state);
+    }
+}
+
+impl Finding {
+    /// The finding of `rule` for `subject`, about `concerns`.
+    #[must_use]
+    pub const fn new(subject: IssueRef, rule: Rule, concerns: Option<IssueRef>) -> Self {
+        Self {
+            subject,
+            code: rule.code(),
+            concerns,
+            severity: rule.severity(),
+            message: rule.message(),
+        }
+    }
+
+    /// The label of its rule, as the corpus writes it: the code without its
+    /// document prefix, such as `"X3"` for `profile.X3`.
+    #[must_use]
+    pub fn label(&self) -> &'static str {
+        self.code
+            .split_once('.')
+            .map_or(self.code, |(_, label)| label)
+    }
+}
+
+/// Declares [`Rule`], its profile variants' codes and messages, and
+/// [`PROFILE_RULES`] from one list, so a variant cannot exist without its
+/// code, its message and its entry.
+macro_rules! profile_rules {
+    ($($(#[doc = $doc:literal])* $name:ident => $message:literal,)+) => {
+        /// The rule a finding fails (profile rule F5): a document's label
+        /// (format rule V12, X1 included), or a rule of the planning profile
+        /// that discovery and the graph apply.
+        ///
+        /// The admission rules (AD), the input rules (I) and the outcome rules
+        /// (F) give no finding: an unavailable lookup makes the run
+        /// incomplete, and an invalid parameter rejects it, with no findings
+        /// (F2).
+        #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+        pub enum Rule {
+            /// A document's violation or warning.
+            Document(Label),
+            $($(#[doc = $doc])* $name,)+
+        }
+
+        /// Every rule of the planning profile that gives a finding of its
+        /// own, once each, in the order of declaration.
+        pub const PROFILE_RULES: [Rule; [$(stringify!($name)),+].len()] = [$(Rule::$name),+];
+
+        impl Rule {
+            /// The label as the specification writes it, such as `"X3"`.
+            #[must_use]
+            pub const fn as_str(self) -> &'static str {
+                match self {
+                    Self::Document(label) => label.as_str(),
+                    $(Self::$name => stringify!($name),)+
+                }
+            }
+
+            /// The stable code: [`code`] for a document's label, and
+            /// `profile.<label>` for a rule of the planning profile. Every
+            /// code is in the one table, on [`code`].
+            #[must_use]
+            pub const fn code(self) -> &'static str {
+                match self {
+                    Self::Document(label) => code(label),
+                    $(Self::$name => concat!("profile.", stringify!($name)),)+
+                }
+            }
+
+            const fn message(self) -> &'static str {
+                match self {
+                    Self::Document(label) => message(label),
+                    $(Self::$name => $message,)+
+                }
+            }
+
+            /// Warning for the advisory V10, error for every other rule.
+            #[must_use]
+            pub const fn severity(self) -> Severity {
+                match self {
+                    Self::Document(Label::V10) => Severity::Warning,
+                    _ => Severity::Error,
+                }
+            }
+        }
+    };
+}
+
+profile_rules! {
+    /// D3: a reference outside the read scope.
+    D3 => "a reference names a repository outside the read scope; it was not read",
+    /// D4: a reference to a pull request.
+    D4 => "the reference resolves to a pull request, not an issue",
+    /// D5: a transferred reference.
+    D5 => "a reference names an issue that was transferred; name its new address",
+    /// X2: a prerequisite that is a container.
+    X2 => ".blocked_by of an open task names a container",
+    /// X3: an unknown prerequisite.
+    X3 => ".blocked_by of an open task names an issue that is neither a node nor a container",
+    /// G4: a node of a cycle, or downstream of one.
+    G4 => "the node is on a cycle of .blocked_by edges, or downstream of one",
+}
+
+impl fmt::Display for Rule {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
 }
 
 /// The stable code of a label.
@@ -58,14 +287,24 @@ pub struct Finding {
 /// assigns it, prefixed by the specification that states the rule.
 /// `format.` is the format `issue-dag/2` (carrier rules C, value rules L,
 /// validity rules V), `version.` the version policy (rule P3), and `profile.`
-/// the planning profile `issue-dag-planning/2` (rule X1). A code never
-/// changes meaning; a rule that is added gets a new code.
+/// the planning profile `issue-dag-planning/2` (rule X1, and the rules of a
+/// run that [`Rule::code`] codes: D3, D4, D5, X2, X3 and G4). A code never
+/// changes meaning; a rule that is added gets a new code. The table lists
+/// the codes in [`CODES`] order: the labels' codes in [`LABELS`] order, then
+/// the profile's in [`PROFILE_RULES`] order, then the body warnings.
 ///
 /// Rules C1 to C3 decide whether a body has a document at all (a body without
 /// one has no findings), and C5, C9, C10, V9, V11 and V12 never fail a
 /// document, so they have no code. A `.dag` string other than `issue-dag/2`
 /// is `version.P3` when it names a format (`issue-dag/N`) and `format.V1`
 /// otherwise (V12).
+///
+/// The table ends with Taskalisk's own body warnings
+/// ([`crate::body_warnings`], flyingrobots/taskalisk#48): its writing
+/// convention for a task body, `skills/taskalisk/WRITING-TASKS.md`, not a
+/// rule of any specification. Their code is `taskalisk.<name>`, given by
+/// [`crate::BodyWarning::code`], listed in [`crate::BODY_WARNINGS`]; they are
+/// stable on the same terms.
 ///
 /// | Code | Rule | Severity |
 /// | --- | --- | --- |
@@ -88,6 +327,18 @@ pub struct Finding {
 /// | `format.V7` | a self reference | error |
 /// | `format.V8` | an optional key | error |
 /// | `profile.X1` | a `.id` that is not the issue's address | error |
+/// | `profile.D3` | a reference outside the read scope | error |
+/// | `profile.D4` | a reference to a pull request | error |
+/// | `profile.D5` | a transferred reference | error |
+/// | `profile.X2` | a prerequisite that is a container | error |
+/// | `profile.X3` | an unknown prerequisite | error |
+/// | `profile.G4` | a node of a cycle, or downstream of one | error |
+/// | `taskalisk.acceptance-missing` | a task body without `## Acceptance` | warning |
+/// | `taskalisk.outcome-items` | an Outcome of more than one list item | warning |
+/// | `taskalisk.outcome-missing` | a task body without `## Outcome` | warning |
+/// | `taskalisk.outcome-sentences` | an Outcome of more than one sentence | warning |
+/// | `taskalisk.scope-missing` | a task body without `## Scope` | warning |
+/// | `taskalisk.title-joins` | a title joining two things with "and" or `;` | warning |
 #[must_use]
 pub const fn code(label: Label) -> &'static str {
     match label {
@@ -176,10 +427,8 @@ fn from_labels<'a>(
     let mut found: Vec<Finding> = labels
         .into_iter()
         .map(|&label| Finding {
-            subject: subject.clone(),
-            code: code(label),
             severity,
-            message: message(label),
+            ..Finding::new(subject.clone(), Rule::Document(label), None)
         })
         .collect();
     found.sort();
@@ -188,9 +437,40 @@ fn from_labels<'a>(
 
 #[cfg(test)]
 mod tests {
-    use super::{Severity, from_labels};
+    use std::collections::BTreeSet;
+
+    use super::{Finding, PROFILE_RULES, Rule, Severity, from_labels};
+    use crate::LABELS;
     use crate::label::Label;
     use crate::reference::IssueRef;
+
+    /// F5: a finding is its subject, its rule and the reference it concerns.
+    /// Wording and severity are not part of its identity.
+    #[test]
+    fn f5_wording_and_severity_are_not_part_of_a_findings_identity() {
+        use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
+
+        let subject = IssueRef::parse("o/r#1").expect("a reference");
+        let concerns = IssueRef::parse("o/r#2").expect("a reference");
+        let a = Finding::new(subject, Rule::D5, Some(concerns));
+        let mut b = a.clone();
+        b.message = "other wording";
+        b.severity = Severity::Warning;
+        assert_eq!(a, b);
+        assert_eq!(a.cmp(&b), core::cmp::Ordering::Equal);
+        let hash = |f: &Finding| {
+            let mut h = DefaultHasher::new();
+            f.hash(&mut h);
+            h.finish()
+        };
+        assert_eq!(hash(&a), hash(&b));
+        assert_eq!(BTreeSet::from([a.clone(), b]).len(), 1);
+        // A different reference concerned is a different finding (X3).
+        let mut c = a.clone();
+        c.concerns = IssueRef::parse("o/r#3");
+        assert_ne!(a, c);
+    }
 
     /// Label order is not code order: `version.P3` sits between `format.L4`
     /// and `format.V1` as a label, after every `format.` code as a code.
@@ -200,5 +480,54 @@ mod tests {
         let found = from_labels(&subject, &[Label::P3, Label::V1], Severity::Error);
         let codes: Vec<&str> = found.iter().map(|f| f.code).collect();
         assert_eq!(codes, ["format.V1", "version.P3"]);
+    }
+
+    /// Every rule a finding can carry, document labels and profile rules
+    /// alike, has its own code; its suffix is the rule's label, and its
+    /// prefix the document that states the rule.
+    #[test]
+    fn every_rule_has_a_distinct_code_ending_in_its_label() {
+        let rules: Vec<Rule> = LABELS
+            .iter()
+            .map(|&l| Rule::Document(l))
+            .chain(PROFILE_RULES)
+            .collect();
+        let codes: BTreeSet<&str> = rules.iter().map(|r| r.code()).collect();
+        assert_eq!(codes.len(), rules.len());
+        let subject = IssueRef::parse("o/r#1").expect("a reference");
+        for rule in rules {
+            let finding = Finding::new(subject.clone(), rule, None);
+            assert_eq!(finding.label(), rule.as_str(), "{}", finding.code);
+            let (prefix, _) = finding.code.split_once('.').expect("a prefixed code");
+            assert!(
+                ["format", "version", "profile"].contains(&prefix),
+                "{}",
+                finding.code
+            );
+            assert!(!finding.message.is_empty(), "{}", finding.code);
+        }
+    }
+
+    #[test]
+    fn profile_rules_are_errors_with_profile_codes() {
+        let codes: Vec<&str> = PROFILE_RULES.iter().map(|r| r.code()).collect();
+        assert_eq!(
+            codes,
+            [
+                "profile.D3",
+                "profile.D4",
+                "profile.D5",
+                "profile.X2",
+                "profile.X3",
+                "profile.G4"
+            ]
+        );
+        assert!(
+            PROFILE_RULES
+                .iter()
+                .all(|r| r.severity() == Severity::Error)
+        );
+        assert_eq!(Rule::Document(Label::V10).severity(), Severity::Warning);
+        assert_eq!(Rule::Document(Label::X1).code(), "profile.X1");
     }
 }

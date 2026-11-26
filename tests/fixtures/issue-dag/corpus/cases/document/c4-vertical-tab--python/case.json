@@ -12,5 +12,5 @@
   "level": "document",
   "normative_case": "document/c4-vertical-tab",
   "source": "the Python compiler, on the input of document/c4-vertical-tab",
-  "title": "What the compiler does: U+000B inside the block makes the document invalid"
+  "title": "Where document/c4-vertical-tab differs: the compiler treats U+000B as a line break and the line as blank"
 }

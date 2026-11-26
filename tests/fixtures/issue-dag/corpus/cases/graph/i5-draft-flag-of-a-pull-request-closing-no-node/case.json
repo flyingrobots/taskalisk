@@ -1,0 +1,19 @@
+{
+  "cites": [
+    "I4",
+    "I5",
+    "S1",
+    "S2",
+    "AD9"
+  ],
+  "disagreement": {
+    "classification": "defect",
+    "difference": 23,
+    "note": "the compiler refuses the draft flag of every admitted pull request that closes an issue, and the run is incomplete"
+  },
+  "id": "graph/i5-draft-flag-of-a-pull-request-closing-no-node",
+  "kind": "normative",
+  "level": "graph",
+  "source": "constructed from the rule text",
+  "title": "The draft flag of an admitted pull request that closes no node is not read"
+}

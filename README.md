@@ -78,14 +78,34 @@ the suite has each of its lines validated against its schema, and
 `tests/fixtures/golden/` holds the 1.x output the lines must reconstruct.
 
 The Rust rebuild ([decision 0001](docs/decisions/0001-rust-issue-dag-contract.md)) is a Cargo
-workspace at the repository root; `crates/issue-dag-core` reads and validates `issue-dag/2`
-documents and runs every document case of the vendored corpus. The toolchain is pinned in
-`rust-toolchain.toml`, and CI runs the same three checks:
+workspace at the repository root. `crates/issue-dag-core` reads and validates `issue-dag/2`
+documents and plans the graph and readiness over recorded observations, with no I/O;
+`crates/issue-dag-bundle` reads an observation bundle into it. Together they run every document
+and graph case of the vendored corpus. `issue-dag-bundle` also writes the evaluation record of a
+run (`taskalisk-evaluation/1`: the bundle, the evaluator and the result) and replays a record
+offline; replay is unavailable unless the record retains the complete bundle. `crates/issue-dag-gh` answers the same observations from
+GitHub through the `gh` command line, failing closed; its tests run against `tests/fake_gh.py`,
+never GitHub. `crates/issue-dag-git` answers the core's
+`LocalRepository` port (branches, worktrees, ahead/behind) by running `git`; its tests build
+temporary repositories, so `git` 2.36 or later must be on `PATH`. A path that is not a
+repository's top level, or a `git` call that fails, is an error, never an empty answer. The
+adapter only reads, and turns off a configured `core.fsmonitor` command; a clean filter
+(`filter.<driver>.clean`) the user configured can still run during `status` when a file's stat
+data changed, with the same trust as the user's own `git status`, because a clone cannot set one.
+The toolchain is pinned in `rust-toolchain.toml`, and CI runs the same three
+checks:
 
 ```sh
 cargo fmt --all --check
 cargo clippy --workspace --all-targets --locked -- -D warnings
 cargo test --workspace --locked
+```
+
+The wall-clock bounds of large graphs are not in the default suite, because a loaded machine would
+fail them. CI runs them in a job of their own, in a release build:
+
+```sh
+cargo test --workspace --locked --release -- --ignored perf_
 ```
 
 ## License

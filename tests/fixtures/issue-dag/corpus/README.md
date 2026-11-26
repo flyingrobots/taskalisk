@@ -66,15 +66,22 @@ whose `result` is one of:
 
 - `no-document`: the body has no frontmatter block (format rule C3);
 - `valid`, with `record`, the decoded record of format rule M4, and
-  `warnings`, the labels of its warnings (V10);
+  `warnings`, the labels of its warnings (V10), each once, in ascending
+  order;
 - `invalid`, with `violations`, the labels of the rules the document fails,
-  each once, in ascending order;
+  each once, in ascending order. A warning is reported only for a document
+  with no violation (V10), so an invalid result has no warnings: a
+  normative invalid result MAY hold `warnings` as the empty list `[]`, and
+  when it does, CC8 compares it; a characterisation result holds the
+  `warnings` the implementation reports;
 - `error`, with `error`, the kind of failure, in characterisation cases only:
   the implementation produced no judgement.
 
-A record is an object with the members of M4's table. A reference is written
-in canonical form; an absent value is null; `holds` is written as a list in
-ascending order; a meter claim is written `[name, slots]`.
+Labels are in ascending order of their UTF-8 bytes, as paths are in CD1, so
+`V10` sorts before `V2`. A record is an object with the members of M4's
+table. A reference is written in canonical form; an absent value is null;
+`holds` is written as a list in ascending order; a meter claim is written
+`[name, slots]`.
 
 **CC6. Graph cases.** The expected result of a graph case is an object whose
 `outcome` is one of `planned`, `invalid`, `incomplete` and `rejected`
@@ -96,7 +103,11 @@ hold:
 - `ready`: the ready set in rank order (rules Q1 and K6); `scores`, from node
   to score (K5); `waves` (K7); `critical_path` (K8);
 - `batch`, in order of selection; `skipped`, each `{"id", "reason"}` with
-  `semaphores` when the reason is `semaphore full`; `unknown_capacity` (B3).
+  `semaphores`, the names of the semaphores B5 found full, when the reason
+  is `semaphore full`; `unknown_capacity`, the names B3 reports. Each name
+  in `semaphores` and in `unknown_capacity` appears once, and the names are
+  in ascending order of their UTF-8 bytes, as labels are in CC5, so `Tpu`
+  sorts before `gpu`.
 
 An incomplete or rejected run has only `outcome` (rule F2).
 

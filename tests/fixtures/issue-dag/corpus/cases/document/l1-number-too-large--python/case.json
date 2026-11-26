@@ -12,5 +12,5 @@
   "level": "document",
   "normative_case": "document/l1-number-too-large",
   "source": "the Python compiler, on the input of document/l1-number-too-large",
-  "title": "What the compiler does: A reference number above 2147483647 is invalid"
+  "title": "Where document/l1-number-too-large differs: the compiler's integers are unbounded"
 }

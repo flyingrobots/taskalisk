@@ -12,5 +12,5 @@
   "level": "document",
   "normative_case": "document/c4-lone-cr",
   "source": "the Python compiler, on the input of document/c4-lone-cr",
-  "title": "What the compiler does: A CR not followed by LF makes the document invalid"
+  "title": "Where document/c4-lone-cr differs: the compiler splits the line at the CR and reads two valid entries"
 }

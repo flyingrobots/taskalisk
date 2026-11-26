@@ -1,0 +1,18 @@
+{
+  "cites": [
+    "C7",
+    "C6",
+    "C8",
+    "V12"
+  ],
+  "disagreement": {
+    "classification": "compatibility-exception",
+    "difference": 21,
+    "note": "the compiler also reports C6 and C8"
+  },
+  "id": "document/c7-repeated-dag-drops-line-violations",
+  "kind": "normative",
+  "level": "document",
+  "source": "constructed from the rule text",
+  "title": "A repeated `.dag` drops C6 and C8 on the other lines"
+}

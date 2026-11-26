@@ -14,5 +14,5 @@
   "level": "document",
   "normative_case": "document/c8-unterminated-then-duplicate",
   "source": "the Python compiler, on the input of document/c8-unterminated-then-duplicate",
-  "title": "What the compiler does: An unterminated list is still an entry line: a later line with its key is a duplicate"
+  "title": "Where document/c8-unterminated-then-duplicate differs: the compiler does not count the unterminated line as an entry, so it reports no duplicate"
 }
