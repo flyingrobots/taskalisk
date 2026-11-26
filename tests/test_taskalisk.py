@@ -724,6 +724,8 @@ class Trust(Harness):
 
         def endless(cmd, cwd=None):
             calls.append(cmd)
+            if len(calls) > 10:
+                raise AssertionError("the page bound did not stop the loop")
             page = {"hasNextPage": True, "endCursor": f"c{len(calls)}"}
             return True, json.dumps({"data": {"repository": {"issue": {"body": "", "userContentEdits": {"pageInfo": page, "nodes": []}}}}}), ""
 
