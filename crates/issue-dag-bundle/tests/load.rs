@@ -307,3 +307,23 @@ fn ob14_the_body_of_an_issue_the_run_never_reads_may_be_left_out() {
     let missing = outcome.expect_err("a body the run reads is missing, never empty");
     assert!(missing.what.contains("body of o/r#1"), "{missing}");
 }
+
+#[test]
+fn ob8_a_malformed_body_is_rejected_at_its_path() {
+    for body in [
+        json!(5),
+        json!({"value": 5}),
+        json!({"value": {"text": "x"}}),
+        json!({"value": {"text": 5, "editors": []}}),
+        json!({"value": {"text": "x", "editors": [], "extra": 1}}),
+    ] {
+        let mut b = example();
+        b["observations"]["issues"]["o/r#1"]["value"]["body"] = body.clone();
+        let error = reject(&b);
+        assert!(
+            error.at.contains("body"),
+            "{body} is rejected at the body, not at {}",
+            error.at
+        );
+    }
+}
