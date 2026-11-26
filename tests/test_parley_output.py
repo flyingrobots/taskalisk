@@ -384,6 +384,18 @@ class QuerySecrets(unittest.TestCase):
                 "https://h/p?secret=[redacted];https://h/q?signature=[redacted]",
             "https://h/cb?code=abc123secret&state=s1&auth=abc123secret":
                 "https://h/cb?code=[redacted]&state=s1&auth=[redacted]",
+            # a secret that opens a fragment, as an OAuth implicit-flow callback puts it
+            "https://h/cb#access_token=abc123secret&state=s1": "https://h/cb#access_token=[redacted]&state=s1",
+            "https://h/cb#a=1&token=abc123secret": "https://h/cb#a=1&token=[redacted]",
+            "HTTPS://H/P?Token=abc123secret": "HTTPS://H/P?Token=[redacted]",
+            # the characters around a URL stay where they were
+            "'https://h/p?token=abc123secret'": "'https://h/p?token=[redacted]'",
+            '"https://h/p?token=abc123secret"': '"https://h/p?token=[redacted]"',
+            "(see https://h/p?token=abc123secret)": "(see https://h/p?token=[redacted])",
+            "<https://h/p?token=abc123secret>": "<https://h/p?token=[redacted]>",
+            "failed at https://h/p?token=abc123secret.": "failed at https://h/p?token=[redacted].",
+            "https://h/p?token=abc123secret, then": "https://h/p?token=[redacted], then",
+            "https://h/p?token=abc.123secret": "https://h/p?token=[redacted]",
         }
         for given, expected in cases.items():
             with self.subTest(given):
