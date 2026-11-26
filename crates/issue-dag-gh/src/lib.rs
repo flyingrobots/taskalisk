@@ -98,6 +98,11 @@ impl GhForge {
 
     /// Gives `gh` the variable `key` with `value`, on top of this process's
     /// environment. A `PATH` given here is also where `gh` is looked up.
+    ///
+    /// `gh` always runs without `GH_FORCE_TTY`, `CLICOLOR_FORCE`, `GH_DEBUG`
+    /// and `DEBUG`, and with `GH_PROMPT_DISABLED=1`, `NO_COLOR=1`,
+    /// `GH_NO_UPDATE_NOTIFIER=1` and `GH_PAGER=cat`; a variable given here
+    /// cannot change those.
     #[must_use]
     pub fn env(mut self, key: impl AsRef<OsStr>, value: impl AsRef<OsStr>) -> Self {
         self.runner

@@ -86,6 +86,7 @@ pub fn home_open_issues(
     // `--paginate` writes one JSON array per page, one after another.
     let mut pages = 0;
     let mut issues = Vec::new();
+    let mut seen = BTreeSet::new();
     for page in serde_json::Deserializer::from_slice(&out).into_iter::<Value>() {
         let page =
             page.map_err(|error| GhError::invalid(&source, format!("unparseable JSON: {error}")))?;
@@ -98,7 +99,16 @@ pub fn home_open_issues(
             if item.get("pull_request").is_some_and(|pr| !pr.is_null()) {
                 continue;
             }
-            issues.push(reference(&source, home, item)?);
+            let listed = reference(&source, home, item)?;
+            // Pages shifted under a concurrent change: an issue seen twice
+            // means another may have been missed (bundle rule OB6).
+            if !seen.insert(listed.clone()) {
+                return Err(GhError::invalid(
+                    &source,
+                    format!("{listed} was listed twice; the pages shifted while they were read"),
+                ));
+            }
+            issues.push(listed);
         }
     }
     if pages == 0 {
@@ -218,8 +228,14 @@ fn pull_request(
                         text(source, owner, "login")?,
                         text(source, repository, "name")?
                     );
+                    // The server's text is left out of the reason.
                     Repo::parse(&spelled).ok_or_else(|| {
-                        GhError::invalid(source, format!("{spelled} is not a repository"))
+                        GhError::invalid(
+                            source,
+                            format!(
+                                "pull request {number} closes an issue in a repository whose name is not one"
+                            ),
+                        )
                     })?
                 }
             };
@@ -279,7 +295,13 @@ pub fn issue(runner: &Runner, reference: &IssueRef) -> Result<Observed<Issue>, G
     let state = match text(&source, item, "state")?.to_ascii_lowercase().as_str() {
         "open" => IssueState::Open,
         "closed" => IssueState::Closed,
-        other => return Err(GhError::invalid(&source, format!("unknown state {other}"))),
+        // The server's text is left out of the reason.
+        _ => {
+            return Err(GhError::invalid(
+                &source,
+                "the issue's state is neither open nor closed",
+            ));
+        }
     };
     let author = match item.get("user") {
         None | Some(Value::Null) => None,
@@ -367,7 +389,13 @@ pub fn edit_history(
             editors.push(editor(&source, node)?);
         }
         let page = edits.and_then(|e| e.get("pageInfo"));
-        if page.and_then(|p| p.get("hasNextPage")) != Some(&Value::Bool(true)) {
+        let Some(&Value::Bool(next)) = page.and_then(|p| p.get("hasNextPage")) else {
+            return Err(GhError::invalid(
+                &source,
+                "edit history has no boolean hasNextPage; refusing a partial editor list",
+            ));
+        };
+        if !next {
             return Ok(Body {
                 text: text.unwrap_or_default(),
                 editors,

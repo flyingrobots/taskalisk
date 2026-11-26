@@ -64,8 +64,12 @@ schema version under `Unreleased` is a draft and may change in place.
   wrote costs no further query (threat model C15): the `Forge` port gains `body(reference)`, which
   the planner calls only after admission, and an issue's `body` is optional in the observations,
   so a bundle may leave out a body the run never reads (OB14) and a run that reads one not
-  recorded finds it missing (OB5). Unlike the Python, a pull request's head repository is not
-  observed.
+  recorded finds it missing (OB5). An issue listed on two pages makes the listing unavailable
+  (OB6), and an edit-history page without a boolean `hasNextPage` is refused. `gh` runs without
+  `GH_FORCE_TTY`, `CLICOLOR_FORCE`, `GH_DEBUG` and `DEBUG`, and with `GH_PROMPT_DISABLED=1`,
+  `NO_COLOR=1`, `GH_NO_UPDATE_NOTIFIER=1` and `GH_PAGER=cat`, which no configured variable
+  overrides; text the server returns is left out of an error's reason. Unlike the Python, a pull
+  request's head repository is not observed.
 
 - **Repeated keys, warnings and refusal order in the specification** (flyingrobots/taskalisk#104).
   The vendored issue-dag specification now states the rulings the Rust core implements: no rule of

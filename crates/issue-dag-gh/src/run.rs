@@ -5,8 +5,23 @@ use std::process::{Command, Stdio};
 
 use crate::error::{GhError, scrub, secrets};
 
+/// Variables removed from `gh`'s environment, inherited or given: each makes
+/// `gh` write for a terminal, in colour, or with debug output, none of which
+/// a reader of its output expects.
+const UNSET: [&str; 4] = ["GH_FORCE_TTY", "CLICOLOR_FORCE", "GH_DEBUG", "DEBUG"];
+
+/// Variables `gh` always runs with: no prompt, no colour, no update notice,
+/// no pager.
+const FORCED: [(&str, &str); 4] = [
+    ("GH_PROMPT_DISABLED", "1"),
+    ("NO_COLOR", "1"),
+    ("GH_NO_UPDATE_NOTIFIER", "1"),
+    ("GH_PAGER", "cat"),
+];
+
 /// How `gh` is run: the program and the environment it is given on top of
-/// this process's.
+/// this process's. The variables of [`UNSET`] and [`FORCED`] are applied
+/// after `env`, so the caller cannot turn them off.
 #[derive(Clone, Debug)]
 pub struct Runner {
     pub program: OsString,
@@ -32,17 +47,21 @@ impl Runner {
                 detail: scrub(&detail, &secrets),
             })
         };
-        let output = Command::new(&self.program)
+        let mut command = Command::new(&self.program);
+        command
             .args(argv)
-            .envs(self.env.iter().map(|(k, v)| (k, v)))
-            .stdin(Stdio::null())
-            .output()
-            .map_err(|error| {
-                failed(format!(
-                    "{} could not be run: {error}",
-                    self.program.to_string_lossy()
-                ))
-            })?;
+            .envs(self.env.iter().map(|(k, v)| (k, v)));
+        // After the caller's variables, so that none of them turns this off.
+        for name in UNSET {
+            command.env_remove(name);
+        }
+        command.envs(FORCED).stdin(Stdio::null());
+        let output = command.output().map_err(|error| {
+            failed(format!(
+                "{} could not be run: {error}",
+                self.program.to_string_lossy()
+            ))
+        })?;
         if output.status.success() {
             return Ok(output.stdout);
         }
