@@ -222,7 +222,16 @@ fn strip_comments(line: &str, in_comment: &mut bool) -> String {
             rest = &rest[end + 3..];
             *in_comment = false;
         } else {
-            let Some(start) = rest.find("<!--") else {
+            // A code span is literal text, so a `<!--` inside one opens no
+            // comment; the first of the two to start wins.
+            let opener = rest.find("<!--");
+            let span = code_span(rest).filter(|&(at, _)| opener.is_none_or(|o| at < o));
+            if let Some((_, end)) = span {
+                out.push_str(&rest[..end]);
+                rest = &rest[end..];
+                continue;
+            }
+            let Some(start) = opener else {
                 out.push_str(rest);
                 return out;
             };
@@ -230,6 +239,28 @@ fn strip_comments(line: &str, in_comment: &mut bool) -> String {
             rest = &rest[start + 4..];
             *in_comment = true;
         }
+    }
+}
+
+/// The first code span of `text` as the byte range from its opening backtick
+/// run to the end of its closing run, which is the next run of exactly the
+/// same length (`CommonMark` 6.1). An opening run with no closing run is
+/// literal text, and the search moves past it.
+fn code_span(text: &str) -> Option<(usize, usize)> {
+    let run = |from: usize| text[from..].bytes().take_while(|&b| b == b'`').count();
+    let mut at = text.find('`')?;
+    loop {
+        let n = run(at);
+        let mut i = at + n;
+        while let Some(off) = text[i..].find('`') {
+            let close = i + off;
+            let m = run(close);
+            if m == n {
+                return Some((at, close + m));
+            }
+            i = close + m;
+        }
+        at += n + text[at + n..].find('`')?;
     }
 }
 
@@ -350,7 +381,15 @@ fn list_item(line: &str) -> Option<&str> {
 
 /// The text without its inline code spans.
 fn without_code(text: &str) -> String {
-    text.split('`').step_by(2).collect::<Vec<_>>().join(" ")
+    let mut out = String::new();
+    let mut rest = text;
+    while let Some((start, end)) = code_span(rest) {
+        out.push_str(&rest[..start]);
+        out.push(' ');
+        rest = &rest[end..];
+    }
+    out.push_str(rest);
+    out
 }
 
 /// The number of sentences in a paragraph or an item: zero when it has no

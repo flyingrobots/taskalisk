@@ -470,3 +470,47 @@ fn a_body_from_each_canonical_template_has_no_warnings() {
         );
     }
 }
+
+fn warning_codes(body: &str, title: Option<&str>) -> Vec<&'static str> {
+    body_warnings(body, &address(), title)
+        .into_iter()
+        .map(|finding| finding.code)
+        .collect()
+}
+
+#[test]
+fn a_code_span_closes_only_on_a_backtick_run_of_its_own_length() {
+    let body = task(
+        Some("The parser keeps ``a. B`` and `` `c. D` `` as ZQXMARK code."),
+        Some(SCOPE),
+        Some(ACCEPTANCE),
+    );
+    assert_eq!(
+        warning_codes(&body, Some("Parse ``x and y`` spans")),
+        Vec::<&str>::new()
+    );
+    // An unmatched run is literal text, so the prose after it still counts.
+    let body = task(
+        Some("The ``x keeps ZQXMARK. Then more."),
+        Some(SCOPE),
+        Some(ACCEPTANCE),
+    );
+    assert_eq!(warning_codes(&body, None), ["taskalisk.outcome-sentences"]);
+}
+
+#[test]
+fn a_comment_opener_inside_a_code_span_opens_no_comment() {
+    let body = task(
+        Some("The parser recognizes `<!--` in ZQXMARK."),
+        Some(SCOPE),
+        Some(ACCEPTANCE),
+    );
+    assert_eq!(warning_codes(&body, None), Vec::<&str>::new());
+    // A real comment after a code span still hides its text.
+    let body = task(
+        Some("The parser reads `x` ZQXMARK. <!-- Hidden. Text. -->"),
+        Some(SCOPE),
+        Some(ACCEPTANCE),
+    );
+    assert_eq!(warning_codes(&body, None), Vec::<&str>::new());
+}
