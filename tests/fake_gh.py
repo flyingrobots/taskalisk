@@ -20,6 +20,7 @@ State shape:
    "fail_graphql": bool,
    "fail_graphql_for": ["owner/repo#N", ...],         # GraphQL fails for these issues only
    "graphql_no_cursor": bool,                         # hasNextPage true without endCursor
+   "graphql_repeat_cursor": bool,                     # every page returns the same endCursor, with hasNextPage true
    "edits_page_size": int,
    "patch_fail": bool,                                # every PATCH of an issue body fails (HTTP 502)
    "patch_fail_after": int,                           # that many PATCHes succeed, then every later one fails
@@ -91,13 +92,13 @@ def graphql(state, args):
     page = int(state.get("edits_page_size", 1000))
     start = int(variables.get("after") or 0)
     chunk = editors[start:start + page]
-    has_next = start + page < len(editors)
+    has_next = start + page < len(editors) or bool(state.get("graphql_repeat_cursor"))
     def node(e):
         if isinstance(e, dict):
             return {"editor": {"login": e.get("login"), "__typename": e.get("type", "User")}}
         return {"editor": {"login": e, "__typename": "User"} if e else None}
     edits = None if state.get("graphql_null_edits") else {
-        "pageInfo": {"hasNextPage": has_next, "endCursor": None if state.get("graphql_no_cursor") else str(start + page)},
+        "pageInfo": {"hasNextPage": has_next, "endCursor": None if state.get("graphql_no_cursor") else ("0" if state.get("graphql_repeat_cursor") else str(start + page))},
         "nodes": [node(e) for e in chunk]}
     out = {"data": {"repository": {"issue": {"body": it.get("graphql_body", it.get("body", "")), "userContentEdits": edits}}}}
     print(json.dumps(out))
