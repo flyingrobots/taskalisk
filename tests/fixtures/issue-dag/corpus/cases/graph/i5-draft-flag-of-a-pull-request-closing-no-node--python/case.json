@@ -16,5 +16,5 @@
   "level": "graph",
   "normative_case": "graph/i5-draft-flag-of-a-pull-request-closing-no-node",
   "source": "the Python compiler, on the bundle of graph/i5-draft-flag-of-a-pull-request-closing-no-node",
-  "title": "What the compiler does: The draft flag of an admitted pull request that closes no node is not read"
+  "title": "Where graph/i5-draft-flag-of-a-pull-request-closing-no-node differs: the compiler refuses the draft flag of every admitted pull request that closes an issue, and the run is incomplete"
 }

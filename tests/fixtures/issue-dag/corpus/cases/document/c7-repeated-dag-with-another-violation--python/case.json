@@ -14,5 +14,5 @@
   "level": "document",
   "normative_case": "document/c7-repeated-dag-with-another-violation",
   "source": "the Python compiler, on the input of document/c7-repeated-dag-with-another-violation",
-  "title": "What the compiler does: A repeated `.dag` leaves the version unknown: C7 is the only violation"
+  "title": "Where document/c7-repeated-dag-with-another-violation differs: the compiler judges the document under the first `.dag` and also reports V8"
 }

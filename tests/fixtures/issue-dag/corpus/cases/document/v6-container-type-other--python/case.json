@@ -13,5 +13,5 @@
   "level": "document",
   "normative_case": "document/v6-container-type-other",
   "source": "the Python compiler, on the input of document/v6-container-type-other",
-  "title": "What the compiler does: A container's `.type` must satisfy V5's value rule"
+  "title": "Where document/v6-container-type-other differs: the compiler does not check `.type` on a container"
 }

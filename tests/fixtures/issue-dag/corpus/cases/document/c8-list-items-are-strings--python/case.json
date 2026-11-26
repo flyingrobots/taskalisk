@@ -12,5 +12,5 @@
   "level": "document",
   "normative_case": "document/c8-list-items-are-strings",
   "source": "the Python compiler, on the input of document/c8-list-items-are-strings",
-  "title": "What the compiler does: A list item spelled as an integer stays a string"
+  "title": "Where document/c8-list-items-are-strings differs: the compiler converts the items to the integers 7 and 0 and back to `7` and `0`"
 }

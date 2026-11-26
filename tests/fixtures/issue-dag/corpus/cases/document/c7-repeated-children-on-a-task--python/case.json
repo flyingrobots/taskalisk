@@ -14,5 +14,5 @@
   "level": "document",
   "normative_case": "document/c7-repeated-children-on-a-task",
   "source": "the Python compiler, on the input of document/c7-repeated-children-on-a-task",
-  "title": "What the compiler does: A repeated `.children` on a task is labelled C7, not V5"
+  "title": "Where document/c7-repeated-children-on-a-task differs: the compiler judges the first `.children` and also reports V5"
 }

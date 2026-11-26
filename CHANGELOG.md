@@ -79,8 +79,10 @@ schema version under `Unreleased` is a draft and may change in place.
   match without regard to case (AD3, AD4); a bundle with a repeated JSON member or an unknown
   `observations` member is not a bundle (OB1, new OB15); `unknown_capacity` and `semaphores` are
   in ascending byte order (CC6). The corpus gains 8 normative graph cases and 2 `--python` twins
-  (differences 23 and 24, both defects of the Python), digest `sha256:8e450195…`. The Rust core
-  passed every new case unchanged; `issue-dag-bundle` gains a test for OB15.
+  (differences 23 and 24, both defects of the Python), digest `sha256:aed5aeaa…`. The Rust core
+  passed every new case unchanged; `issue-dag-bundle` gains a test for OB15. The title of each
+  `--python` twin is now its disagreement note, what the compiler does, rather than the normative
+  claim it disagrees with.
 
 - **Document findings with stable codes** (flyingrobots/taskalisk#43). `issue-dag-core`
   judges a body with its issue's address, so rule X1 always applies, and returns findings: a stable

@@ -12,5 +12,5 @@
   "level": "document",
   "normative_case": "document/l3-slots-too-large",
   "source": "the Python compiler, on the input of document/l3-slots-too-large",
-  "title": "What the compiler does: A slot count above 2147483647 is invalid"
+  "title": "Where document/l3-slots-too-large differs: the compiler's integers are unbounded"
 }

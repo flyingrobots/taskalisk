@@ -12,5 +12,5 @@
   "level": "document",
   "normative_case": "document/v5-type-as-list",
   "source": "the Python compiler, on the input of document/v5-type-as-list",
-  "title": "What the compiler does: A list `.type` is invalid"
+  "title": "Where document/v5-type-as-list differs: the validator raises TypeError and the run ends without an outcome"
 }

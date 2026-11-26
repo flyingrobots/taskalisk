@@ -15,5 +15,5 @@
   "level": "graph",
   "normative_case": "graph/d8-repeated-blocked-by-is-not-followed",
   "source": "the Python compiler, on the bundle of graph/d8-repeated-blocked-by-is-not-followed",
-  "title": "What the compiler does: A repeated `.blocked_by` contributes no reference: an unavailable issue it names leaves the run invalid, not incomplete"
+  "title": "Where graph/d8-repeated-blocked-by-is-not-followed differs: the compiler reads the first `.blocked_by` line, follows the unavailable issue, and the run is incomplete"
 }
