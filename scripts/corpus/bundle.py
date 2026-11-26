@@ -101,7 +101,8 @@ def validate(bundle: Any) -> list[str]:
         if not isinstance(caps, dict) or not all(isinstance(k, str) and k and type(v) is int and v >= 1 for k, v in caps.items()):
             p.append("parameters.capacities: names to positive integers (OB3)")
     obs = bundle.get("observations")
-    if not _keys(p, "observations", obs, {"home_open_pull_requests", "issues", "permissions"}, {"home_open_issues", "codeowners"}):
+    # OB5: a bundle without the pull-request list is still a bundle; a run that reads it is unusable.
+    if not _keys(p, "observations", obs, {"issues", "permissions"}, {"home_open_pull_requests", "home_open_issues", "codeowners"}):
         if not isinstance(obs, dict):
             return p
     params = params if isinstance(params, dict) else {}

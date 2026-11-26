@@ -128,7 +128,7 @@ exactly these members:
 by a reference in canonical form, as the run read it: the reference a root
 or a document names, not the address it resolved to. A reference outside the
 read scope is never read and is never a key. Each member is a slot whose
-value is an object with exactly these members:
+value is an object with these members, `body` optional, and no other:
 
 - `address`: the reference of the issue's address now, in canonical form; it
   differs from the key when the issue was transferred;

@@ -1,0 +1,12 @@
+{
+  "cites": [
+    "OB16",
+    "OB5",
+    "I4"
+  ],
+  "id": "graph/ob16-missing-pull-requests-before-missing-issue-roots-reversed",
+  "kind": "normative",
+  "level": "graph",
+  "source": "constructed from the rule text",
+  "title": "The missing home pull requests come before a missing issue, with the roots in the other order"
+}

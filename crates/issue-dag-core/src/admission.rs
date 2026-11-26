@@ -341,8 +341,12 @@ mod tests {
         // requests before an issue, the repository of a permission before
         // its login, `o/r#10` before `o/r#2`, and a body by its issue's
         // reference. The words of the least sort last, so that ordering by
-        // them, not by path, fails.
-        let cases: [(&[&str], &[&str]); 4] = [
+        // them, not by path, fails. The home listing against an issue is
+        // tested only here: the listing is read only in a run without
+        // roots, where it is the only source of seeds, so a run that lacks
+        // it reads no issue and no corpus case can hold both.
+        let cases: [(&[&str], &[&str]); 5] = [
+            (&["home_open_issues"], &["issues", "o/r#2"]),
             (&["home_open_pull_requests"], &["issues", "o/r#2"]),
             (
                 &["permissions", "o/r", "dave"],

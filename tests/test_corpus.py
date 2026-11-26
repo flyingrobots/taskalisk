@@ -111,6 +111,14 @@ class BundleFormat(unittest.TestCase):
         b = ob.from_fake_state(state, roots=[f"{HOME}#9"])
         self.assertNotIn("mallory/trap#1", b["observations"]["issues"])
 
+    def test_a_bundle_without_the_pull_request_list_is_still_a_bundle(self):
+        # OB5, OB15: a slot the bundle lacks makes a run that reads it
+        # unusable; it does not make the bundle invalid.
+        b = ob.from_fake_state(plan_state(), roots=[f"{HOME}#9"])
+        del b["observations"]["home_open_pull_requests"]
+        self.assertEqual(ob.validate(b), [])
+        self.assertEqual(forge.replay(b), {"outcome": "unusable", "missing": ["home_open_pull_requests"]})
+
     def test_a_body_may_be_left_out(self):
         # OB8, OB14: a body the run never reads may be left out; when the run
         # reads it, the bundle is unusable (OB5), never invalid.
@@ -293,7 +301,7 @@ class ForgeFidelity(unittest.TestCase):
 
 # The digest of the corpus this suite checks: the issue-dag repository's corpus/DIGEST and the
 # version table name the same value. A change to the corpus changes this constant in the same commit.
-CORPUS_DIGEST = "sha256:8e33b97723b75962d0c3d44b7ec32c4fdbe436920c46774e9f9a0cdd12ac80b0"
+CORPUS_DIGEST = "sha256:0a0fe0a5372d3b88ae262d4e078f081fd3bbaffed0d2017fd01b047862fe9950"
 
 
 class CorpusPin(unittest.TestCase):

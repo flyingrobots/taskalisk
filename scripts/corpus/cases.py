@@ -857,6 +857,11 @@ def no_permission(repo: str, login: str) -> Callable[[dict[str, Any]], None]:
     return go
 
 
+def no_pull_requests(b: dict[str, Any]) -> None:
+    """Leaves out the list of the home pull requests (OB7), which every run reads."""
+    del b["observations"]["home_open_pull_requests"]
+
+
 def drafts(reasons: dict[int, str]) -> Callable[[dict[str, Any]], None]:
     """Records the draft flag of each pull request numbered in `reasons` as unavailable, with that reason (OB7)."""
     def go(b: dict[str, Any]) -> None:
@@ -911,6 +916,12 @@ NORMATIVE_GRAPHS += [
     # Missing slots by path (OB16): kinds that the order of the bundle's member names decides.
     *both_orders("ob16-missing-issue-before-a-later-body", "The missing issue o/r#2 comes before the missing body of o/r#3", R2, R3,
                  steps(slots({R2: None}), no_body(R3)), {"outcome": "unusable", "missing": ["issues", R2]}, ["OB16", "OB5"], None),
+    *both_orders("ob16-missing-pull-requests-before-missing-issue", "The missing home pull requests come before a missing issue",
+                 R2, R3, steps(slots({R3: None}), no_pull_requests), {"outcome": "unusable", "missing": ["home_open_pull_requests"]},
+                 ["OB16", "OB5", "I4"], None),
+    *both_orders("ob16-missing-codeowners-before-missing-pull-requests", "A missing CODEOWNERS comes before the missing home pull requests",
+                 R2, R3, steps(slots({}, codeowners_of=R), no_pull_requests), {"outcome": "unusable", "missing": ["codeowners", R]},
+                 ["OB16", "OB5", "AD10"], exception(25, f"{STOPS}: it reads the home pull requests first and reports them"), codeowners=True),
     *both_orders("ob16-least-of-two-permissions", "Of two missing permissions, the one on o/r comes first, whatever the logins",
                  R2, S3, steps(no_permission(R, "dave"), no_permission("o/s", CAROL)),
                  {"outcome": "unusable", "missing": ["permissions", R, "dave"]}, ["OB16", "OB5", "AD5"], None,
