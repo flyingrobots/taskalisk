@@ -55,10 +55,14 @@ for their own reasons (Decision 7).
 ### 2. Rust, with a hexagonal architecture — Decided
 
 Taskalisk is rewritten in Rust. A core crate holds the domain and the ports
-and performs no I/O; it plans over a recorded set of observations. An adapter
-crate holds the `gh` and `git` adapters, an in-memory forge for tests, the
-renderers and the command line. Ports: `Forge` and `LocalRepository`; later
+and performs no I/O; it plans over a recorded set of observations. Each port
+adapter is its own crate: `issue-dag-gh` implements `Forge` and
+`issue-dag-git` implements `LocalRepository`. The in-memory forge for tests
+(`RecordedForge`) is in the core, and the renderers and the command line are
+in the binary crate. Ports: `Forge` and `LocalRepository`; later
 `AgentLauncher` and `Locks`.
+
+Amended 2026-11-26: one crate per adapter (#57).
 
 Each forge write is a named port operation. A narrow operation does not
 narrow its effect: the edge edit still replaces the issue body, and its

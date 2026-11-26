@@ -49,7 +49,7 @@ schema version under `Unreleased` is a draft and may change in place.
   the bundle rules do not define is rejected.
 
 - **The git adapter** (flyingrobots/taskalisk#57). A new crate, `issue-dag-git`, implements the
-  core's `LocalRepository` port by running `git -C <path>` with argument lists, never a shell:
+  core's `LocalRepository` port by running `git` with argument lists, never a shell:
   `for-each-ref` with NUL-separated fields for local and remote-tracking branches (tip and
   subject; `origin/HEAD` and other symbolic refs left out), `worktree list --porcelain -z` for
   worktrees (path, head, branch or detached or bare, locked, prunable, whether the directory
@@ -57,14 +57,20 @@ schema version under `Unreleased` is a draft and may change in place.
   --left-right --count --end-of-options` for ahead/behind. The port gains `branches`, `worktrees`
   and `ahead_behind`, with the value types `Branch`, `BranchScope`, `Worktree`, `Checkout` and
   `AheadBehind`, because the inventory reports them and the port held only local branch names.
-  It fails closed: `GitRepository::open` refuses a path that is not a repository, each read
-  returns a `GitError` when `git` fails or answers in a shape it cannot read (an empty worktree
-  listing included), and the port answers `Unavailable`, never an empty list; the binary maps a
-  `GitError` to `git.command_failed`, exit 2. The adapter removes `GIT_DIR`, `GIT_WORK_TREE` and
-  the other variables that select another repository, so a run inside a hook reads the repository
-  it was given, and holds each worktree's `status` to that worktree, so one whose `.git` is gone
-  never reads the repository above it. A missing worktree directory is reported (`path_exists`
-  false, `dirty` unknown), not dropped.
+  `GitRepository::open` takes the top level of a work tree (main or linked) and records its git
+  directory and work tree (`rev-parse --absolute-git-dir --show-toplevel`); a subdirectory, a
+  `.git` directory and a bare repository are refused. Every read runs against the recorded
+  `--git-dir` and `--work-tree` and never discovers again, so a repository whose `.git` is gone
+  fails instead of reading the repository above it; each worktree's `status` names that
+  worktree's own `.git` the same way. It fails closed: each `read_*` method returns a `GitError`
+  when `git` fails or answers in a shape it cannot read (an empty worktree listing included), for
+  a caller that needs the kind of failure, and the port answers `Unavailable` with the error's
+  text, never an empty list. It only reads: every call passes `--no-optional-locks` and turns off
+  `core.fsmonitor` and `core.untrackedCache`, so `status` neither rewrites the index nor runs a
+  configured monitor command, and removes every inherited `GIT_*` variable (`GIT_DIR`,
+  `GIT_CONFIG_*`, `GIT_CEILING_DIRECTORIES`, `GIT_NO_REPLACE_OBJECTS` and the rest), so a run
+  inside a hook reads the repository it was given. A missing worktree directory is reported
+  (`path_exists` false, `dirty` unknown), not dropped.
 
 - **Repeated keys, warnings and refusal order in the specification** (flyingrobots/taskalisk#104).
   The vendored issue-dag specification now states the rulings the Rust core implements: no rule of
@@ -87,6 +93,12 @@ schema version under `Unreleased` is a draft and may change in place.
   `scripts/check_vendored_writer.py` fetches the writer from flyingrobots/parley at the pinned
   commit and requires it to equal the pin and the copy; CI runs it. The offline pin test proves
   only that copy and pin agree, and the output reference now says which check proves what.
+
+### Changed
+
+- **One crate per port adapter** (flyingrobots/taskalisk#57). Decision 0001, section 2, is amended:
+  `issue-dag-gh` implements `Forge`, `issue-dag-git` implements `LocalRepository`, the in-memory
+  `RecordedForge` is in the core, and the renderers and command line are in the binary crate.
 
 ### Fixed
 
