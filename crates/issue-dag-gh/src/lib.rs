@@ -65,6 +65,27 @@ impl Shown {
     }
 }
 
+/// The repository `gh` resolves from `dir` (`gh repo view`).
+///
+/// It runs `program` with `env` on top of this process's environment, as
+/// [`GhForge`] runs it, and answers the home repository of a run on
+/// `--repo dir`, found before a forge for it exists.
+///
+/// # Errors
+///
+/// A [`GhError`] when `gh` fails or does not answer `owner/name`.
+pub fn repository_of(
+    program: impl AsRef<OsStr>,
+    env: &[(OsString, OsString)],
+    dir: &Path,
+) -> Result<Repo, GhError> {
+    read::repository(&Runner {
+        program: program.as_ref().to_owned(),
+        env: env.to_vec(),
+        dir: Some(dir.to_owned()),
+    })
+}
+
 /// The bounds a read refuses to pass. A list that fills its limit may be
 /// truncated, and is an error (threat model C15).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -136,11 +157,7 @@ impl GhForge {
     ///
     /// A [`GhError`] when `gh` fails or does not answer `owner/name`.
     pub fn repository_of(&self, dir: &Path) -> Result<Repo, GhError> {
-        let runner = Runner {
-            dir: Some(dir.to_owned()),
-            ..self.runner.clone()
-        };
-        read::repository(&runner)
+        repository_of(&self.runner.program, &self.runner.env, dir)
     }
 
     /// The title and URL of every issue read so far, to be shown: never an

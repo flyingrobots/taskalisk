@@ -34,13 +34,11 @@ impl Fixture {
     /// A fixture whose GitHub is `state`, a Python expression over
     /// `golden_scenarios` and `test_taskalisk` (such as `rich_state()`).
     fn new(state: &str) -> Self {
-        let dir = std::env::temp_dir()
-            .join(format!(
-                "taskalisk-cli-{}-{}",
-                std::process::id(),
-                NEXT.fetch_add(1, Ordering::Relaxed)
-            ))
-            .clone();
+        let dir = std::env::temp_dir().join(format!(
+            "taskalisk-cli-{}-{}",
+            std::process::id(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
+        ));
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(dir.join("bin")).expect("a temporary directory");
         let dir = dir.canonicalize().expect("a canonical directory");
@@ -60,7 +58,15 @@ impl Fixture {
         fs::create_dir_all(&repo).expect("the repository");
         for args in [
             &["init", "-q", "-b", "main"][..],
-            &["-c", "commit.gpgsign=false", "commit", "-q", "--allow-empty", "-m", "base"],
+            &[
+                "-c",
+                "commit.gpgsign=false",
+                "commit",
+                "-q",
+                "--allow-empty",
+                "-m",
+                "base",
+            ],
             &["branch", "task/2-home-two"],
             &["branch", "task/22-other"],
         ] {
@@ -244,14 +250,27 @@ fn of<'a>(lines: &'a [Value], id: &str) -> Vec<&'a Value> {
 /// Every line validates against the exact schema it names, by the vendored
 /// writer's checker (`tests/validate_lines.py`).
 fn assert_valid(lines: &[Value]) {
+    validate(lines, &[]);
+}
+
+/// As [`assert_valid`], except that an untrusted issue's or pull request's
+/// finding may lack the trust gate's reasons, which the core does not keep
+/// yet (flyingrobots/taskalisk#46; `FINDING_GAPS` in
+/// `tests/test_render_parity.py`).
+fn assert_valid_but_for_render_gaps(lines: &[Value]) {
+    validate(lines, &["--allow-render-gaps"]);
+}
+
+fn validate(lines: &[Value], flags: &[&str]) {
     let mut child = Command::new("python3")
         .current_dir(root().join("tests"))
         .arg("validate_lines.py")
+        .args(flags)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .spawn()
         .expect("python3 runs");
-    let text: String = lines.iter().map(|l| format!("{l}\n")).collect();
+    let text: String = lines.iter().map(|l| l.to_string() + "\n").collect();
     std::io::Write::write_all(child.stdin.as_mut().expect("stdin"), text.as_bytes())
         .expect("the lines are written");
     let out = child.wait_with_output().expect("the validator ends");
@@ -280,8 +299,8 @@ fn a_live_plan_writes_lines_that_validate_and_a_receipt() {
     let out = run.stdout();
     let receipt = run.receipt();
     assert!(run.stderr().is_empty(), "{}", run.explain());
-    assert_valid(&out);
-    assert_valid(&receipt);
+    assert_valid_but_for_render_gaps(&out);
+    assert_valid_but_for_render_gaps(&receipt);
 
     // The bootstrap line first, the plan next, the end last.
     assert_eq!(schema(&out[0]), "parley.run.bootstrap");
@@ -292,7 +311,10 @@ fn a_live_plan_writes_lines_that_validate_and_a_receipt() {
     assert_eq!(end["status"], 0);
     assert_eq!(end["receipt"], out[0]["paths"]["receipt"]);
     // One sequence across the streams and the receipt.
-    let seqs: Vec<u64> = out.iter().map(|l| l["seq"].as_u64().expect("seq")).collect();
+    let seqs: Vec<u64> = out
+        .iter()
+        .map(|l| l["seq"].as_u64().expect("seq"))
+        .collect();
     assert!(seqs.windows(2).all(|w| w[0] < w[1]), "{seqs:?}");
     assert!(out.iter().all(|l| l["run"] == out[0]["run"]));
 
@@ -303,13 +325,19 @@ fn a_live_plan_writes_lines_that_validate_and_a_receipt() {
     assert_eq!(plan["source"]["repository"], HOME);
     assert_eq!(
         plan["frontier"],
-        json!(["flyingrobots/geordi#3", "flyingrobots/echo#5", "flyingrobots/bunny#110"])
+        json!([
+            "flyingrobots/geordi#3",
+            "flyingrobots/echo#5",
+            "flyingrobots/bunny#110"
+        ])
     );
 
     // The display input came from the adapters: titles, URLs, branches.
     let node = |id: &str| {
         out.iter()
-            .find(|l| l["id"] == id && matches!(schema(l), "taskalisk.node" | "taskalisk.frontier_node"))
+            .find(|l| {
+                l["id"] == id && matches!(schema(l), "taskalisk.node" | "taskalisk.frontier_node")
+            })
             .unwrap_or_else(|| panic!("no line for {id}"))
             .clone()
     };
@@ -322,7 +350,10 @@ fn a_live_plan_writes_lines_that_validate_and_a_receipt() {
         node("flyingrobots/geordi#2")["recoverable_branches"],
         json!(["task/2-home-two"])
     );
-    assert_eq!(node("flyingrobots/geordi#1")["recoverable_branches"], json!([]));
+    assert_eq!(
+        node("flyingrobots/geordi#1")["recoverable_branches"],
+        json!([])
+    );
 
     // The receipt: the head, the steps, a copy of every result, the inputs
     // with inv, the end.
@@ -345,6 +376,20 @@ fn a_live_plan_writes_lines_that_validate_and_a_receipt() {
         fs::read_to_string(run.cwd.join(".parley/.gitignore")).expect("the .gitignore"),
         "*\n"
     );
+}
+
+#[test]
+fn a_backlog_with_no_stranger_gives_lines_that_all_validate() {
+    let fixture = Fixture::new("plan_state()");
+    let run = fixture.plan(&["--root", "flyingrobots/geordi#9"]);
+    assert_eq!(run.status(), 0, "{}", run.explain());
+    let (out, receipt) = (run.stdout(), run.receipt());
+    assert!(of(&out, "taskalisk.finding").iter().all(|f| !matches!(
+        f["code"].as_str(),
+        Some("issue.untrusted" | "pull_request.untrusted")
+    )));
+    assert_valid(&out);
+    assert_valid(&receipt);
 }
 
 #[test]
@@ -459,15 +504,22 @@ fn a_failed_gh_read_exits_2_with_an_error_and_no_plan() {
     assert_valid(&out);
     assert_valid(&err);
     assert_valid(&run.receipt());
-    assert!(of(&out, "taskalisk.plan").is_empty(), "no plan from a partial read");
+    assert!(
+        of(&out, "taskalisk.plan").is_empty(),
+        "no plan from a partial read"
+    );
     assert_eq!(out.last().expect("end")["status"], 2);
     let errors = of(&err, "parley.error");
-    assert!(!errors.is_empty());
+    assert_ne!(errors.len(), 0, "{}", run.explain());
     for error in errors {
         assert_eq!(error["code"], "gh.command_failed");
         assert_eq!(error["retryable"], true);
         assert_eq!(error["detail"]["phase"], "discovery");
-        assert!(error["detail"]["source"].as_str().is_some_and(|s| s.starts_with("gh api graphql")));
+        assert!(
+            error["detail"]["source"]
+                .as_str()
+                .is_some_and(|s| s.starts_with("gh api graphql"))
+        );
     }
     // The input could not be read whole, so there is no inv.
     let inputs = run.receipt();
@@ -491,7 +543,7 @@ fn a_repository_git_cannot_read_exits_2() {
     let errors = of(&err, "parley.error");
     assert_eq!(errors.len(), 1, "{}", run.explain());
     assert_eq!(errors[0]["code"], "git.command_failed");
-    assert!(of(&run.stdout(), "taskalisk.plan").is_empty());
+    assert_eq!(of(&run.stdout(), "taskalisk.plan").len(), 0);
 }
 
 #[test]
@@ -515,8 +567,15 @@ fn a_graph_that_cannot_be_ranked_is_a_reported_error() {
         .filter(|f| f["code"] == "graph.cyclic_node")
         .map(|f| f["subject"].clone())
         .collect();
-    assert_eq!(errors[0]["detail"]["cyclic_nodes"], Value::Array(cyclic.clone()));
-    for id in ["flyingrobots/echo#5", "flyingrobots/geordi#1", "flyingrobots/geordi#2"] {
+    assert_eq!(
+        errors[0]["detail"]["cyclic_nodes"],
+        Value::Array(cyclic.clone())
+    );
+    for id in [
+        "flyingrobots/echo#5",
+        "flyingrobots/geordi#1",
+        "flyingrobots/geordi#2",
+    ] {
         assert!(cyclic.contains(&json!(id)), "{id} in {cyclic:?}");
     }
 }
@@ -573,7 +632,10 @@ fn a_usage_error_exits_3_with_one_startup_line_and_no_receipt() {
         assert_eq!(schema(&err[0]), "parley.startup.failed");
         assert_eq!(err[0]["seq"], 0);
         assert_valid(&err);
-        assert!(run.receipts().is_empty(), "{args:?}: a usage error has no receipt");
+        assert!(
+            run.receipts().is_empty(),
+            "{args:?}: a usage error has no receipt"
+        );
     }
 }
 
@@ -602,14 +664,20 @@ fn human_prints_prose_and_keeps_the_receipt() {
         lines[0],
         "flyingrobots/geordi: compiled, 8 open node(s), 3 on the frontier, a batch of 1, critical path 4"
     );
-    assert!(text.contains("   1   1010  flyingrobots/geordi#3            wip          Home three\n"));
-    assert!(text.contains("batch: flyingrobots/geordi#3\n  skipped flyingrobots/echo#5: holds conflict\n"));
+    assert!(
+        text.contains("   1   1010  flyingrobots/geordi#3            wip          Home three\n")
+    );
+    assert!(
+        text.contains(
+            "batch: flyingrobots/geordi#3\n  skipped flyingrobots/echo#5: holds conflict\n"
+        )
+    );
     assert!(!text.contains("{\""), "no JSON on stdout under --human");
     // The receipt is the JSON one, wherever --human sends the prose.
     let receipts = run.receipts();
     assert_eq!(receipts.len(), 1);
     let receipt = parse(&fs::read(&receipts[0]).expect("the receipt"));
-    assert_valid(&receipt);
+    assert_valid_but_for_render_gaps(&receipt);
     assert_eq!(of(&receipt, "taskalisk.plan").len(), 1);
 }
 
@@ -649,8 +717,15 @@ fn a_secret_in_the_environment_never_reaches_a_line() {
     let run = Run { output, cwd };
     assert_eq!(run.status(), 2, "{}", run.explain());
     let receipt = fs::read_to_string(&run.receipts()[0]).expect("the receipt");
-    for text in [run.text(), String::from_utf8_lossy(&run.output.stderr).into_owned(), receipt] {
-        assert!(!text.contains("s3cr3t-t0k3n"), "a secret reached a line: {text}");
+    for text in [
+        run.text(),
+        String::from_utf8_lossy(&run.output.stderr).into_owned(),
+        receipt,
+    ] {
+        assert!(
+            !text.contains("s3cr3t-t0k3n"),
+            "a secret reached a line: {text}"
+        );
     }
     assert!(String::from_utf8_lossy(&run.output.stderr).contains("[redacted]"));
     let head = &run.receipt()[0];
