@@ -151,7 +151,7 @@ a `frontmatter.violation` (the plan is not `ok`), and its line carries null; the
 | `frontmatter.invalid` | an issue in the closure has invalid frontmatter | false |
 | `issue.not_found` | Rust binary only: a reference resolves to nothing, for the cause the core recorded; `detail.rule` is `D11`, `D12` or `D13` | false |
 | `bundle.capture_failed` | Rust binary only: `--capture-bundle` could not write the bundle or its record | false |
-| `bundle.unreadable`, `bundle.invalid` | Rust binary only: the `--from-bundle` file cannot be read, or is not an `issue-dag-observations/1` bundle (`detail.at`, `detail.problem`) | false |
+| `bundle.unreadable`, `bundle.invalid` | Rust binary only: the `--from-bundle` file cannot be read or is over 64 MiB, or is not an `issue-dag-observations/1` bundle (`detail.at`, `detail.problem`) | false |
 | `bundle.incomplete` | Rust binary only: the bundle lacks a slot the run reads (bundle rule OB5); `detail.missing` is its path | false |
 | `observation.unavailable` | Rust binary only: a replayed bundle records a slot the run needs as unavailable (OB4); `detail.unavailable` is the recorded reason | false |
 | `evaluation.unreadable`, `evaluation.invalid`, `evaluation.unavailable`, `evaluation.differs` | Rust binary only: the `--from-record` file cannot be read, is not a `taskalisk-evaluation/1` record, does not retain a bundle this binary can plan, or plans to another result than it records | false |
@@ -373,7 +373,10 @@ It differs from the Python in these ways, each tested in `crates/taskalisk/tests
     bundle answers (`--repo`, `--root`, `--sem-capacity`, the trust flags, `--from-github`,
     `--capture-bundle`) are refused with them, exit 3. A slot the bundle does not hold is
     `bundle.incomplete` (OB5), and one it records as unavailable `observation.unavailable` (or
-    `issue.not_found` when it records a cause), exit 2: never read as empty. The plan's decisions
+    `issue.not_found` when it records a cause), exit 2: never read as empty. A file larger than
+    64 MiB (67,108,864 bytes) is refused unread, `bundle.unreadable` or `evaluation.unreadable`
+    with `detail.limit`, rather than read whole into memory; a thousand-issue bundle is a few
+    megabytes. The plan's decisions
     are the captured run's; its display is not, because a bundle records none: each issue's
     title is `(title not recorded in the bundle)`, its URL null and its recoverable branches
     empty, so `artifact_hash` differs from the live run's.

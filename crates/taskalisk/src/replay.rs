@@ -25,6 +25,7 @@
 //! decisions of the plan are the captured run's.
 
 use std::fs;
+use std::io::Read as _;
 use std::path::Path;
 
 use issue_dag_bundle::{
@@ -132,19 +133,51 @@ pub fn capture(run: &mut Run<'_>, parameters: &Parameters, observations: &Observ
     );
 }
 
+/// The largest bundle or record a replay reads, in bytes: 64 MiB. The
+/// bundle of a thousand-issue backlog is a few megabytes; a larger file is
+/// refused rather than read whole into memory.
+pub const READ_LIMIT: u64 = 64 * 1024 * 1024;
+
+/// The text of `path`, refused when it holds more than [`READ_LIMIT`]
+/// bytes: by its size first, so a large file is not read, and by the bytes
+/// read, so one that grows, or a pipe, is not read past the limit.
+fn read_limited(path: &Path) -> std::io::Result<String> {
+    let too_large = || {
+        std::io::Error::new(
+            std::io::ErrorKind::FileTooLarge,
+            format!("the file is larger than the limit of {READ_LIMIT} bytes"),
+        )
+    };
+    let file = fs::File::open(path)?;
+    if file.metadata()?.len() > READ_LIMIT {
+        return Err(too_large());
+    }
+    let mut text = String::new();
+    file.take(READ_LIMIT + 1).read_to_string(&mut text)?;
+    if text.len() as u64 > READ_LIMIT {
+        return Err(too_large());
+    }
+    Ok(text)
+}
+
 /// Plans from the bundle or record at `path`, with reads disabled.
 pub fn replay(run: &mut Run<'_>, source: Source, path: &Path) {
     let kind = source.kind();
-    let text = match fs::read_to_string(path) {
+    let text = match read_limited(path) {
         Ok(text) => text,
         Err(e) => {
             let problem = format!("{} {}: {e}", source.flag(), path.display());
             return run.error(
                 &format!("{kind}.unreadable"),
                 &cli::one_sentence(&cli::home_as_tilde(&problem)),
-                Some("name a file that exists and is readable"),
+                Some("name a readable file of at most 64 MiB"),
                 Some(false),
-                Some(json!({"source": source.flag(), "error": cli::home_as_tilde(&e.to_string()), "phase": "replay"})),
+                Some(json!({
+                    "source": source.flag(),
+                    "error": cli::home_as_tilde(&e.to_string()),
+                    "limit": READ_LIMIT,
+                    "phase": "replay",
+                })),
             );
         }
     };
