@@ -218,6 +218,13 @@ deterministic hash of a different document. Compare `artifact_hash` values from 
 only. The parity tests (`crates/taskalisk/tests/parity.rs`) assert equality where it holds and,
 elsewhere, that the hash is 64 hexadecimal digits and the same on every run.
 
+Where the specification records a difference from the Python
+(`tests/fixtures/issue-dag/notes/python-differences.md`), the Rust binary follows the
+specification, and the parity tests leave that corpus case and its `--python` twin out. For
+example, a task that names the same not-planned prerequisite twice gives one `parent.not_planned`
+finding in Rust and one per mention in 1.x (difference 10, a compatibility exception; corpus
+`graph/g3-duplicate-not-planned-prerequisite`).
+
 ## `--since-last`
 
 With `--since-last`, a plan compares its frontier with the most recent other completed receipt

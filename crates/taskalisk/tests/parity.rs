@@ -430,10 +430,12 @@ fn every_agreed_case_renders_as_the_python_does() {
     );
     // 76 corpus cases, the one planned again with hostile titles, and the
     // variants d9-container--opaque-child, --opaque-children-in-order-read,
-    // --traversal-order and --not-planned-in-blocked-by-order (the pull
-    // request and untrusted variants hold untrusted issues or pulls).
+    // --traversal-order, --not-planned-in-blocked-by-order and
+    // --not-planned-per-task-order (the pull request and untrusted variants
+    // hold untrusted issues or pulls; the unknown-and-cycle one compiles
+    // nothing).
     assert_eq!(
-        equal_hashes, 81,
+        equal_hashes, 82,
         "the cases whose artifact_hash is the Python's"
     );
 }

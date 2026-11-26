@@ -274,6 +274,13 @@ impl<'a> Report<'a> {
                 (Severity::Error, _) => report.violations.push(f),
             }
         }
+        // 1.x checks unknown prerequisites before it looks for a cycle, so
+        // a run with both is `unresolved` and names no cyclic node. The
+        // profile ranks neither above the other: both make the run invalid
+        // (F1), so the renderer keeps the 1.x precedence.
+        if !report.unknown.is_empty() {
+            report.cyclic.clear();
+        }
         report
     }
 }

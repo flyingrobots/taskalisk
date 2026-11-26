@@ -139,14 +139,16 @@ schema version under `Unreleased` is a draft and may change in place.
   document holds no intended difference and no gap; elsewhere it is a different, deterministic
   hash, a permanent exception recorded in `docs/topics/output/README.md`. On the 157 graph cases of
   the corpus where the Python and the specification agree, on one planned again with titles that
-  hold control, Latin-1, astral and line-separator characters, and on six variants that reach
+  hold control, Latin-1, astral and line-separator characters, and on eight variants that reach
   what no case does (an opaque issue a container and a task name, whose `referenced_by` lists
   both in the order read, from the core's new `Node.named_by`; containers, opaque and untrusted
   issues read out of sorted order, listed in the order read, from the core's new
   `Graph.visit_order`; not-planned prerequisites listed by task read, then in the task's
-  `.blocked_by` order, from `Graph.not_planned_order`; and strangers' pull requests listed out of
-  order, from `Graph.untrusted_pull_request_order`), every line equals the Python's
-  (`tests/capture_render_parity.py`), `artifact_hash` in 81 of the 164, once these gaps are
+  `.blocked_by` order, from `Graph.not_planned_order`, two tasks naming them in opposite orders
+  included; strangers' pull requests listed out of order, from
+  `Graph.untrusted_pull_request_order`; and a run with both an unknown prerequisite and a cycle,
+  which is `unresolved` as in 1.x, which checks prerequisites first), every line equals the
+  Python's (`tests/capture_render_parity.py`), `artifact_hash` in 82 of the 166, once these gaps are
   removed, and the suite checks the list is exact: the trust gate's reasons in `issue.untrusted`
   and `pull_request.untrusted` (#46), and the discovery findings of a run whose graph is not
   reported, a cycle or an unknown prerequisite (#44). Every rendered line validates against its
