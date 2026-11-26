@@ -6,9 +6,12 @@
 //! does not hold is left unrecorded, so that a run that needs it fails with
 //! [`issue_dag_core::Missing`] (OB5) instead of reading it as empty.
 
+mod dump;
 mod evaluation;
 mod result;
 mod strict;
+
+pub use dump::dump;
 
 pub use evaluation::{
     EvaluationError, EvaluationRecord, Evaluator, Evaluators, RECORD_VERSION, Replay, evaluate,
