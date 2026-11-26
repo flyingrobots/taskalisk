@@ -298,7 +298,9 @@ impl GitRepository {
 
     /// The local and remote-tracking branches, ordered by ref name
     /// (`git for-each-ref refs/heads refs/remotes`). Symbolic refs such as
-    /// `origin/HEAD` are left out.
+    /// `origin/HEAD` are left out. Ref names and object names must be
+    /// UTF-8; a subject that is not (a commit in another encoding) is read
+    /// leniently, each invalid sequence replaced by U+FFFD.
     ///
     /// # Errors
     ///
@@ -312,17 +314,26 @@ impl GitRepository {
             "refs/remotes",
         ];
         let at = self.at();
-        let out = text(at, &args, git(at, &args)?)?;
+        let out = git(at, &args)?;
         let unreadable = |why: String| GitError::Unreadable {
             command: command_line(at, &args),
             why,
         };
+        let strict = |field: &[u8]| {
+            String::from_utf8(field.to_vec())
+                .map_err(|_| unreadable("a ref or object name is not UTF-8".to_owned()))
+        };
         let mut branches = Vec::new();
-        for line in out.lines().filter(|line| !line.is_empty()) {
-            let fields: Vec<&str> = line.split('\0').collect();
+        for line in out
+            .split(|&byte| byte == b'\n')
+            .filter(|line| !line.is_empty())
+        {
+            let fields: Vec<&[u8]> = line.split(|&byte| byte == b'\0').collect();
             let [refname, symref, head, subject] = fields[..] else {
                 return Err(unreadable(format!("{} fields, not 4", fields.len())));
             };
+            let (refname, symref, head) = (strict(refname)?, strict(symref)?, strict(head)?);
+            let subject = String::from_utf8_lossy(subject);
             if !symref.is_empty() {
                 continue;
             }
@@ -336,8 +347,8 @@ impl GitRepository {
             branches.push(Branch {
                 scope,
                 name: name.to_owned(),
-                head: head.to_owned(),
-                tip_subject: subject.to_owned(),
+                head,
+                tip_subject: subject.into_owned(),
             });
         }
         Ok(branches)
@@ -353,12 +364,17 @@ impl GitRepository {
     /// `--separate-git-dir`, git lists the main worktree at its git
     /// directory; its dirty state is read through the work tree recorded at
     /// [`open`](Self::open) when that is the main worktree, and is unknown
-    /// (`None`) when a linked worktree was opened.
+    /// (`None`) when a linked worktree was opened. A locked worktree whose
+    /// directory holds no `.git`, such as a removable volume that is not
+    /// mounted, is not read either (`dirty` is `None`).
     ///
     /// # Errors
     ///
     /// [`GitError::ForeignWorktree`] when a listed worktree's directory
-    /// holds another repository's `.git`; another [`GitError`] when git
+    /// holds another repository's `.git`; [`GitError::MisplacedWorktree`]
+    /// when it holds the `.git` of another worktree of this repository, or
+    /// a linked worktree's `.git` names the common git directory; another
+    /// [`GitError`] when git
     /// fails, for the listing or for any worktree's status, or its output
     /// cannot be read.
     pub fn read_worktrees(&self) -> Result<Vec<Worktree>, GitError> {
@@ -375,7 +391,11 @@ impl GitRepository {
             .map(|(index, record)| {
                 let dir = Path::new(&record.path);
                 let path_exists = dir.is_dir();
-                let dirty = if path_exists && !record.prunable && record.checkout != Checkout::Bare
+                let unmounted = record.locked && !dir.join(".git").exists();
+                let dirty = if path_exists
+                    && !unmounted
+                    && !record.prunable
+                    && record.checkout != Checkout::Bare
                 {
                     self.dirty(dir, index == 0)?
                 } else {

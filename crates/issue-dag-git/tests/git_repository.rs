@@ -688,3 +688,70 @@ fn an_empty_or_ranged_revision_is_unavailable() {
         ));
     }
 }
+
+#[test]
+fn a_locked_worktree_with_an_empty_directory_is_not_read() {
+    let scratch = Scratch::new("unmounted");
+    let (repo, extra) = fixture(&scratch);
+    git(&repo, &["worktree", "lock", &path_of(&extra)]);
+    // As a removable volume that is not mounted: the directory is there,
+    // empty.
+    fs::remove_dir_all(&extra).expect("remove the worktree directory");
+    fs::create_dir(&extra).expect("leave an empty mount point");
+    let local = GitRepository::open(&repo).expect("a repository");
+    let worktrees = value(local.worktrees());
+    let found = &worktrees[1];
+    assert_eq!(found.path, path_of(&extra));
+    assert!(found.path_exists);
+    assert!(found.locked);
+    assert_eq!(found.dirty, None);
+    assert_eq!(worktrees[0].dirty, Some(false));
+}
+
+#[test]
+fn a_subject_that_is_not_utf8_is_read_leniently() {
+    let scratch = Scratch::new("latin1");
+    let (repo, _) = fixture(&scratch);
+    let message = scratch.path().join("message");
+    // "café" in ISO-8859-1: the é is the single byte 0xE9.
+    fs::write(&message, b"caf\xe9\n").expect("write the message");
+    git(
+        &repo,
+        &[
+            "-c",
+            "i18n.commitEncoding=ISO-8859-1",
+            "commit",
+            "-q",
+            "--allow-empty",
+            "-F",
+            &path_of(&message),
+        ],
+    );
+    let local = GitRepository::open(&repo).expect("a repository");
+    assert_eq!(
+        value(local.branch_names()),
+        vec![FEATURE.to_owned(), "main".to_owned()]
+    );
+    let branches = value(local.branches());
+    let main = branches
+        .iter()
+        .find(|b| b.scope == BranchScope::Local && b.name == "main")
+        .expect("main");
+    assert_eq!(main.tip_subject, "caf\u{fffd}");
+}
+
+#[test]
+fn a_linked_worktree_whose_git_names_the_common_dir_is_misplaced() {
+    let scratch = Scratch::new("common-gitfile");
+    let (repo, extra) = fixture(&scratch);
+    fs::write(
+        extra.join(".git"),
+        format!("gitdir: {}\n", path_of(&repo.join(".git"))),
+    )
+    .expect("point the worktree at the common dir");
+    let local = GitRepository::open(&repo).expect("a repository");
+    assert!(matches!(
+        local.read_worktrees(),
+        Err(GitError::MisplacedWorktree { .. })
+    ));
+}

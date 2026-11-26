@@ -197,7 +197,7 @@ mod tests {
     use crate::reference::IssueRef;
 
     #[test]
-    fn no_local_repository_answers_empty_for_every_read() {
+    fn no_local_repository_answers_empty_lists_and_no_divergence() {
         let local = NoLocalRepository;
         assert_eq!(local.branch_names(), Observed::Value(Vec::new()));
         assert_eq!(local.branches(), Observed::Value(Vec::new()));

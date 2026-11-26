@@ -49,7 +49,8 @@ schema version under `Unreleased` is a draft and may change in place.
 - **The git adapter** (flyingrobots/taskalisk#57). A new crate, `issue-dag-git`, implements the
   core's `LocalRepository` port by running `git` with argument lists, never a shell:
   `for-each-ref` with NUL-separated fields for local and remote-tracking branches (tip and
-  subject; `origin/HEAD` and other symbolic refs left out), `worktree list --porcelain -z` for
+  subject, a subject that is not UTF-8 read leniently; `origin/HEAD` and other symbolic refs left
+  out), `worktree list --porcelain -z` for
   worktrees (path, head, branch or detached or bare, locked, prunable, whether the directory
   exists), `status --porcelain -z` in each worktree for its dirty state, and `rev-list
   --left-right --count --end-of-options` for ahead/behind (an empty revision or base, or one
@@ -65,7 +66,8 @@ schema version under `Unreleased` is a draft and may change in place.
   worktree's own `.git` the same way, after checking that it belongs to the opened repository (a
   worktree directory replaced by another repository fails as `ForeignWorktree`, and a linked
   worktree whose `.git` is another worktree's, as after two directories are swapped, fails as
-  `MisplacedWorktree`); a submodule's or
+  `MisplacedWorktree`; a locked worktree whose directory holds no `.git`, such as an unmounted
+  volume, has `dirty` unknown); a submodule's or
   `--separate-git-dir` repository's main worktree, which git lists at its git directory, is read
   through the recorded work tree. It fails closed: each `read_*` method returns a `GitError`
   when `git` fails or answers in a shape it cannot read (an empty worktree listing included), for
