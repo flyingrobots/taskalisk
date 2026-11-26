@@ -229,5 +229,31 @@ class BuildSkillReleaseTest(unittest.TestCase):
                     builder.build(repo, base / "a", "1.0.0")
 
 
+class PinnedRevisionTest(unittest.TestCase):
+    """flyingrobots/taskalisk#88: a commit made in the checkout while the suite runs moved HEAD between
+    two builds of one test, and test_two_builds_are_byte_identical failed. The suite resolves the
+    revision once (REV) and every build or read of the checkout names it."""
+
+    def test_every_build_or_read_of_the_checkout_names_the_pinned_revision(self):
+        source = pathlib.Path(__file__).read_text().splitlines()
+        unpinned = [f"{n}: {line.strip()}" for n, line in enumerate(source, 1)
+                    if ("builder.build(ROOT" in line and "ref=REV" not in line)
+                    or ("build_skill_release.py\")" in line and "--version" in line and "--ref" not in line)
+                    or (re.search(r"[\"']HEAD[:\"']|f\"HEAD:", line) and "rev-parse" not in line)]
+        self.assertEqual(unpinned, [], "each must name REV, never HEAD")
+
+    def test_a_commit_between_two_builds_of_one_revision_changes_nothing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = pathlib.Path(tmp)
+            repo = make_repo(base, BASIC, [MODEL_LINK])
+            rev = subprocess.run(GIT + ["-C", str(repo), "rev-parse", "HEAD"], capture_output=True, text=True, check=True).stdout.strip()
+            first = builder.build(repo, base / "a", "1.0.0", ref=rev)
+            (repo / "skills" / "taskalisk" / "SKILL.md").write_text("changed by a concurrent commit\n")
+            subprocess.run(GIT + ["-C", str(repo), "commit", "-q", "-am", "concurrent"], check=True)
+            self.assertEqual(first.read_bytes(), builder.build(repo, base / "b", "1.0.0", ref=rev).read_bytes())
+            self.assertNotEqual(first.read_bytes(), builder.build(repo, base / "c", "1.0.0").read_bytes(),
+                                "HEAD moved, so an unpinned build differs: the race the pin removes")
+
+
 if __name__ == "__main__":
     unittest.main()
