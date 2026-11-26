@@ -8,7 +8,9 @@
 use std::fs;
 use std::path::Path;
 
-use issue_dag_core::{BODY_WARNINGS, Finding, IssueRef, LABELS, Label, Severity, code, findings};
+use issue_dag_core::{
+    BODY_WARNINGS, CODES, Finding, IssueRef, LABELS, Label, Severity, code, findings,
+};
 
 /// Marker text placed in the values of every fixture.
 const MARK: &str = "ZQXMARK";
@@ -236,9 +238,32 @@ fn codes_are_stable_strings_one_per_label() {
     assert_eq!(all, expected);
 }
 
-/// The one table of codes in the crate docs lists exactly the codes, with
-/// their severities: the document codes in `LABELS` order, then Taskalisk's
-/// body warnings in `BODY_WARNINGS` order (flyingrobots/taskalisk#48).
+/// `CODES` is the one public catalogue: the document codes in `LABELS`
+/// order with their severities, then Taskalisk's body warnings in
+/// `BODY_WARNINGS` order (flyingrobots/taskalisk#48), each code once.
+#[test]
+fn codes_catalogue_registers_every_finding_family() {
+    let expected: Vec<(&str, Severity)> = LABELS
+        .iter()
+        .map(|l| {
+            let severity = if *l == Label::V10 {
+                Severity::Warning
+            } else {
+                Severity::Error
+            };
+            (code(*l), severity)
+        })
+        .chain(BODY_WARNINGS.iter().map(|w| (w.code(), Severity::Warning)))
+        .collect();
+    assert_eq!(CODES, expected.as_slice());
+    let mut distinct: Vec<&str> = CODES.iter().map(|(c, _)| *c).collect();
+    distinct.sort_unstable();
+    distinct.dedup();
+    assert_eq!(distinct.len(), CODES.len());
+}
+
+/// The one table of codes in the crate docs lists exactly the catalogue
+/// `CODES`, in its order, with its severities.
 #[test]
 fn the_documented_table_matches_the_codes() {
     let source = fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join("src/finding.rs"))
@@ -254,17 +279,9 @@ fn the_documented_table_matches_the_codes() {
             )
         })
         .collect();
-    let expected: Vec<(String, String)> = LABELS
+    let expected: Vec<(String, String)> = CODES
         .iter()
-        .map(|l| {
-            let severity = if *l == Label::V10 { "warning" } else { "error" };
-            (code(*l).to_owned(), severity.to_owned())
-        })
-        .chain(
-            BODY_WARNINGS
-                .iter()
-                .map(|w| (w.code().to_owned(), "warning".to_owned())),
-        )
+        .map(|(c, s)| ((*c).to_owned(), s.as_str().to_owned()))
         .collect();
     assert_eq!(rows, expected);
 }

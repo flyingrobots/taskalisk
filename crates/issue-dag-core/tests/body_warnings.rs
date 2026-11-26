@@ -251,6 +251,62 @@ fn both_outcome_signs_can_fire_together() {
 }
 
 #[test]
+fn one_item_of_two_sentences_is_two_sentences() {
+    let body = task(
+        Some("- The parser reads ZQXMARK. The writer writes it."),
+        Some(SCOPE),
+        Some(ACCEPTANCE),
+    );
+    assert_eq!(codes(&judge(&body, None)), ["taskalisk.outcome-sentences"]);
+}
+
+#[test]
+fn a_numbered_list_counts_its_items() {
+    for list in [
+        "1. The parser\n2. The writer",
+        "1) The parser\n2) The writer",
+    ] {
+        let body = task(Some(list), Some(SCOPE), Some(ACCEPTANCE));
+        assert_eq!(
+            codes(&judge(&body, None)),
+            ["taskalisk.outcome-items"],
+            "{list}"
+        );
+    }
+    let body = task(
+        Some("1. The parser reads ZQXMARK."),
+        Some(SCOPE),
+        Some(ACCEPTANCE),
+    );
+    assert_eq!(judge(&body, None), []);
+}
+
+/// A missing section's message names the exact heading it requires, so a
+/// decorated heading such as `## Outcome:` explains itself.
+#[test]
+fn a_missing_section_message_names_the_exact_heading() {
+    let body = task(Some(OUTCOME), Some(SCOPE), Some(ACCEPTANCE))
+        .replace("## Outcome", "## Outcome:")
+        .replace("## Scope", "## **Scope**")
+        .replace("## Acceptance", "## Acceptance criteria");
+    let found = judge(&body, None);
+    assert_eq!(
+        codes(&found),
+        [
+            "taskalisk.acceptance-missing",
+            "taskalisk.outcome-missing",
+            "taskalisk.scope-missing",
+        ]
+    );
+    for (finding, name) in found.iter().zip(["Acceptance", "Outcome", "Scope"]) {
+        assert_eq!(
+            finding.message,
+            format!("the body has no `## {name}` heading (exact text, level 2)")
+        );
+    }
+}
+
+#[test]
 fn a_second_paragraph_is_a_second_sentence() {
     let body = task(
         Some("The parser reads ZQXMARK\n\nThe writer writes it"),

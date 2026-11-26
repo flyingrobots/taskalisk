@@ -20,7 +20,7 @@ use std::collections::BTreeSet;
 
 pub use body::{BODY_WARNINGS, BodyWarning, body_warnings};
 pub use carrier::{Block, Entry, Integer, Parse, Slot, Value, parse, trim};
-pub use finding::{Finding, LABELS, Severity, code, findings};
+pub use finding::{CODES, Finding, LABELS, Severity, code, findings};
 pub use label::Label;
 pub use record::{Kind, MeterClaim, Record, Status, TaskType, VERSION};
 pub use reference::{IssueRef, MAX_NUMBER};

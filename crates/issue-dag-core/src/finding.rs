@@ -13,6 +13,9 @@ use crate::{Judgement, admit};
 /// its text. Declared with [`Label`] itself, so no label can be missing.
 pub const LABELS: [Label; label::VARIANTS] = label::ALL;
 
+/// The catalogue of every finding code with its severity. Not yet filled.
+pub const CODES: &[(&str, Severity)] = &[];
+
 /// How much a finding matters.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Severity {
