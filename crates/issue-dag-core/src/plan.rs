@@ -765,12 +765,13 @@ mod tests {
 
     use std::time::{Duration, Instant};
 
-    use super::{Edge, NodeStatus, Outcome, plan};
+    use super::{Edge, LinkedPullRequest, NodeStatus, Outcome, plan};
     use crate::forge::{Observations, RecordedForge};
     use crate::observation::{
         Actor, Body, Issue, IssueState, Observed, Parameters, PullRequest, ReadScope, Repo,
         TRUST_POLICY, TrustParameters,
     };
+    use crate::record::TaskType;
     use crate::reference::IssueRef;
 
     fn reference(text: &str) -> IssueRef {
@@ -993,5 +994,81 @@ mod tests {
             matches!(outcome, Ok(Outcome::Incomplete { .. })),
             "got {outcome:?}"
         );
+    }
+
+    #[test]
+    fn a_node_carries_its_type_and_size() {
+        let sized = "```yaml\n.dag: issue-dag/2\n.id: o/r#2\n.kind: task\n.type: bug\n.blocked_by: []\n.size_hours: 3\n```\n";
+        let observations = tasks(vec![(1, task(1, &[])), (2, sized.to_owned())]);
+        let outcome = plan(
+            &parameters(&["o/r#1", "o/r#2"]),
+            &RecordedForge::new(&observations),
+        );
+        let Ok(Outcome::Planned { graph, .. }) = outcome else {
+            panic!("expected a plan, got {outcome:?}");
+        };
+        let one = &graph.nodes[&reference("o/r#1")];
+        assert_eq!(
+            (one.task_type, one.size_hours),
+            (Some(TaskType::Feature), None)
+        );
+        let two = &graph.nodes[&reference("o/r#2")];
+        assert_eq!(
+            (two.task_type, two.size_hours),
+            (Some(TaskType::Bug), Some(3))
+        );
+    }
+
+    #[test]
+    fn an_opaque_node_has_no_type_and_no_size() {
+        let observations = Observations {
+            home_open_pull_requests: Some(Observed::Value(Vec::new())),
+            issues: BTreeMap::from([(reference("o/r#1"), owned_issue("o/r#1", "Plain body."))]),
+            ..Observations::default()
+        };
+        let outcome = plan(&parameters(&["o/r#1"]), &RecordedForge::new(&observations));
+        let Ok(Outcome::Planned { graph, .. }) = outcome else {
+            panic!("expected a plan, got {outcome:?}");
+        };
+        let node = &graph.nodes[&reference("o/r#1")];
+        assert_eq!((node.task_type, node.size_hours), (None, None));
+        assert!(node.pull_requests.is_empty());
+    }
+
+    #[test]
+    fn s2_a_node_carries_the_admitted_pull_requests_that_close_it() {
+        let mut observations = tasks(vec![(1, task(1, &[])), (2, task(2, &[]))]);
+        let mut ready = pull("o/r#1", Observed::Value(false));
+        ready.number = 9;
+        let draft = pull("o/r#1", Observed::Value(true));
+        observations.home_open_pull_requests = Some(Observed::Value(vec![draft, ready]));
+        let mut owner = BTreeMap::new();
+        owner.insert("o".to_owned(), Observed::Value(Some("admin".to_owned())));
+        observations
+            .permissions
+            .insert(Repo::parse("o/r").expect("repo"), owner);
+        let outcome = plan(
+            &parameters(&["o/r#1", "o/r#2"]),
+            &RecordedForge::new(&observations),
+        );
+        let Ok(Outcome::Planned { graph, .. }) = outcome else {
+            panic!("expected a plan, got {outcome:?}");
+        };
+        let one = &graph.nodes[&reference("o/r#1")];
+        assert_eq!(
+            one.pull_requests,
+            vec![
+                LinkedPullRequest {
+                    number: 8,
+                    draft: true
+                },
+                LinkedPullRequest {
+                    number: 9,
+                    draft: false
+                },
+            ]
+        );
+        assert_eq!(one.status, Some(NodeStatus::InReview));
+        assert!(graph.nodes[&reference("o/r#2")].pull_requests.is_empty());
     }
 }

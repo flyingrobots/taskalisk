@@ -133,7 +133,7 @@ const fn in_flight(status: Option<NodeStatus>) -> bool {
 mod tests {
     use std::collections::{BTreeMap, BTreeSet};
 
-    use super::{Ranking, rank};
+    use super::{Ranking, Terms, rank};
     use crate::plan::{Edge, Graph, Node, NodeStatus};
     use crate::reference::IssueRef;
 
@@ -187,6 +187,41 @@ mod tests {
         assert_eq!(ranking.scores[&r(1)], 200 + 30 + 1);
         assert_eq!(ranking.scores[&r(2)], 100 + 20 + 1);
         assert_eq!(ranking.scores[&r(3)], 10);
+    }
+
+    #[test]
+    fn k5_the_terms_of_each_score_are_exposed_and_sum_to_it() {
+        // 1 -> 2 -> 3, and 1 -> 3, which the reduction removes; 1 is parked.
+        let mut g = graph(3, &[(1, 2), (2, 3), (1, 3)], &[(1, 3)]);
+        g.nodes.insert(r(1), open(NodeStatus::Parked));
+        g.nodes.insert(r(2), open(NodeStatus::Wip));
+        let ranking = ranked(&g);
+        let one = ranking.terms[&r(1)];
+        assert_eq!(
+            one,
+            Terms {
+                in_flight: 0,
+                parked: 1,
+                descendants: 2,
+                critical_path_depth: 3,
+                out_degree: 1,
+            }
+        );
+        assert_eq!(ranking.terms[&r(2)].in_flight, 1);
+        assert_eq!(
+            one.points(),
+            [
+                ("in_flight", 0, 1000, 0),
+                ("parked", 1, 500, 500),
+                ("descendants", 2, 100, 200),
+                ("critical_path_depth", 3, 10, 30),
+                ("out_degree", 1, 1, 1),
+            ]
+        );
+        for (id, terms) in &ranking.terms {
+            assert_eq!(terms.total(), ranking.scores[id], "{id}");
+        }
+        assert_eq!(ranking.terms.len(), ranking.scores.len());
     }
 
     #[test]
