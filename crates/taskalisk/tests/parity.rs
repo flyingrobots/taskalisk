@@ -16,10 +16,9 @@
 //! - the rendering without a display input is the rendering with one, less
 //!   exactly the fields in [`display_fields`].
 //!
-//! When the Python's plan did not compile (a cycle, an unknown
-//! prerequisite), its findings about what discovery read are left out: the
-//! core reports no graph for such a run (rule F3), so it has none of them
-//! (flyingrobots/taskalisk#44).
+//! A plan that did not compile (a cycle, an unknown prerequisite) is held
+//! to its findings about what discovery read like any other: the core
+//! reports them without the graph (decision D13, flyingrobots/taskalisk#44).
 //!
 //! One intended difference, which is not a gap: [`INTENDED_DIFFERENCE`].
 
@@ -288,22 +287,6 @@ fn without(line: &Value, fields: &[&str], problems: &mut Vec<String>) -> Value {
     out
 }
 
-/// A finding about what discovery read (rule W1).
-fn is_discovery_finding(line: &Value) -> bool {
-    line["event"] == "finding"
-        && matches!(
-            line["code"].as_str(),
-            Some(
-                "container.excluded"
-                    | "issue.unmodeled"
-                    | "issue.untrusted"
-                    | "pull_request.untrusted"
-                    | "issue.opaque"
-                    | "parent.not_planned"
-            )
-        )
-}
-
 /// The intended difference: a `frontmatter.violation` or
 /// `frontmatter.warning` compares by its `code` and `subject` alone, as a
 /// set. Reason: the skill reads those two, and the message is prose that
@@ -384,10 +367,8 @@ fn every_agreed_case_renders_as_the_python_does() {
         let got = lines(&text);
 
         // With a display input, against the Python.
-        let compiled = python[0]["outcome"] == "compiled";
         let mut want: Vec<Value> = python
             .iter()
-            .filter(|l| compiled || !is_discovery_finding(l))
             .map(|l| without(l, &gaps(l), &mut problems))
             .collect();
         let mut theirs = got.clone();
