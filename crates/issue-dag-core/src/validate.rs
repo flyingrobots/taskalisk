@@ -51,6 +51,16 @@ pub fn decode(block: &Block, address: Option<&IssueRef>) -> (Validation, Option<
         violations: block.violations().clone(),
         warnings: BTreeSet::new(),
     };
+    if block.slot(".dag") == Slot::Repeated {
+        // The version is unknown, so no format can be applied: C7 alone.
+        return (
+            Validation {
+                violations: BTreeSet::from([Label::C7]),
+                warnings: BTreeSet::new(),
+            },
+            None,
+        );
+    }
     if names_another_version(block, &mut v) {
         // Judged under the version policy, not by this format: P3 alone.
         return (
@@ -116,9 +126,10 @@ pub fn decode(block: &Block, address: Option<&IssueRef>) -> (Validation, Option<
 /// one.
 fn names_another_version(block: &Block, v: &mut Validation) -> bool {
     match block.slot(".dag") {
-        Slot::Repeated => false,
         Slot::One(Value::String(version)) if version == VERSION => false,
         Slot::One(Value::String(version)) if is_format_name(version) => true,
+        // A repeated `.dag` stops judging in `decode` before this point.
+        Slot::Repeated => false,
         Slot::One(_) | Slot::Absent => {
             v.fail(Label::V1);
             false
