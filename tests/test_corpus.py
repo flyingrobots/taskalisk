@@ -418,3 +418,22 @@ class Generator(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CheckCommandLine(unittest.TestCase):
+    """scripts/corpus/check.py answers --help and refuses a path that is no checkout, never with a traceback."""
+
+    def run_check(self, *args):
+        return subprocess.run([sys.executable, str(ROOT / "scripts" / "corpus" / "check.py"), *args],
+                              capture_output=True, text=True)
+
+    def test_help_prints_usage(self):
+        p = self.run_check("--help")
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.assertIn("usage", p.stdout.lower())
+
+    def test_a_path_that_is_no_checkout_is_a_usage_error(self):
+        p = self.run_check(str(ROOT / "no-such-checkout"))
+        self.assertEqual(p.returncode, 2)
+        self.assertNotIn("Traceback", p.stderr)
+        self.assertIn("no issue-dag checkout", p.stderr)
