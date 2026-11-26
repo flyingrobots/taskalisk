@@ -11,6 +11,10 @@
 //! - A characterisation case without a normative twin is one where the
 //!   Python and the specification agree; the crate must equal it exactly.
 //!
+//! A bundle that lacks a slot the run reads is `unusable`, with the slot
+//! reported as `missing`; an incomplete run reports its `unavailable` reason
+//! (OB16), which only a normative case states (CC6).
+//!
 //! `findings` compare as a set (CC6), and in a normative planned case every
 //! member of the expected batch must be dispatchable (Q2). Every other
 //! member compares exactly: `ready` in rank order (K6), `scores` (K5),
@@ -172,11 +176,22 @@ type Dispatchable = BTreeSet<String>;
 fn result_json(bundle_text: &str) -> Result<(Map<String, Value>, Option<Dispatchable>), String> {
     let bundle = load(bundle_text).map_err(|e| format!("bundle rejected: {e}"))?;
     let forge = RecordedForge::new(&bundle.observations);
-    let outcome = plan(&bundle.parameters, &forge).map_err(|e| e.to_string())?;
     let mut out = Map::new();
+    let outcome = match plan(&bundle.parameters, &forge) {
+        Ok(outcome) => outcome,
+        Err(missing) => {
+            // OB5: the bundle is unusable; `missing` is the slot reported (OB16).
+            out.insert("outcome".into(), json!("unusable"));
+            out.insert("missing".into(), slot_path(&missing.what)?);
+            return Ok((out, None));
+        }
+    };
     let (name, findings, graph) = match &outcome {
         Outcome::Rejected(_) => ("rejected", None, None),
-        Outcome::Incomplete { .. } => ("incomplete", None, None),
+        Outcome::Incomplete { unavailable } => {
+            out.insert("unavailable".into(), json!(unavailable));
+            ("incomplete", None, None)
+        }
         Outcome::Invalid { findings, graph } => ("invalid", Some(findings), graph.as_ref()),
         Outcome::Planned { findings, graph } => ("planned", Some(findings), Some(graph)),
     };
@@ -200,6 +215,30 @@ fn result_json(bundle_text: &str) -> Result<(Map<String, Value>, Option<Dispatch
     }
     let dispatchable = graph.map(|g| g.dispatchable().iter().map(ToString::to_string).collect());
     Ok((out, dispatchable))
+}
+
+/// The path from `observations` to a slot the bundle lacks (CC6), from the
+/// text `RecordedForge` gives it.
+fn slot_path(what: &str) -> Result<Value, String> {
+    let path: Vec<&str> = if what == "the listing of the open home issues" {
+        vec!["home_open_issues"]
+    } else if what == "the open home pull requests" {
+        vec!["home_open_pull_requests"]
+    } else if let Some(reference) = what.strip_prefix("the issue ") {
+        vec!["issues", reference]
+    } else if let Some(reference) = what.strip_prefix("the body of ") {
+        vec!["issues", reference, "value", "body"]
+    } else if let Some(repo) = what.strip_prefix("the CODEOWNERS of ") {
+        vec!["codeowners", repo]
+    } else if let Some((login, repo)) = what
+        .strip_prefix("the permission of ")
+        .and_then(|rest| rest.split_once(" on "))
+    {
+        vec!["permissions", repo, login]
+    } else {
+        return Err(format!("no slot of a bundle is {what:?}"));
+    };
+    Ok(json!(path))
 }
 
 /// Q2: in a normative planned case, every member of the expected batch is
@@ -342,6 +381,10 @@ fn every_graph_case_of_the_corpus() {
                 normative_mismatch(expected.as_object().expect("object"), &actual)
             }
             (Some("characterisation"), None) => {
+                // CC6: only a normative case states the unavailable slot
+                // reported; the Python reports none.
+                let mut actual = actual;
+                actual.remove("unavailable");
                 let expected = read_json(&dir.join("expected.json"));
                 exact_mismatch(expected.as_object().expect("object"), &actual)
             }

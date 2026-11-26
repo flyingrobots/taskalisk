@@ -1,0 +1,16 @@
+{
+  "cites": [
+    "OB16",
+    "OB5"
+  ],
+  "disagreement": {
+    "classification": "compatibility-exception",
+    "difference": 25,
+    "note": "the compiler stops at the first lookup it cannot make: it reads o/r#2 first and reports it"
+  },
+  "id": "graph/ob16-least-of-two-missing-roots-reversed",
+  "kind": "normative",
+  "level": "graph",
+  "source": "constructed from the rule text",
+  "title": "Of two missing slots, the least is reported: `o/r#10` before `o/r#2`, with the roots in the other order"
+}

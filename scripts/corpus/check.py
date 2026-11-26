@@ -32,7 +32,7 @@ from corpus import digest, forge, spec  # noqa: E402
 KINDS = ("characterisation", "normative")
 LEVELS = ("document", "graph")
 DOCUMENT_RESULTS = ("valid", "invalid", "no-document", "error")
-GRAPH_OUTCOMES = ("planned", "invalid", "incomplete", "rejected", "error")
+GRAPH_OUTCOMES = ("planned", "invalid", "incomplete", "rejected", "unusable", "error")
 CASE_KEYS = {"id", "level", "kind", "title", "cites", "source"}
 CASE_OPTIONAL = {"disagreement", "normative_case"}
 
@@ -132,8 +132,15 @@ def check_case(level: str, where: pathlib.Path, labels: dict[str, str], diffs: d
             return p
         if expected.get("outcome") not in GRAPH_OUTCOMES or (meta["kind"] == "normative" and expected["outcome"] == "error"):
             p.append(f"{name}: expected outcome {expected.get('outcome')!r} is not allowed (CC5)")
+        # CC6: only a normative case and its twin may expect an unusable bundle (OB5); for any other
+        # case a slot the bundle lacks is a broken case.
+        may_be_unusable = meta["kind"] == "normative" or twin is not None
+        if expected.get("outcome") == "unusable" and not may_be_unusable:
+            p.append(f"{name}: only a normative case and its twin may expect an unusable bundle (CC6)")
+        if "unavailable" in expected and meta["kind"] != "normative":
+            p.append(f"{name}: only a normative case may expect the unavailable slot reported (CC6)")
         try:
-            actual = forge.run_graph(bundle)
+            actual = forge.replay(bundle) if may_be_unusable else forge.run_graph(bundle)
         except forge.BundleIncomplete as exc:
             p.append(f"{name}: bundle.json does not record an observation the run reads: {exc} (OB5)")
             return p

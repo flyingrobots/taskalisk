@@ -822,6 +822,52 @@ NORMATIVE_GRAPHS.append(
       {"outcome": "rejected"}, ["I2", "I6", "F1"]))
 
 
+# Which lookup a run reports when several could not be made: bundle rule OB16 (flyingrobots/taskalisk#117).
+# Each case comes in both orders of its roots, and the slot reported is never the first root's, in one
+# of them, so a planner that stops at the first lookup it cannot make fails one of the pair.
+R10 = f"{R}#10"
+
+
+def slots(changes: dict[str, str | None], codeowners_of: str | None = None) -> Callable[[dict[str, Any]], None]:
+    """For each reference: None leaves its issue slot out of the bundle (OB5); any other text records
+    the issue as unavailable with that reason (OB4). `codeowners_of` leaves out that repository's
+    CODEOWNERS slot."""
+    def go(b: dict[str, Any]) -> None:
+        issues = b["observations"]["issues"]
+        for ref, change in changes.items():
+            if change is None:
+                del issues[ref]
+            else:
+                issues[ref] = {"unavailable": change}
+        if codeowners_of is not None:
+            del b["observations"]["codeowners"][codeowners_of]
+    return go
+
+
+def both_orders(name: str, title: str, first: str, second: str, mutate: Callable[[dict[str, Any]], None],
+                expected: dict[str, Any], cites: list[str], disagreement: dict[str, Any], **opts: Any) -> list[Graph]:
+    issues = {first: i(d(first)), second: i(d(second))}
+    return [G(f"{name}{suffix}", f"{title}{note}", bundle(issues, roots=roots, mutate=mutate, **opts), expected, cites, disagreement=disagreement)
+            for suffix, note, roots in (("", "", (first, second)), ("-roots-reversed", ", with the roots in the other order", (second, first)))]
+
+
+STOPS = "the compiler stops at the first lookup it cannot make"
+NORMATIVE_GRAPHS += [
+    *both_orders("ob16-missing-over-unavailable", "A missing slot is reported, not an unavailable one", R2, R3,
+                 slots({R2: "HTTP 502", R3: None}), {"outcome": "unusable", "missing": ["issues", R3]}, ["OB16", "OB5", "F1"],
+                 exception(25, f"{STOPS}: it reads the unavailable o/r#2 first and reports an incomplete run")),
+    *both_orders("ob16-least-of-two-missing", "Of two missing slots, the least is reported: `o/r#10` before `o/r#2`", R2, R10,
+                 slots({R2: None, R10: None}), {"outcome": "unusable", "missing": ["issues", R10]}, ["OB16", "OB5"],
+                 exception(25, f"{STOPS}: it reads o/r#2 first and reports it")),
+    *both_orders("ob16-missing-codeowners-before-missing-issue", "A missing CODEOWNERS comes before a missing issue", R2, R3,
+                 slots({R2: None}, codeowners_of=R), {"outcome": "unusable", "missing": ["codeowners", R]}, ["OB16", "OB5", "AD10"],
+                 exception(25, f"{STOPS}: it reads the issue o/r#2 first and reports it"), codeowners=True),
+    *both_orders("ob16-least-of-two-unavailable", "Of two unavailable slots, the least reason is reported", R2, R3,
+                 slots({R2: "timeout", R3: "HTTP 502"}), {"outcome": "incomplete", "unavailable": "HTTP 502"}, ["OB16", "F1", "I5"],
+                 exception(26, "the compiler reports an incomplete run without the reason recorded in any slot")),
+]
+
+
 # --------------------------------------------------------------------------- #
 # Scenarios from the compiler's tests
 # --------------------------------------------------------------------------- #

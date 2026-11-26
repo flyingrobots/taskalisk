@@ -128,6 +128,29 @@ class Forge(unittest.TestCase):
         with self.assertRaises(forge.BundleIncomplete):
             forge.run_graph(b)
 
+    def test_replay_reports_a_missing_slot_as_an_unusable_bundle(self):
+        # OB5 and corpus rule CC6: the replay names the slot the compiler read,
+        # as the path that leads to it from `observations`.
+        b = ob.from_fake_state(plan_state(), roots=[f"{HOME}#9"])
+        del b["observations"]["issues"][f"{ECHO}#5"]
+        self.assertEqual(forge.replay(b), {"outcome": "unusable", "missing": ["issues", f"{ECHO}#5"]})
+
+    def test_replay_names_a_missing_body_by_its_path(self):
+        b = ob.from_fake_state(plan_state(), roots=[f"{HOME}#9"])
+        del b["observations"]["issues"][f"{ECHO}#5"]["value"]["body"]
+        self.assertEqual(forge.replay(b), {"outcome": "unusable", "missing": ["issues", f"{ECHO}#5", "value", "body"]})
+
+    def test_replay_names_a_missing_permission_by_its_path(self):
+        b = ob.from_fake_state(plan_state(), roots=[f"{HOME}#9"])
+        issue = b["observations"]["issues"][f"{ECHO}#5"]["value"]
+        issue.update(author={"login": "Carol", "type": "User"}, author_association="COLLABORATOR")
+        b["observations"]["permissions"].pop(ECHO, None)
+        self.assertEqual(forge.replay(b), {"outcome": "unusable", "missing": ["permissions", ECHO, "carol"]})
+
+    def test_replay_of_a_complete_bundle_is_the_run(self):
+        b = ob.from_fake_state(plan_state(), roots=[f"{HOME}#9"])
+        self.assertEqual(forge.replay(b), forge.run_graph(b))
+
     def test_an_unavailable_observation_makes_the_run_incomplete(self):
         b = ob.from_fake_state(plan_state(), roots=[f"{HOME}#9"])
         b["observations"]["issues"][f"{ECHO}#5"] = {"unavailable": "HTTP 502"}
@@ -263,7 +286,7 @@ class ForgeFidelity(unittest.TestCase):
 
 # The digest of the corpus this suite checks: the issue-dag repository's corpus/DIGEST and the
 # version table name the same value. A change to the corpus changes this constant in the same commit.
-CORPUS_DIGEST = "sha256:aed5aeaa3f09b4a22da06a3c41184e25f1d0f0ac4dd465ccd2345866b102a543"
+CORPUS_DIGEST = "sha256:a80e76b7c9f40957aba69c4a38d2083250a49e9a741d8032d119702db3ae09af"
 
 
 class CorpusPin(unittest.TestCase):
@@ -431,6 +454,36 @@ class Checker(unittest.TestCase):
     def test_a_stale_digest_fails(self):
         (self.corpus / "README.md").write_text((self.corpus / "README.md").read_text() + "\nmore\n")
         self.assertTrue(any("DIGEST" in p for p in self.problems(redigest=False)))
+
+    def test_a_case_outside_a_disagreement_must_record_every_slot_it_reads(self):
+        # CC6: only a normative case and its twin may expect an unusable
+        # bundle; any other case whose bundle lacks a slot is a broken case.
+        where, _ = self.case("characterisation")
+        bundle = json.loads((where / "bundle.json").read_text())
+        issues = bundle["observations"]["issues"]
+        self.assertTrue(issues)
+        issues.clear()
+        self.rewrite(where / "bundle.json", bundle)
+        self.assertTrue(any("OB5" in p and where.name in p for p in self.problems()))
+
+    def test_only_a_normative_case_and_its_twin_expect_what_a_run_reports(self):
+        # CC6: `unusable` only in a normative case and its twin; `unavailable`
+        # only in a normative case.
+        where, _ = self.case("characterisation")
+        self.rewrite(where / "expected.json", {"outcome": "unusable", "missing": ["issues", "o/r#1"]})
+        self.assertTrue(any("unusable" in p and where.name in p for p in self.problems()))
+        self.rewrite(where / "expected.json", {"outcome": "incomplete", "unavailable": "HTTP 502"})
+        self.assertTrue(any("the unavailable slot reported" in p and where.name in p for p in self.problems()))
+
+    def test_the_missing_slot_of_an_unusable_case_is_compared(self):
+        # The case disagrees with the compiler only on `missing`: set it to the
+        # compiler's slot and the recorded disagreement no longer holds.
+        where = self.corpus / "cases" / "graph" / "ob16-least-of-two-missing"
+        expected = json.loads((where / "expected.json").read_text())
+        self.assertEqual(expected, {"outcome": "unusable", "missing": ["issues", "o/r#10"]})
+        expected["missing"] = ["issues", "o/r#2"]
+        self.rewrite(where / "expected.json", expected)
+        self.assertTrue(any("no longer disagrees" in p and where.name in p for p in self.problems()))
 
     def test_an_invalid_bundle_fails(self):
         where, _ = self.case("characterisation")
