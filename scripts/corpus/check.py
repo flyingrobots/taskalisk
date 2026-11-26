@@ -183,6 +183,16 @@ def check(spec_root: pathlib.Path) -> list[str]:
             twin = all_cases.get(f"{case_id}--python")
             if twin is None or twin.get("normative_case") != case_id:
                 problems.append(f"{case_id}: records a disagreement but has no characterisation twin {case_id}--python (CC4)")
+            else:
+                level, name = case_id.split("/", 1)
+                given = "input.json" if level == "document" else "bundle.json"
+                try:
+                    same = (json.loads((corpus / "cases" / level / name / given).read_text(encoding="utf-8"))
+                            == json.loads((corpus / "cases" / level / f"{name}--python" / given).read_text(encoding="utf-8")))
+                except (OSError, json.JSONDecodeError):
+                    same = False  # a missing or unreadable file is reported by check_case
+                if not same:
+                    problems.append(f"{case_id}--python: the twin's {given} is not its normative case's input (CC4)")
     for level in LEVELS:
         base = corpus / "cases" / level
         if not base.is_dir():
