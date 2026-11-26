@@ -688,6 +688,12 @@ impl<'c> Assembly<'c> {
     }
 }
 
+#[cfg(test)]
+thread_local! {
+    /// How many times this thread's reductions built descendant sets (G5).
+    pub(crate) static DESCENDANT_SETS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
 /// The open nodes and the edges between them, by position, for Kahn's
 /// algorithm (G4) and the reduction (G5).
 pub struct Indexed {
@@ -755,6 +761,8 @@ impl Indexed {
         if self.children.iter().all(|children| children.len() < 2) {
             return BTreeSet::new();
         }
+        #[cfg(test)]
+        DESCENDANT_SETS.with(|built| built.set(built.get() + 1));
         let words = self.ids.len().div_ceil(64);
         let mut descendants = vec![vec![0_u64; words]; self.ids.len()];
         for &u in order.iter().rev() {
@@ -796,7 +804,7 @@ mod tests {
 
     use std::time::{Duration, Instant};
 
-    use super::{Edge, NodeStatus, Outcome, plan};
+    use super::{DESCENDANT_SETS, Edge, NodeStatus, Outcome, plan};
     use crate::forge::{Observations, RecordedForge};
     use crate::observation::{
         Actor, Body, Issue, IssueState, Missing, Observed, Parameters, PullRequest, ReadScope,
@@ -1022,6 +1030,60 @@ mod tests {
             .collect();
         assert_eq!(cyclic, (1..=n + 1).collect());
         took
+    }
+
+    #[test]
+    fn each_admitted_body_is_parsed_once() {
+        // The judgement and the reading of a body share one parse.
+        let observations = tasks(vec![
+            (1, task(1, &[])),
+            (2, task(2, &[1])),
+            (3, task(3, &[2])),
+        ]);
+        crate::carrier::PARSES.with(|parses| parses.set(0));
+        let outcome = plan(&parameters(&["o/r#3"]), &RecordedForge::new(&observations));
+        assert!(
+            matches!(outcome, Ok(Outcome::Planned { .. })),
+            "{outcome:?}"
+        );
+        assert_eq!(crate::carrier::PARSES.with(std::cell::Cell::get), 3);
+    }
+
+    #[test]
+    fn g5_descendant_sets_are_built_only_when_a_node_has_two_children() {
+        // A chain cannot have a redundant edge, so the reduction builds no
+        // descendant sets; a node with two children needs them.
+        let chain = tasks(vec![
+            (1, task(1, &[])),
+            (2, task(2, &[1])),
+            (3, task(3, &[2])),
+        ]);
+        DESCENDANT_SETS.with(|built| built.set(0));
+        let outcome = plan(&parameters(&["o/r#3"]), &RecordedForge::new(&chain));
+        let Ok(Outcome::Planned { graph, .. }) = outcome else {
+            panic!("expected a plan, got {outcome:?}");
+        };
+        assert!(graph.redundant.is_empty());
+        assert_eq!(DESCENDANT_SETS.with(std::cell::Cell::get), 0);
+
+        // o/r#1 blocks o/r#2 and o/r#3, and o/r#2 blocks o/r#3 too.
+        let fork = tasks(vec![
+            (1, task(1, &[])),
+            (2, task(2, &[1])),
+            (3, task(3, &[1, 2])),
+        ]);
+        let outcome = plan(&parameters(&["o/r#3"]), &RecordedForge::new(&fork));
+        let Ok(Outcome::Planned { graph, .. }) = outcome else {
+            panic!("expected a plan, got {outcome:?}");
+        };
+        assert_eq!(
+            graph.redundant,
+            BTreeSet::from([Edge {
+                from: reference("o/r#1"),
+                to: reference("o/r#3"),
+            }])
+        );
+        assert_eq!(DESCENDANT_SETS.with(std::cell::Cell::get), 1);
     }
 
     #[test]

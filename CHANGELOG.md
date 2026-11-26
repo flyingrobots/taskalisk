@@ -22,7 +22,7 @@ schema version under `Unreleased` is a draft and may change in place.
   by subject, code and concerned reference alone, so its message and severity are not part of its
   identity (F5). The bundle reader rejects a scope owner that is not a name of rule L1, such as one
   with a space or a non-ASCII letter. The planner parses each body once, and skips the reduction's
-  n² descendant sets when no node has two children. The 1 s bounds on large graphs left the default
+  n² descendant sets when no node has two children; test-only counters pin both. The 1 s bounds on large graphs left the default
   suite, which they made flaky under load, for an ignored `perf_` suite that the new CI job "Rust
   planning bounds (release)" runs.
 
