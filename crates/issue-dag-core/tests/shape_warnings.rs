@@ -290,7 +290,9 @@ fn an_open_task_without_an_estimate_gives_one_warning() {
 }
 
 /// #64: a closed task without `.size_hours`, read because an open task
-/// names it, and a container draw no warning.
+/// names it, and a container draw no warning. The container half holds
+/// whatever the code does: a container is never a node of the graph, so
+/// `estimates_missing` never sees it; it documents the expectation only.
 #[test]
 fn a_closed_task_and_a_container_give_no_estimate_warning() {
     let found = shape_warnings(&graph_closing(
@@ -302,6 +304,21 @@ fn a_closed_task_and_a_container_give_no_estimate_warning() {
         ],
         &[1],
     ));
+    assert!(
+        of(&found, ShapeWarning::EstimateMissing).is_empty(),
+        "{found:?}"
+    );
+}
+
+/// #64: open o/r#2 is blocked by open o/r#1, an issue with no document. o/r#1
+/// is an opaque node: it has no frontmatter to hold `.size_hours`, so it
+/// draws no warning.
+#[test]
+fn an_opaque_node_gives_no_estimate_warning() {
+    let found = shape_warnings(&graph(&[
+        (1, "Plain body.".to_owned()),
+        (2, task(2, &[1], ".size_hours: 2\n")),
+    ]));
     assert!(
         of(&found, ShapeWarning::EstimateMissing).is_empty(),
         "{found:?}"
