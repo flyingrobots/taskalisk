@@ -616,7 +616,7 @@ class Vendored(unittest.TestCase):
                          (pin["sha256"], pin["version"], pin["spec"], pin["schemas_commit"]))
 
     def test_every_tool_schema_is_inside_the_checker_subset(self):
-        for key, doc in pl.TOOL_SCHEMAS.items():
+        for key, doc in pl.ALL_SCHEMAS.items():  # schemas/binary/ included (decision D22)
             self.assertIsNone(pl.pe.schema_subset_gap(doc), key)
             self.assertEqual(doc["$id"], f"https://flyingrobots.dev/taskalisk/schemas/{key[0]}/{key[1]}")
 

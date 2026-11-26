@@ -4,7 +4,7 @@
 Not a test (unittest discovery skips it). The Rust binary's tests
 (`crates/taskalisk/tests/cli.rs`) pipe a run's stdout, stderr and receipt lines here, so they are
 checked with the vendored writer's bounded checker and the schemas under
-`skills/taskalisk/schemas/`, the same check `tests/parley_lines.py` gives the Python's lines.
+`skills/taskalisk/schemas/` and its `binary/` (decision D22), the same check `tests/parley_lines.py` gives the Python's lines.
 
 Prints one problem per line and exits 1 when any line does not validate or is not a JSON object.
 """
@@ -32,7 +32,7 @@ def main(argv) -> int:
         return 1
     bad = 0
     for line in lines:
-        result = pe.validate_line(line, pl.TOOL_SCHEMAS)
+        result = pe.validate_line(line, pl.ALL_SCHEMAS)
         errors = {re.sub(r"/\d+", "/*", str(e)) for e in result.errors}
         if result.unsupported or errors:
             bad += 1

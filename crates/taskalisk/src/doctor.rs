@@ -51,11 +51,11 @@ const INTENT: &str = "Print every finding of a recorded issue-dag-observations/1
 const DESCRIBED: [(&str, &str); 4] = [
     (
         "taskalisk.doctor",
-        include_str!("../../../skills/taskalisk/schemas/taskalisk.doctor.schema.json"),
+        include_str!("../../../skills/taskalisk/schemas/binary/taskalisk.doctor.schema.json"),
     ),
     (
         "taskalisk.doctor.issue",
-        include_str!("../../../skills/taskalisk/schemas/taskalisk.doctor.issue.schema.json"),
+        include_str!("../../../skills/taskalisk/schemas/binary/taskalisk.doctor.issue.schema.json"),
     ),
     (
         "parley.error",

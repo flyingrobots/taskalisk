@@ -426,7 +426,11 @@ bundle. It plans the bundle as `plan --from-bundle` does, through a recorded for
 `--strict`, `--json`, `--human` and `--help`; any other is `startup.arguments_invalid`, exit 3.
 JSON lines are the default, so `--json` changes nothing and is refused with `--human`.
 
-Its results are two messages, each `1.0.0`:
+Its results are two messages, each `1.0.0`. Their schemas are in `skills/taskalisk/schemas/binary/`
+(decision D22), the directory of schemas only the Rust binary writes: the Python's `--schema`
+lists the top level alone, and `tests/test_binary_schemas.py` fails when a schema there is one the
+binary does not embed or one a Python command lists. The suite's line checks read both
+directories. At the cutover (#32) the directory folds back into the top level.
 
 | `_schema.id` | `event` | One line per |
 | --- | --- | --- |

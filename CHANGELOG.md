@@ -17,6 +17,8 @@ schema version under `Unreleased` is a draft and may change in place.
   warnings and trust warnings, which nothing printed before. Two new draft message schemas,
   `taskalisk.doctor` (a summary: outcome, error and warning counts, `strict`, `ok`) and
   `taskalisk.doctor.issue` (one line per issue or pull request, then the plan, with its findings),
+  in `skills/taskalisk/schemas/binary/`, the new home of schemas only the binary writes (decision
+  D22; it folds into the top level at the cutover, #32),
   whose code enum a test holds equal to `CODES`. It exits 0 with no error finding, 1 with one, and
   2 when the bundle cannot be read, is not a bundle or is incomplete evidence; `--strict` counts a
   warning as an error (#47's acceptance item, moved here by coordinator decision D18). `--json` is
