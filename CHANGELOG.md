@@ -15,10 +15,10 @@ schema version under `Unreleased` is a draft and may change in place.
   record a valid document decodes to, and the `.blocked_by` rewrite of edge-edit rule E4, which
   changes that one line and keeps every other byte, CRLF line ends included. All 165 document cases
   of the vendored corpus pass; for each `--python` twin the crate matches the normative case.
-  Pending their specification text: a key repeated under C7 is present but judged by no other
-  rule, while the rest of the document is judged; a repeated `.dag` leaves the version unknown, so C7 is the
-  document's only violation, as C4 and P3 stop judging; an invalid document reports no warnings. CI
-  runs the job "Rust workspace": `cargo fmt`, `clippy -D warnings` and `cargo test`, all locked.
+  Pending their specification text: a key repeated under C7 is present but judged by no other rule,
+  while the rest of the document is judged; a repeated `.dag` leaves the version unknown, so C7 is
+  the document's only violation, as C4 and P3 stop judging; an invalid document reports no warnings.
+  CI runs the job "Rust workspace": `cargo fmt`, `clippy -D warnings` and `cargo test`, all locked.
 
 - **The Rust graph core** (flyingrobots/taskalisk#28). `issue-dag-core` now plans over recorded
   observations, still with no I/O: the run parameters and observation slots as domain values, the
