@@ -638,3 +638,15 @@ fn code_block_text_adds_no_sentences() {
         );
     }
 }
+
+#[test]
+fn a_lower_heading_inside_the_outcome_does_not_end_it() {
+    // The Outcome runs to the next heading of level 1 or 2; a `###` heading
+    // inside it is part of it, so the prose after it still counts.
+    let body = task(
+        Some("The parser reads ZQXMARK.\n\n### Detail\n\nIt stops."),
+        Some(SCOPE),
+        Some(ACCEPTANCE),
+    );
+    assert_eq!(warning_codes(&body, None), ["taskalisk.outcome-sentences"]);
+}

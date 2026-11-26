@@ -198,6 +198,9 @@ fn read(body: &str) -> Reading {
             match event {
                 Event::End(TagEnd::Heading(_)) => {
                     if let (HeadingLevel::H2, Some(text)) = (*level, text.take()) {
+                        // Only the first Outcome is judged. The `or_else`
+                        // calls already keep the first shape; this check
+                        // only spares building an outline nobody reads.
                         if text == OUTCOME && !sections.iter().any(|s| s == OUTCOME) {
                             open = Some(Outline::default());
                         }
