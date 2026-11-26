@@ -1,0 +1,14 @@
+[package]
+name = "issue-dag-git"
+version = "0.1.0"
+description = "The git adapter: implements the issue-dag-core LocalRepository port by running git (branches, worktrees, ahead/behind). Fails closed."
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+issue-dag-core = { path = "../issue-dag-core" }
+
+[lints]
+workspace = true
