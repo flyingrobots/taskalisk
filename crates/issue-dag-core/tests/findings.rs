@@ -185,7 +185,7 @@ fn judge(body: &str) -> Vec<Finding> {
 }
 
 fn codes(found: &[Finding]) -> Vec<&'static str> {
-    found.iter().map(|f| f.code).collect()
+    found.iter().map(|f| f.code().as_str()).collect()
 }
 
 #[test]
@@ -292,10 +292,10 @@ fn the_documented_table_matches_the_codes() {
 fn a_violation_is_an_error_and_the_advisory_a_warning() {
     let found = judge(&task(&[(".size_hours", Some(".size_hours: 9"))]));
     assert_eq!(found.len(), 1);
-    assert_eq!(found[0].severity, Severity::Warning);
+    assert_eq!(found[0].severity(), Severity::Warning);
     let found = judge(&task(&[(".status", Some(".status: ZQXMARK"))]));
     assert_eq!(found.len(), 1);
-    assert_eq!(found[0].severity, Severity::Error);
+    assert_eq!(found[0].severity(), Severity::Error);
 }
 
 #[test]
@@ -339,7 +339,7 @@ fn findings_of_several_documents_sort_by_subject_then_code() {
     all.sort();
     let order: Vec<(String, &str)> = all
         .iter()
-        .map(|f| (f.subject.to_string(), f.code))
+        .map(|f| (f.subject.to_string(), f.code().as_str()))
         .collect();
     assert_eq!(
         order,
@@ -389,14 +389,14 @@ fn no_message_carries_body_text() {
                 assert!(
                     !finding.message.contains("ZQX") && !finding.message.contains("MARK"),
                     "{}: {:?}",
-                    finding.code,
+                    finding.code(),
                     finding.message
                 );
                 for line in body.lines().map(str::trim).filter(|l| !l.is_empty()) {
                     assert!(
                         !finding.message.contains(line),
                         "{}: {:?} carries the line {line:?}",
-                        finding.code,
+                        finding.code(),
                         finding.message
                     );
                 }

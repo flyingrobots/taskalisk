@@ -32,7 +32,7 @@ pub use admission::{Admission, Identity, Undecided, codeowners_persons};
 pub use batch::{Batch, Skip, keys_conflict, select};
 pub use body::{BODY_WARNINGS, BodyWarning, body_warnings};
 pub use carrier::{Block, Entry, Integer, Parse, Slot, Value, parse, trim};
-pub use finding::{CODES, Finding, LABELS, PROFILE_RULES, Rule, Severity, code, findings};
+pub use finding::{CODES, Code, Finding, LABELS, PROFILE_RULES, Rule, Severity, code, findings};
 pub use forge::{Bundle, Forge, LocalRepository, NoLocalRepository, Observations, RecordedForge};
 pub use label::Label;
 pub use local::{AheadBehind, Branch, BranchScope, Checkout, Worktree};
