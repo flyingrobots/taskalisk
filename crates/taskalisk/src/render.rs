@@ -38,8 +38,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
 
 use issue_dag_core::{
-    Batch, Edge, Finding, Graph, Identity, IssueRef, NodeStatus, Outcome, Parameters, Ranking,
-    Severity, Skip, Terms, rank, select,
+    Batch, DENSITY_BAND, Edge, Finding, Graph, Identity, IssueRef, NodeStatus, Outcome, Parameters,
+    Ranking, Severity, Skip, Terms, edge_density, rank, select,
 };
 use serde_json::{Map, Value, json};
 
@@ -47,9 +47,6 @@ use crate::sha256;
 
 /// The version of every message this module writes.
 pub const SCHEMA_VERSION: &str = "1.0.0";
-
-/// The edge density band the plan's metrics judge (1.x).
-const DENSITY_BAND: (f64, f64) = (0.01, 0.50);
 
 /// The title 1.x gives an untrusted issue, whose own is never shown
 /// (threat model C3).
@@ -491,15 +488,7 @@ impl<'a> Compiled<'a> {
         let n = self.open.len();
         let raw = self.graph.edges.len();
         let reduced = raw - self.graph.redundant.len();
-        let density = if n > 1 {
-            #[expect(clippy::cast_precision_loss, reason = "edge counts are far below 2^52")]
-            let ratio = reduced as f64 / ((n * (n - 1)) as f64 / 2.0);
-            // Rounded to four places as Python's round() does: correctly, on
-            // the decimal value.
-            format!("{ratio:.4}").parse().unwrap_or(ratio)
-        } else {
-            0.0
-        };
+        let density = edge_density(self.graph).unwrap_or(0.0);
         let isolated: Vec<String> = self
             .open
             .iter()

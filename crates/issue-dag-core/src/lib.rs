@@ -20,6 +20,7 @@ mod label;
 mod local;
 mod observation;
 mod plan;
+mod plan_warning;
 mod rank;
 mod record;
 mod reference;
@@ -42,6 +43,9 @@ pub use observation::{
     PullRequest, ReadScope, Repo, TRUST_POLICY, TrustParameters,
 };
 pub use plan::{Edge, Graph, LinkedPullRequest, Node, NodeStatus, Outcome, Rejection, plan};
+pub use plan_warning::{
+    DENSITY_BAND, PLAN_WARNINGS, PlanDetail, PlanWarning, edge_density, plan_warnings,
+};
 pub use rank::{Ranking, Terms, rank};
 pub use record::{Kind, MeterClaim, Record, Status, TaskType, VERSION};
 pub use reference::{IssueRef, MAX_NUMBER, is_name};
