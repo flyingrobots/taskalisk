@@ -7,7 +7,7 @@ in CHANGELOG.md: a 1.x exit 1 is now 2.
 
 Run: python3 -m unittest discover -s tests
 """
-import json, os, pathlib, shutil, subprocess, sys, tempfile, unittest
+import json, os, pathlib, re, shutil, subprocess, sys, tempfile, unittest
 
 import parley_lines as pl
 
@@ -639,6 +639,32 @@ class Trust(Harness):
         p = self.run_dag(state, "--from-github", "--root", f"{HOME}#9", "--emit-roadmap")
         self.assertNotIn("[click](https://example.invalid)", self.rendering(p))
         self.assertIn("a\\|b", self.rendering(p))
+
+    def test_a_hostile_title_renders_as_inert_text(self):
+        """F-10 (flyingrobots/taskalisk#75): no control, no line break, no live backslash, no autolink."""
+        state = plan_state()
+        state["issues"][f"{HOME}#1"]["title"] = ("a\rb\r\nc d e\x85f\x0bg\x0ch\x1b[0m\x00\x7f\x9b "
+                                                "back\\[x] \\| https://example.invalid HTTP://x.invalid www.example.invalid end")
+        p = self.run_dag(state, "--from-github", "--root", f"{HOME}#9", "--emit-roadmap")
+        self.assertEqual(p.returncode, 0, p.stderr)
+        row = next(l for l in self.rendering(p).split("\n") if f"{HOME}#1" in l and "end" in l)
+        self.assertIsNone(re.search("[\x00-\x1f\x7f-\x9f  ]", row), repr(row))
+        self.assertIn("a b c d e f g h[0m", row.replace("\\[", "[").replace("\\]", "]"))
+        self.assertIn("back\\\\\\[x\\] \\\\\\|", row)  # each backslash escaped, then each [ ] | escaped
+        for url in ("https://example.invalid", "HTTP://x.invalid", "www.example.invalid"):
+            self.assertNotIn(url, row)
+        self.assertIn("https:​//example.invalid", row)
+        self.assertIn("www​.example.invalid", row)
+
+    def test_a_plain_title_renders_byte_for_byte_as_before(self):
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("taskalisk_md_cell", SCRIPT)
+        tk = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(tk)
+        for title in ("Write the spec", "Fix #12: a & b, (c) 'd' \"e\" 3.14 ~/path a_b *c*", "Ünïcødé – em — dash", "time: 10:30", ""):
+            with self.subTest(title):
+                self.assertEqual(tk._md_cell(title), title)
+        self.assertEqual(tk._md_cell("a|b <c> [d]"), "a\\|b &lt;c&gt; \\[d\\]")
 
     def test_compare_mode_fails_closed_on_a_gh_error(self):
         state = plan_state()
