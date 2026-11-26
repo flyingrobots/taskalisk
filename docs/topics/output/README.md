@@ -63,7 +63,7 @@ All are drafts at `1.0.0` until a release names them in `CHANGELOG.md`.
 | `taskalisk.wave` | 1.0.0 | `wave` | wave, with its ids in rank order |
 | `taskalisk.edge` | 1.0.0 | `edge` | edge of the reduced graph, with its evidence |
 | `taskalisk.finding` | 1.0.0 | `finding` | thing a reader must see (codes below) |
-| `taskalisk.rendering` | 1.0.0 | `rendering` | `--emit-roadmap` or `--emit-mermaid`, text in `text` |
+| `taskalisk.rendering` | 1.0.0 | `rendering` | `--emit-roadmap` or `--emit-mermaid`, text in `text` (and, from the Rust binary's `--emit-mermaid`, the legend in `legend`) |
 | `taskalisk.edge_edit` | 1.0.0 | `edge_edit` | edit (first among an edit's results) |
 | `taskalisk.inventory.summary` | 1.0.0 | `inventory.summary` | inventory (first) |
 | `taskalisk.inventory.worktree` | 1.0.0 | `inventory.worktree` | worktree |
@@ -328,8 +328,8 @@ Every line is written with its keys in sorted order, the envelope's included.
 It differs from the Python in these ways, each tested in `crates/taskalisk/tests/cli.rs`:
 
 - **Commands and flags.** Only `plan`. `--repo`, `--root`, `--sem-capacity`, `--trust`,
-  `--trust-owner`, `--trust-repo`, `--trust-codeowners`, `--from-github`, `--human` and `--help`
-  are accepted, with the binary's own `--capture-bundle`, `--from-bundle`, `--from-record` and
+  `--trust-owner`, `--trust-repo`, `--trust-codeowners`, `--from-github`, `--emit-roadmap`,
+  `--emit-mermaid`, `--human` and `--help` are accepted, with the binary's own `--capture-bundle`, `--from-bundle`, `--from-record` and
   `--offline` (see *Capture and replay*); every other flag and command is
   `startup.arguments_invalid`, exit 3, never ignored. A flag's value may follow `=`. `--help` describes `plan` with the schemas of the lines
   it writes and of `parley.error` and `parley.startup.failed` (copies of the writer's, held equal
@@ -385,6 +385,25 @@ It differs from the Python in these ways, each tested in `crates/taskalisk/tests
   - `tests/fixtures/bundles/flyingrobots-taskalisk.bundle.json` is a bundle of this repository
     captured this way, read-only, with the result it planned to beside it; the suite replans
     from it offline.
+- **Views** (flyingrobots/taskalisk#68). `--emit-roadmap` and `--emit-mermaid` (one of them;
+  both together is exit 3) write one `taskalisk.rendering` line after every other result, only
+  for a plan that is `ok`, live or replayed; `resolved.options.emit` records which. They are
+  rendered by `crates/taskalisk/src/views.rs`, which does no I/O.
+  - `--emit-roadmap` writes the Python's ROADMAP block. Its artifact hash is the Rust
+    document's (see `artifact_hash` above).
+  - `--emit-mermaid` writes the status-coloured flowchart: the Python's waves and edges, each
+    node with a class (`review` for a ready pull request or `.status: in-review`, `active` for a
+    draft pull request or `wip`, `in-progress`, `active`; `blocked` for a node that waits or is
+    blocked; `open` otherwise), the completed prerequisites as `done` nodes with dashed borders
+    and dotted edges, and a `classDef` per class whose light fills and dark text read on
+    GitHub's light and dark themes alike. Node keys encode each byte of the id, so two ids never
+    share one. The line also carries `legend`, one Markdown line to paste under the diagram.
+  - A Mermaid label also turns `[`, `]`, `{`, `}` into parentheses and drops control and
+    bidirectional characters (threat model C5); the Python keeps them. The plain flowchart and
+    the ROADMAP block are otherwise the Python's byte for byte on every captured fixture
+    (`crates/taskalisk/tests/views.rs`), and the coloured one is held by golden files in
+    `tests/fixtures/render/views/rust/`.
+  - `--human` prints the view as written, each line made safe, then the legend.
 - **Refused where the Python relocates.** The binary has no state-directory fallback; each case is
   a startup failure, exit 3, with no receipt. A `.parley` that cannot be written is
   `startup.receipt_unwritable`. A receipt path that would carry a declared secret's value (the

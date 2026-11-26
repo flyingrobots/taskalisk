@@ -7,7 +7,10 @@
 //! It accepts the Python compiler's plan-mode flags where the core supports
 //! them: `--repo`, `--root`, `--sem-capacity`, `--trust`, `--trust-owner`,
 //! `--trust-repo`, `--trust-codeowners`, `--from-github` (which selects
-//! `plan`, as in 1.x), and the writer's `--human` and `--help`. Every other
+//! `plan`, as in 1.x), `--emit-roadmap` and `--emit-mermaid` (a view of the
+//! plan, [`crate::views`]; `--emit-mermaid` is the status-coloured diagram
+//! with its legend, flyingrobots/taskalisk#68), and the writer's `--human`
+//! and `--help`. Every other
 //! flag of the Python's, and every other command, is refused before the run
 //! starts (exit 3), never ignored.
 //!

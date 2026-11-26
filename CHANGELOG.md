@@ -9,6 +9,26 @@ schema version under `Unreleased` is a draft and may change in place.
 
 ### Added
 
+- **The ROADMAP block and a status-coloured Mermaid diagram in the Rust binary**
+  (flyingrobots/taskalisk#68). `crates/taskalisk/src/views.rs` renders, without I/O, the
+  Python's ROADMAP block (`--emit-roadmap`) and Mermaid flowchart, and a new flowchart that
+  colours every node by its state: light dashed done (the completed prerequisites, with dotted
+  edges), grey blocked, green open and unclaimed, blue active (a draft pull request), purple in
+  review, with fills that read on GitHub's light and dark themes. The binary's `--emit-roadmap`
+  and `--emit-mermaid`, refused until now, write one `taskalisk.rendering` line after the other
+  results for a plan that is `ok`, live or replayed; `--emit-mermaid` writes the coloured
+  diagram, with the legend in the line's new optional `legend` field (the schema stays at
+  1.0.0, a draft). The block and the plain flowchart match the Python byte for byte on all 142
+  captured fixtures whose plan is `ok` (`tests/capture_render_parity.py` now also captures the
+  Python's views), and on a live backlog, but for one intended difference: a Mermaid label
+  also turns `[`, `]`, `{` and `}` into parentheses and drops control and bidirectional
+  characters, so no title closes its label or opens a Mermaid directive (threat model C5). The
+  coloured diagrams are golden files under `tests/fixtures/render/views/rust/`; a new capture
+  variant, `golden-plan-rich--every-status`, has a node in each state, and its `--titles` twin
+  holds hostile titles (HTML, Mermaid syntax, Markdown, line breaks, NUL, bidirectional
+  controls, a title past the limit). `SKILL.md` documents the legend and how to post the
+  diagram on a pinned container issue.
+
 - **Capture an observation bundle and replan from it offline** (flyingrobots/taskalisk#59). The
   Rust binary's `plan --capture-bundle` (off by default) writes the `issue-dag-observations/1`
   bundle a live plan was made from, and its retained `taskalisk-evaluation/1` record, to

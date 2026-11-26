@@ -221,8 +221,16 @@ text from linking with a zero-width space after the colon of every
 character (an email address, `mailto:` or a mention), whatever precedes them.
 A resource key is a code span: shown as written, with only `|` escaped inside
 a table and a fence longer than any backtick run in it. Mermaid labels replace
-quotes and angle brackets, and fold line breaks into spaces. Untrusted titles
-are never rendered (C3).
+quotes and angle brackets, and fold line breaks into spaces. The Rust renderer
+(`crates/taskalisk/src/views.rs`, flyingrobots/taskalisk#68) also turns `[`,
+`]`, `{` and `}` into parentheses and drops every control and bidirectional
+character in a label, so no title can close its label or open a Mermaid
+directive (`%%{init: ...}%%`), which Mermaid reads anywhere in the text; a
+label always starts with its issue id, so it is never a Markdown string, and
+keeps at most 48 characters of title. Tests: `hostile_titles_stay_inside_their_labels`
+in `crates/taskalisk/tests/views.rs`, over a fixture whose titles hold HTML,
+Mermaid syntax, Markdown, line breaks, NUL, bidirectional controls and a
+title far past the limit. Untrusted titles are never rendered (C3).
 
 ### C6. Executable settings come only from the operator — planned (#13, #14)
 
