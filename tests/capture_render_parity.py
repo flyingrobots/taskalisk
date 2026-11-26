@@ -135,6 +135,30 @@ def _traversal(bundle: dict[str, Any]) -> dict[str, Any]:
     return bundle
 
 
+def _not_planned_read_first(bundle: dict[str, Any]) -> dict[str, Any]:
+    """The traversal variant with o/r#1 naming o/r#5 first, so o/r#5 is read before o/r#7: 1.x
+    still lists o/r#30's not-planned prerequisites in its `.blocked_by` order, o/r#7 then o/r#5."""
+    bundle = _traversal(bundle)
+    one = bundle["observations"]["issues"]["o/r#1"]["value"]["body"]["value"]
+    one["text"] = _doc("o/r#1", "container", ".children", ["o/r#5", "o/r#4", "o/r#20", "o/r#10"])
+    return bundle
+
+
+def _untrusted_in_order_read(bundle: dict[str, Any]) -> dict[str, Any]:
+    """d9-container whose root names o/r#40 before o/r#30, both by a stranger: 1.x lists the
+    untrusted issues in the order it read them, o/r#40 first, though o/r#30 sorts first."""
+    issues = bundle["observations"]["issues"]
+    issues["o/r#9"]["value"]["body"]["value"]["text"] = _doc("o/r#9", "container", ".children", ["o/r#40", "o/r#30"])
+    for ref in ("o/r#40", "o/r#30"):
+        _issue(bundle, ref, _doc(ref, "task", ".blocked_by", []))
+        value = issues[ref]["value"]
+        value["author"] = {"login": "mallory", "type": "User"}
+        value["author_association"] = "NONE"
+        value["body"]["value"]["editors"] = [{"login": "mallory", "type": "User"}]
+    bundle["observations"]["permissions"].setdefault("o/r", {})["mallory"] = {"value": None}
+    return bundle
+
+
 def _two_strangers(bundle: dict[str, Any]) -> dict[str, Any]:
     """trust-pull-request-by-stranger with a second stranger's pull request, number 9, listed
     before number 8: 1.x lists untrusted pull requests in the order GitHub listed them."""
@@ -148,6 +172,8 @@ def _two_strangers(bundle: dict[str, Any]) -> dict[str, Any]:
 VARIANTS = {
     "trust-pull-request-by-stranger--two-in-order-listed": ("trust-pull-request-by-stranger", _two_strangers),
     "d9-container--traversal-order": ("d9-container", _traversal),
+    "d9-container--not-planned-in-blocked-by-order": ("d9-container", _not_planned_read_first),
+    "d9-container--untrusted-in-order-read": ("d9-container", _untrusted_in_order_read),
     "d9-container--opaque-child": ("d9-container", _opaque_child),
     "d9-container--opaque-children-in-order-read": ("d9-container", _opaque_children),
 }
@@ -205,8 +231,10 @@ def expected_fixtures() -> dict[str, str]:
         out[TITLED + TITLED_SUFFIX] = fixture_text(titled)
     for name in VARIANTS:
         lines = python_lines(name)
-        if lines is not None:
-            out[name] = fixture_text(lines)
+        # A variant exists to reach something: one that stops giving a plan must fail loudly.
+        if lines is None:
+            raise AssertionError(f"the variant {name} gives no plan")
+        out[name] = fixture_text(lines)
     return out
 
 
