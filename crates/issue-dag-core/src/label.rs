@@ -2,12 +2,40 @@
 
 use core::fmt;
 
-/// The label of a violation or a warning, as format rule V12 assigns it.
-///
-/// Every label is the label of a normative statement of the specification;
-/// [`Label::as_str`] gives it as written there.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum Label {
+/// Declares [`Label`], its text, its list [`ALL`] and the count
+/// [`VARIANTS`] from one list, so a variant cannot exist without its entry.
+/// The list is written in the order of the labels' text, which is the
+/// derived [`Ord`].
+macro_rules! labels {
+    ($($(#[doc = $doc:literal])* $name:ident,)+) => {
+        /// The label of a violation or a warning, as format rule V12 assigns it.
+        ///
+        /// Every label is the label of a normative statement of the specification;
+        /// [`Label::as_str`] gives it as written there.
+        #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+        pub enum Label {
+            $($(#[doc = $doc])* $name,)+
+        }
+
+        impl Label {
+            /// The label as the specification writes it, such as `"V5"`.
+            #[must_use]
+            pub const fn as_str(self) -> &'static str {
+                match self {
+                    $(Self::$name => stringify!($name),)+
+                }
+            }
+        }
+
+        /// The number of labels.
+        pub const VARIANTS: usize = [$(stringify!($name)),+].len();
+
+        /// Every label, once each, in declaration order.
+        pub const ALL: [Label; VARIANTS] = [$(Label::$name),+];
+    };
+}
+
+labels! {
     /// C4: a line break the carrier does not allow.
     C4,
     /// C6: a line that is not an entry line.
@@ -48,34 +76,6 @@ pub enum Label {
     X1,
 }
 
-impl Label {
-    /// The label as the specification writes it, such as `"V5"`.
-    #[must_use]
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::C4 => "C4",
-            Self::C6 => "C6",
-            Self::C7 => "C7",
-            Self::C8 => "C8",
-            Self::L1 => "L1",
-            Self::L2 => "L2",
-            Self::L3 => "L3",
-            Self::L4 => "L4",
-            Self::P3 => "P3",
-            Self::V1 => "V1",
-            Self::V2 => "V2",
-            Self::V3 => "V3",
-            Self::V4 => "V4",
-            Self::V5 => "V5",
-            Self::V6 => "V6",
-            Self::V7 => "V7",
-            Self::V8 => "V8",
-            Self::V10 => "V10",
-            Self::X1 => "X1",
-        }
-    }
-}
-
 impl fmt::Display for Label {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(self.as_str())
@@ -84,38 +84,36 @@ impl fmt::Display for Label {
 
 #[cfg(test)]
 mod tests {
-    use super::Label;
+    use super::VARIANTS;
+    use crate::LABELS;
 
-    const ALL: [Label; 19] = [
-        Label::C4,
-        Label::C6,
-        Label::C7,
-        Label::C8,
-        Label::L1,
-        Label::L2,
-        Label::L3,
-        Label::L4,
-        Label::P3,
-        Label::V1,
-        Label::V2,
-        Label::V3,
-        Label::V4,
-        Label::V5,
-        Label::V6,
-        Label::V7,
-        Label::V8,
-        Label::V10,
-        Label::X1,
-    ];
+    /// LABELS is declared with the enum: one entry per variant, each once
+    /// (consecutive duplicates suffice: the next test proves it sorted).
+    #[test]
+    fn labels_has_one_entry_per_variant() {
+        assert_eq!(LABELS.len(), VARIANTS);
+        let mut distinct = LABELS.to_vec();
+        distinct.dedup();
+        assert_eq!(distinct.len(), VARIANTS);
+    }
 
     /// A set of labels iterates in the ascending order corpus rule CC5 writes
-    /// them in: the order of their text, so `V10` comes before `V2`.
+    /// them in: the order of their text, so `V10` comes before `V2`. LABELS
+    /// is in that order.
     #[test]
     fn labels_order_as_their_text() {
-        let mut by_ord = ALL;
+        let mut by_ord = LABELS;
         by_ord.sort_unstable();
-        let mut by_text = ALL;
+        let mut by_text = LABELS;
         by_text.sort_unstable_by_key(|l| l.as_str());
         assert_eq!(by_ord, by_text);
+        assert_eq!(by_ord, LABELS);
+    }
+
+    #[test]
+    fn texts_are_the_variant_names() {
+        for label in LABELS {
+            assert_eq!(label.as_str(), format!("{label:?}"));
+        }
     }
 }
