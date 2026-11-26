@@ -181,16 +181,20 @@ def compile_bundle(bundle: dict[str, Any]) -> Any:
 # Rule labels for the compiler's messages
 # --------------------------------------------------------------------------- #
 
-# (pattern, label or a function of the document's fields, whether the message names a reference)
+# A format name (versions.md, U2): `issue-dag/` and a number written as in format rule L1.
+FORMAT_NAME_RE = re.compile(r"issue-dag/[1-9][0-9]*")
+
+# (pattern, label or a function of the document's fields)
 _MESSAGES: list[tuple[re.Pattern[str], Any]] = [
     (re.compile(r"line \d+: not 'key: value'"), "C6"),
     (re.compile(r"line \d+: duplicate key "), "C7"),
     (re.compile(r"line \d+: unterminated list for "), "C8"),
     (re.compile(r"unknown key \."), "V2"),
     (re.compile(r"\.dag \S+ is retired"), "P3"),
-    # V1 when .dag is absent or is not a string; P3 when it declares another, unknown format.
-    (re.compile(r"\.dag must be issue-dag/2"), lambda f: "P3" if isinstance(f.get(".dag"), str) else "V1"),
-    (re.compile(r"\.id .* must be owner/repo#N"), "V3"),
+    # Format rule V12: P3 when .dag is another format name; V1 for any other value, or none.
+    (re.compile(r"\.dag must be issue-dag/2"), lambda f: "P3" if isinstance(f.get(".dag"), str) and FORMAT_NAME_RE.fullmatch(f[".dag"]) else "V1"),
+    # V12: L1 when .id is a string that is not a reference; V3 when it is absent or not a string.
+    (re.compile(r"\.id .* must be owner/repo#N"), lambda f: "L1" if isinstance(f.get(".id"), str) else "V3"),
     (re.compile(r"\.id .* does not name this issue"), "X1"),
     (re.compile(r"\.kind must be task or container"), "V4"),
     (re.compile(r"\.type must be one of "), "V5"),

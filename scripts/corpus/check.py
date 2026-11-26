@@ -9,7 +9,9 @@ Fails (exit 1, one line per problem) when:
   recorded disagreement no longer holds;
 - a normative case cites no rule, or any case cites or expects a rule label the specification does
   not state;
-- a disagreement has no known classification, or names a difference the note does not number;
+- a disagreement has no known classification, names a difference the note does not number, or
+  has no characterisation twin `<name>--python`;
+- a case directory does not hold exactly its three files;
 - a bundle is not valid under corpus/bundle.md, or does not record an observation the run reads;
 - the DIGEST file, or the digest named in versions.md, is not the corpus's digest.
 """
@@ -53,6 +55,14 @@ def _labels_in(expected: dict[str, Any]) -> list[str]:
 def check_case(level: str, where: pathlib.Path, labels: dict[str, str], diffs: dict[int, str], all_cases: dict[str, dict[str, Any]]) -> list[str]:
     name = f"{level}/{where.name}"
     p: list[str] = []
+    wanted = {"case.json", "expected.json", "input.json" if level == "document" else "bundle.json"}
+    present = {child.name for child in where.iterdir()}
+    for stray in sorted(present - wanted):
+        p.append(f"{name}: {stray} is not one of the three files of a case (CC2)")
+    for missing_file in sorted(wanted - present):
+        p.append(f"{name}: {missing_file} is missing (CC2)")
+    if wanted - present:
+        return p
     meta = _load(where / "case.json", p, name)
     if not isinstance(meta, dict):
         return p
@@ -156,6 +166,11 @@ def check(spec_root: pathlib.Path) -> list[str]:
                 all_cases[f"{level}/{meta.parent.name}"] = json.loads(meta.read_text(encoding="utf-8"))
             except json.JSONDecodeError:
                 pass
+    for case_id, meta in sorted(all_cases.items()):
+        if meta.get("kind") == "normative" and "disagreement" in meta:
+            twin = all_cases.get(f"{case_id}--python")
+            if twin is None or twin.get("normative_case") != case_id:
+                problems.append(f"{case_id}: records a disagreement but has no characterisation twin {case_id}--python (CC4)")
     for level in LEVELS:
         base = corpus / "cases" / level
         if not base.is_dir():

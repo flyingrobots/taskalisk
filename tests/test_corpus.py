@@ -18,7 +18,7 @@ import tempfile
 import unittest
 
 import parley_lines as pl
-from test_taskalisk import BUNNY, ECHO, HOME, SCRIPT, STRANGER, Harness, closing, fm, issue, plan_state
+from test_taskalisk import BUNNY, ECHO, HOME, SCRIPT, STRANGER, closing, fm, issue, plan_state
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
@@ -168,36 +168,88 @@ class Forge(unittest.TestCase):
         body = "```yaml\n.dag: issue-dag/2\n.id: o/r#1\n.kind: [task]\n```\n"
         self.assertEqual(forge.run_document(body, "o/r#1"), {"result": "error", "error": "TypeError"})
 
+    def test_a_malformed_id_is_l1_and_a_missing_or_non_string_id_is_v3(self):
+        """Format rule V12: the form of a reference is L1; the kind of `.id` is V3."""
+        self.assertEqual(forge.label_for(".id '#1' must be owner/repo#N", {".id": "#1"}), ("L1", None))
+        self.assertEqual(forge.label_for(".id None must be owner/repo#N", {}), ("V3", None))
+        self.assertEqual(forge.label_for(".id 5 must be owner/repo#N", {".id": 5}), ("V3", None))
+
+    def test_p3_only_for_a_format_name(self):
+        """Format rule V12: P3 for another format name, V1 for any other `.dag`."""
+        for value, label in (("issue-dag/3", "P3"), ("issue-dag/10", "P3"), ("foo", "V1"), ("", "V1"),
+                             ("issue-dag/03", "V1"), ("issue-dag/x", "V1"), (2, "V1")):
+            with self.subTest(value=value):
+                self.assertEqual(forge.label_for(".dag must be issue-dag/2", {".dag": value}), (label, None))
+
     def test_an_unknown_message_is_an_error_not_a_guess(self):
         with self.assertRaises(forge.UnlabelledMessage):
             forge.label_for("something the compiler never said", {})
 
 
-class ForgeFidelity(Harness):
-    """The in-process forge answers as the offline fake `gh` does: the same compile from the same state."""
+def outcome_class(codes):
+    """The profile's outcome class of a run that compiled nothing, from its error codes."""
+    if any(c.startswith("root.") for c in codes):
+        return "rejected"
+    return "incomplete" if codes else None
 
-    def compare(self, state, *args, roots=(), trust=None, capacities=None):
-        p = self.run_dag(copy.deepcopy(state), "--from-github", *args)
-        expected = signature(self.out(p))
-        b = ob.from_fake_state(state, roots=list(roots), trust=trust, capacities=capacities)
-        outcome = forge.compile_bundle(b)
-        self.assertIsNotNone(outcome.result, [f.code for f in outcome.failures])
-        self.assertEqual(signature(outcome.result), expected)
 
-    def test_rooted_plan(self):
-        self.compare(plan_state(), "--root", f"{HOME}#9", roots=[f"{HOME}#9"])
+def run_subprocess(state, args):
+    """One run of the compiler as a process against the fake `gh`, in its own directory: (doc, error codes)."""
+    import golden_scenarios
+    with tempfile.TemporaryDirectory(prefix="corpus-fidelity-") as tmp:
+        tmp = golden_scenarios.prepare(tmp)
+        (tmp / "state.json").write_text(json.dumps(state))
+        env = {k: v for k, v in os.environ.items() if k not in ("GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN",
+                                                               "PARLEY_SESSION", "XDG_STATE_HOME")}
+        env.update(PATH=f"{tmp / 'bin'}{os.pathsep}{os.environ['PATH']}", FAKE_GH_STATE=str(tmp / "state.json"),
+                   FAKE_GH_LOG=str(tmp / "gh.log"), XDG_STATE_HOME=str(tmp / "xdg"))
+        p = subprocess.run([sys.executable, str(SCRIPT), "--repo", str(tmp / "repo"), "--from-github", *args],
+                           capture_output=True, text=True, env=env, cwd=str(tmp), timeout=120)
+        out, err = pl.parse(p.stdout, "stdout"), pl.parse(p.stderr, "stderr")
+        return pl.reconstruct(out, err), sorted(e["code"] for e in pl.of(err, "parley.error"))
 
-    def test_rootless_plan_with_trust_prs_and_capacities(self):
-        import golden_scenarios
-        state = golden_scenarios.rich_state()
-        self.compare(state, "--sem-capacity", "gpu=1", capacities={"gpu": 1})
 
-    def test_violations_and_transfer(self):
-        state = plan_state()
-        state["moved"] = {f"{ECHO}#6": f"{BUNNY}#66"}
-        state["issues"][f"{BUNNY}#66"] = state["issues"].pop(f"{ECHO}#6")
-        state["issues"][f"{HOME}#1"]["body"] = fm(f"{HOME}#1", blocked_by=["#2", f"{ECHO}#5"], extra=".blockedby: [x]")
-        self.compare(state, "--root", f"{HOME}#9", roots=[f"{HOME}#9"])
+class ForgeFidelity(unittest.TestCase):
+    """The in-process forge answers as the offline fake `gh` does: for every scenario of the corpus that
+    comes from a fake state, the bundle compiles to what the compiler computes against that state."""
+
+    def test_every_scenario(self):
+        from concurrent.futures import ThreadPoolExecutor
+        from corpus import cases
+
+        def args_of(roots, trust, caps):
+            trust = trust or {}
+            args = [a for r in roots for a in ("--root", r)]
+            args += [a for login in trust.get("logins", []) for a in ("--trust", login)]
+            args += [a for owner in trust.get("owners", []) for a in ("--trust-owner", owner)]
+            args += ["--trust-codeowners"] if trust.get("codeowners") else []
+            return args + [a for name, n in (caps or {}).items() for a in ("--sem-capacity", f"{name}={n}")]
+
+        table = cases.SCENARIO_TABLE
+        self.assertGreaterEqual(len(table), 50)
+        with ThreadPoolExecutor(max_workers=min(8, os.cpu_count() or 2)) as pool:
+            runs = list(pool.map(lambda row: run_subprocess(copy.deepcopy(row[2]), args_of(row[3], row[4], row[5])), table))
+        for (name, _, state, roots, trust, caps), (doc, codes) in zip(table, runs):
+            with self.subTest(scenario=name):
+                outcome = forge.compile_bundle(ob.from_fake_state(state, roots=list(roots), trust=trust, capacities=caps))
+                if outcome.result is None:
+                    self.assertNotIn("waves", doc)
+                    self.assertEqual(outcome_class([f.code for f in outcome.failures]), outcome_class(codes))
+                else:
+                    self.assertEqual(signature(outcome.result), signature(doc))
+
+
+# The digest of the corpus this suite checks: the issue-dag repository's corpus/DIGEST and the
+# version table name the same value. A change to the corpus changes this constant in the same commit.
+CORPUS_DIGEST = "sha256:b2aa4839e0f2c7dcb2113cc8c6b6db99fb60191deef39ff5e8777652e93bf246"
+
+
+class CorpusPin(unittest.TestCase):
+    def test_the_vendored_corpus_is_the_pinned_one(self):
+        corpus = SPEC_COPY / "corpus"
+        self.assertEqual(digest.corpus_digest(corpus), CORPUS_DIGEST)
+        self.assertEqual((corpus / digest.DIGEST_FILE).read_text().strip(), CORPUS_DIGEST)
+        self.assertIn(CORPUS_DIGEST, (SPEC_COPY / "versions.md").read_text())
 
 
 class Digest(unittest.TestCase):
@@ -234,7 +286,8 @@ class Digest(unittest.TestCase):
 class SpecLabels(unittest.TestCase):
     def test_every_rule_label_of_the_specification_is_found(self):
         labels = spec.rule_labels(SPEC_COPY)
-        for label in ("C1", "C10", "M4", "L4", "V11", "P7", "A9", "N4", "D9", "X3", "G5", "K8", "B5", "T2", "W1", "I5", "F4", "E6a", "OB1"):
+        for label in ("C1", "C10", "M4", "L4", "V11", "V12", "P7", "A9", "N4", "D9", "D10", "X3", "G5", "K8", "B5", "T2", "W1",
+                      "I5", "F4", "F5", "E6a", "OB1", "CC7", "CD1"):
             self.assertIn(label, labels)
 
     def test_the_differences_are_numbered_and_classified(self):
@@ -324,6 +377,21 @@ class Checker(unittest.TestCase):
         meta["disagreement"] = {"classification": "defect", "difference": 1}
         self.rewrite(hits[0], meta)
         self.assertTrue(any("no longer disagrees" in p for p in self.problems()))
+
+    def test_a_disagreement_without_its_twin_fails(self):
+        hits = [m for m in sorted((self.corpus / "cases" / "document").glob("*/case.json"))
+                if json.loads(m.read_text())["kind"] == "normative" and "disagreement" in json.loads(m.read_text())]
+        twin = hits[0].parent.with_name(hits[0].parent.name + "--python")
+        shutil.rmtree(twin)
+        self.assertTrue(any("twin" in p and hits[0].parent.name in p for p in self.problems()))
+
+    def test_a_stray_file_in_a_case_fails(self):
+        where, _ = self.case("normative", "document")
+        (where / "notes.txt").write_text("stray\n")
+        self.assertTrue(any("notes.txt" in p for p in self.problems()))
+        (where / "notes.txt").unlink()
+        (where / "input.json").unlink()
+        self.assertTrue(any("input.json" in p for p in self.problems()))
 
     def test_a_stale_digest_fails(self):
         (self.corpus / "README.md").write_text((self.corpus / "README.md").read_text() + "\nmore\n")
