@@ -7,10 +7,12 @@
 //! observations a [`Forge`] answers with, admission included, with the
 //! ranking of its graph ([`rank`]) and its batch ([`select`]).
 //! A body becomes findings with stable codes ([`findings`]); the codes
-//! are tabled on [`code`].
-//! The crate performs no I/O and has no dependencies.
+//! are tabled on [`code`]. A task body also gets Taskalisk's own body
+//! warnings ([`body_warnings`]).
+//! The crate performs no I/O and depends only on `pulldown-cmark`.
 mod admission;
 mod batch;
+mod body;
 mod carrier;
 mod finding;
 mod forge;
@@ -28,8 +30,9 @@ use std::collections::BTreeSet;
 
 pub use admission::{Admission, Identity, Undecided, codeowners_persons};
 pub use batch::{Batch, Skip, keys_conflict, select};
+pub use body::{BODY_WARNINGS, BodyWarning, body_warnings};
 pub use carrier::{Block, Entry, Integer, Parse, Slot, Value, parse, trim};
-pub use finding::{Finding, LABELS, PROFILE_RULES, Rule, Severity, code, findings};
+pub use finding::{CODES, Finding, LABELS, PROFILE_RULES, Rule, Severity, code, findings};
 pub use forge::{Bundle, Forge, LocalRepository, NoLocalRepository, Observations, RecordedForge};
 pub use label::Label;
 pub use local::{AheadBehind, Branch, BranchScope, Checkout, Worktree};

@@ -7,10 +7,12 @@
 //! a message. One type serves both, because profile rule F5 gives a run's
 //! findings the document's labels and identifies every finding the same way.
 //!
-//! The codes are tabled on [`code`] and [`Rule::code`].
+//! The codes are tabled on [`code`] and [`Rule::code`], and listed, with
+//! every other family of findings, in the catalogue [`CODES`].
 
 use core::fmt;
 
+use crate::body::BODY_CODES;
 use crate::label::{self, Label};
 use crate::reference::IssueRef;
 use crate::{Judgement, admit};
@@ -18,6 +20,75 @@ use crate::{Judgement, admit};
 /// Every label a document judgement can carry, once each, in the order of
 /// its text. Declared with [`Label`] itself, so no label can be missing.
 pub const LABELS: [Label; label::VARIANTS] = label::ALL;
+
+/// The catalogue of every finding code the crate can report.
+///
+/// Each code comes with its severity: the document codes in [`LABELS`] order, then the planning
+/// profile's in [`PROFILE_RULES`] order, then Taskalisk's body warnings in
+/// [`crate::BODY_WARNINGS`] order. Each code appears once.
+///
+/// This is the one public source of the codes; the table on [`code`] and
+/// any reference page are checked against it. Every family of findings must
+/// register its codes here: a family supplies an array of its codes with
+/// their severities, and registers it with one line in `FAMILIES` (in this module).
+pub const CODES: &[(&str, Severity)] = &CATALOGUE;
+
+/// Each family's codes with their severities, in catalogue order. A new
+/// family of findings is one more line here.
+const FAMILIES: &[&[(&str, Severity)]] = &[&LABEL_CODES, &PROFILE_CODES, &BODY_CODES];
+
+/// The document codes in [`LABELS`] order, with [`Rule::severity`].
+const LABEL_CODES: [(&str, Severity); LABELS.len()] = {
+    let mut out = [("", Severity::Error); LABELS.len()];
+    let mut i = 0;
+    while i < LABELS.len() {
+        let rule = Rule::Document(LABELS[i]);
+        out[i] = (rule.code(), rule.severity());
+        i += 1;
+    }
+    out
+};
+
+/// The planning profile's codes in [`PROFILE_RULES`] order, with
+/// [`Rule::severity`].
+const PROFILE_CODES: [(&str, Severity); PROFILE_RULES.len()] = {
+    let mut out = [("", Severity::Error); PROFILE_RULES.len()];
+    let mut i = 0;
+    while i < PROFILE_RULES.len() {
+        out[i] = (PROFILE_RULES[i].code(), PROFILE_RULES[i].severity());
+        i += 1;
+    }
+    out
+};
+
+/// The number of codes over all [`FAMILIES`].
+const CODE_COUNT: usize = {
+    let mut total = 0;
+    let mut f = 0;
+    while f < FAMILIES.len() {
+        total += FAMILIES[f].len();
+        f += 1;
+    }
+    total
+};
+
+/// [`CODES`] as an array: the [`FAMILIES`] concatenated in order.
+const CATALOGUE: [(&str, Severity); CODE_COUNT] = {
+    let mut out = [("", Severity::Error); CODE_COUNT];
+    let mut k = 0;
+    let mut f = 0;
+    while f < FAMILIES.len() {
+        let family = FAMILIES[f];
+        let mut i = 0;
+        while i < family.len() {
+            out[k] = family[i];
+            k += 1;
+            i += 1;
+        }
+        f += 1;
+    }
+    out
+};
 
 /// How much a finding matters.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -219,14 +290,21 @@ impl fmt::Display for Rule {
 /// the planning profile `issue-dag-planning/2` (rule X1, and the rules of a
 /// run that [`Rule::code`] codes: D3, D4, D5, X2, X3 and G4). A code never
 /// changes meaning; a rule that is added gets a new code. The table lists
-/// the labels' codes in [`LABELS`] order, then the profile's in
-/// [`PROFILE_RULES`] order.
+/// the codes in [`CODES`] order: the labels' codes in [`LABELS`] order, then
+/// the profile's in [`PROFILE_RULES`] order, then the body warnings.
 ///
 /// Rules C1 to C3 decide whether a body has a document at all (a body without
 /// one has no findings), and C5, C9, C10, V9, V11 and V12 never fail a
 /// document, so they have no code. A `.dag` string other than `issue-dag/2`
 /// is `version.P3` when it names a format (`issue-dag/N`) and `format.V1`
 /// otherwise (V12).
+///
+/// The table ends with Taskalisk's own body warnings
+/// ([`crate::body_warnings`], flyingrobots/taskalisk#48): its writing
+/// convention for a task body, `skills/taskalisk/WRITING-TASKS.md`, not a
+/// rule of any specification. Their code is `taskalisk.<name>`, given by
+/// [`crate::BodyWarning::code`], listed in [`crate::BODY_WARNINGS`]; they are
+/// stable on the same terms.
 ///
 /// | Code | Rule | Severity |
 /// | --- | --- | --- |
@@ -255,6 +333,12 @@ impl fmt::Display for Rule {
 /// | `profile.X2` | a prerequisite that is a container | error |
 /// | `profile.X3` | an unknown prerequisite | error |
 /// | `profile.G4` | a node of a cycle, or downstream of one | error |
+/// | `taskalisk.acceptance-missing` | a task body without `## Acceptance` | warning |
+/// | `taskalisk.outcome-items` | an Outcome of more than one list item | warning |
+/// | `taskalisk.outcome-missing` | a task body without `## Outcome` | warning |
+/// | `taskalisk.outcome-sentences` | an Outcome of more than one sentence | warning |
+/// | `taskalisk.scope-missing` | a task body without `## Scope` | warning |
+/// | `taskalisk.title-joins` | a title joining two things with "and" or `;` | warning |
 #[must_use]
 pub const fn code(label: Label) -> &'static str {
     match label {
