@@ -85,4 +85,11 @@ jobs:
           rustup toolchain install "$channel" --profile minimal
           rustup show active-toolchain
       - name: Wall-clock bounds of large graphs
-        run: cargo test --workspace --locked --release -- --ignored perf_
+        shell: bash
+        # A filter that matches no test passes, so the step also counts the perf_
+        # tests that ran: a rename must not silently drop a bound.
+        run: |
+          cargo test --workspace --locked --release -- --ignored perf_ 2>&1 | tee perf.log
+          ran="$(grep -c '^test .*perf_.* \.\.\. ok$' perf.log)"
+          echo "perf_ tests passed: $ran"
+          test "$ran" -ge 6

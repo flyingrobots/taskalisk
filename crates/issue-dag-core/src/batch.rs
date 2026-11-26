@@ -425,6 +425,7 @@ mod scale {
             ..Graph::default()
         }
     }
+
     #[test]
     fn a_chain_of_5000_nodes_ranks_and_selects() {
         chain_of_5000();
