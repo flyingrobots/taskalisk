@@ -1349,7 +1349,7 @@ def _resources_cell(holds: list[str], meters: list[dict[str, Any]], empty: str) 
 
 MD_LINE_BREAK_RE = re.compile("\r\n|[\n\r\x0b\x0c\x85  ]")
 MD_CONTROL_RE = re.compile("[\x00-\x1f\x7f-\x9f]")
-MD_AUTOLINK_RE = re.compile(r"(?i)\b([a-z][a-z0-9+.-]*:)(//)|\b(www)(\.)")
+MD_AUTOLINK_RE = re.compile(r"(?i)\b([a-z][a-z0-9+.-]{0,31}:)(//)|\b(www)(\.)")  # a bounded scheme keeps the scan linear
 
 
 def _md_cell(text: str) -> str:
