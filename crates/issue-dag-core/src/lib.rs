@@ -4,17 +4,20 @@
 //! ([`parse`]), validity ([`validate`]), the decoded record ([`admit`]), and
 //! the `.blocked_by` rewrite of the edge-edit contract ([`rewrite_blocked_by`]),
 //! and a planning run under `issue-dag-planning/2` ([`plan`]) over the
-//! observations a [`Forge`] answers with, admission included.
+//! observations a [`Forge`] answers with, admission included, with the
+//! ranking of its graph ([`rank`]) and its batch ([`select`]).
 //! A body becomes findings with stable codes ([`findings`]); the codes
 //! are tabled on [`code`].
 //! The crate performs no I/O and has no dependencies.
 mod admission;
+mod batch;
 mod carrier;
 mod finding;
 mod forge;
 mod label;
 mod observation;
 mod plan;
+mod rank;
 mod record;
 mod reference;
 mod rewrite;
@@ -23,6 +26,7 @@ mod validate;
 use std::collections::BTreeSet;
 
 pub use admission::{Admission, Identity, Undecided, codeowners_persons};
+pub use batch::{Batch, Skip, keys_conflict, select};
 pub use carrier::{Block, Entry, Integer, Parse, Slot, Value, parse, trim};
 pub use finding::{Finding, LABELS, PROFILE_RULES, Rule, Severity, code, findings};
 pub use forge::{Bundle, Forge, LocalRepository, NoLocalRepository, Observations, RecordedForge};
@@ -32,6 +36,7 @@ pub use observation::{
     PullRequest, ReadScope, Repo, TRUST_POLICY, TrustParameters,
 };
 pub use plan::{Edge, Graph, Node, NodeStatus, Outcome, Rejection, plan};
+pub use rank::{Ranking, rank};
 pub use record::{Kind, MeterClaim, Record, Status, TaskType, VERSION};
 pub use reference::{IssueRef, MAX_NUMBER, is_name};
 pub use rewrite::{EdgeEdit, Refusal, Rewrite, rewrite_blocked_by};
