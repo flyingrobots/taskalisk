@@ -33,9 +33,15 @@ def filed_body(name):
     return text[match.end():].lstrip("\n").replace("OWNER/REPO#NEW", f"{SELF[0]}#{SELF[1]}")
 
 
+def template_names(folder):
+    """The template files in a folder, by name. A hidden file (a `.DS_Store` the system writes, which
+    git ignores) is not a template, and is neither installed nor drift."""
+    return sorted(p.name for p in folder.iterdir() if p.is_file() and not p.name.startswith("."))
+
+
 class IssueTemplatesTest(unittest.TestCase):
     def test_one_template_per_task_type(self):
-        self.assertEqual(sorted(p.stem for p in TEMPLATES.glob("*.md")), sorted(TYPES))
+        self.assertEqual(sorted(n[:-3] for n in template_names(TEMPLATES) if n.endswith(".md")), sorted(TYPES))
 
     def test_filed_template_compiles_as_a_valid_task(self):
         tk = compiler()
@@ -60,7 +66,7 @@ class IssueTemplatesTest(unittest.TestCase):
     def test_templates_are_generic(self):
         # Deny by default: no project, owner, runtime or machine-local path may appear.
         forbidden = re.compile(r"(?i)parley|flyingrobots|\bbun\b|/" + "Users/|/" + "home/")
-        files = sorted(TEMPLATES.iterdir())
+        files = [TEMPLATES / n for n in template_names(TEMPLATES)]
         self.assertEqual(len(files), len(TYPES) + 1, "seven templates and config.yml")
         for path in files:
             with self.subTest(file=path.name):
@@ -81,6 +87,59 @@ class IssueTemplatesTest(unittest.TestCase):
         for name in TYPES:
             with self.subTest(template=name):
                 self.assertRegex(filed_body(name), r"(?m)^## [0-9]+\. Definition of Done$")
+
+
+INSTALLED = ROOT / ".github" / "ISSUE_TEMPLATE"
+
+THIS_REPO = ("flyingrobots/taskalisk", 83)
+
+
+class InstalledTemplatesTest(unittest.TestCase):
+    """flyingrobots/taskalisk#83: this repository's issue forms are the canonical templates, installed with
+    the skill's snippet (OWNER/REPO replaced by this repository), and cannot drift from them."""
+
+    def test_the_installed_folder_holds_exactly_the_canonical_files(self):
+        self.assertTrue(INSTALLED.is_dir(), ".github/ISSUE_TEMPLATE/ is missing")
+        self.assertEqual(template_names(INSTALLED), template_names(TEMPLATES))
+
+    def test_every_listing_of_a_template_folder_skips_hidden_files(self):
+        """Only template_names lists a folder, so no test reads a `.DS_Store` as a template."""
+        source = pathlib.Path(__file__).read_text(encoding="utf-8").splitlines()
+        listings = [n for n, line in enumerate(source, 1) if re.search(r"[\w)]\.(?:iterdir\(\)|glob\()", line)]
+        inside = [n for n in listings if "if p.is_file() and not p.name.startswith(\".\")" in source[n - 1]]
+        self.assertEqual(listings, inside, "list a template folder only through template_names")
+
+    def test_a_hidden_file_left_by_the_system_is_not_drift(self):
+        """A `.DS_Store` that macOS writes into either folder is not a template; it must not fail the suite."""
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            folder = pathlib.Path(tmp)
+            (folder / "task.md").write_text("x")
+            (folder / ".DS_Store").write_bytes(b"\x00\x01")
+            self.assertEqual(template_names(folder), ["task.md"])
+
+    def test_each_installed_file_is_its_canonical_template_for_this_repository(self):
+        for name in template_names(TEMPLATES):
+            canonical = TEMPLATES / name
+            with self.subTest(canonical.name):
+                installed = INSTALLED / canonical.name
+                self.assertTrue(installed.is_file(), f"{canonical.name} is not installed")
+                expected = canonical.read_text(encoding="utf-8").replace("OWNER/REPO#NEW", f"{THIS_REPO[0]}#NEW")
+                self.assertEqual(installed.read_text(encoding="utf-8"), expected,
+                                 f"{canonical.name} differs from its canonical template; reinstall it with the skill's snippet")
+
+    def test_an_issue_filed_from_each_installed_form_compiles_as_a_valid_node(self):
+        tk = compiler()
+        for name in TYPES:
+            with self.subTest(form=name):
+                text = (INSTALLED / f"{name}.md").read_text(encoding="utf-8")
+                match = re.match(r"---\n.*?\n---\n", text, re.S)
+                self.assertIsNotNone(match, f"{name}.md has no GitHub template header")
+                body = text[match.end():].lstrip("\n").replace(f"{THIS_REPO[0]}#NEW", f"{THIS_REPO[0]}#{THIS_REPO[1]}")
+                fields, problems = tk.parse_frontmatter(body)
+                self.assertEqual(problems, [], name)
+                record, violations, _ = tk.validate_frontmatter(fields, THIS_REPO)
+                self.assertEqual(violations, [], name)
 
 
 if __name__ == "__main__":
