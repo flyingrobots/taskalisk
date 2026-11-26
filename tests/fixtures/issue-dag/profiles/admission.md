@@ -12,7 +12,10 @@ compiler, applies (`TrustPolicy` in `skills/taskalisk/scripts/taskalisk.py`),
 and the policy stated in Taskalisk's threat model (`docs/threat-model.md`,
 controls C1, C2, C4 and C18). Where the two differed, this document states the
 policy, and [the reconciliation notes](../notes/python-differences.md) list
-the difference. None was found when the rules were written.
+the difference. No rule differs from the Python. The threat model contradicted
+itself once: C1 called a check that cannot be made *untrusted*, and also said
+that any trust lookup that cannot run fails the run. The second governs
+(AD10), as the Python does, and the threat model was corrected to say so.
 
 Only statements with a label such as **AD4** are normative. Everything else,
 including examples and blocks marked *Commentary*, is informative. The key
@@ -89,8 +92,9 @@ Associations and permissions are compared exactly as recorded.
 > *Commentary.* `MEMBER` and `COLLABORATOR` include read- and triage-level
 > people, so they lead to the permission, never to trust by themselves. An
 > association outside the three means GitHub reports no collaborator
-> standing, so step 6 decides without a permission lookup and a stranger's
-> issue costs nothing more (threat model, C1 and C15). A bot is trusted only
+> standing, so step 6 decides without a permission lookup (threat model, C1
+> and C15). A stranger's issue then costs no lookup, except that when
+> CODEOWNERS files are read, step 4 reads the repository's CODEOWNERS first. A bot is trusted only
 > by name: neither association, nor permission, nor CODEOWNERS trusts it.
 
 **AD6. Permission lookup.** The permission of `a` on `r` is the slot
@@ -100,12 +104,18 @@ It is read only when step 7 of AD5 is reached.
 **AD7. CODEOWNERS.** When `parameters.trust.codeowners` is true, the
 CODEOWNERS of `r` is the slot `observations.codeowners[r]`, read only when
 step 4 of AD5 is reached. A null value names nobody. Otherwise the persons
-it names are found line by line: the text before the first `#` of the line
-is split at white space; each token after the first that begins with `@` is
-an owner. An owner whose name, after the `@`, contains `/` is a team; it is
-not expanded and trusts nobody. Any other owner names the person with that
-login (AD3). A token that does not begin with `@`, such as an e-mail address,
-names nobody. CODEOWNERS only adds trust; it never removes it, and it never
+it names are found line by line. The text is split into lines at every
+Unicode line break: LF, CR, CR LF, U+000B, U+000C, U+001C to U+001E, U+0085,
+U+2028 and U+2029. The text of a line before its first `#` is split into
+tokens at every run of these characters: U+0009 to U+000D, U+001C to
+U+001F, U+0020, U+0085, U+00A0, U+1680, U+2000 to U+200A, U+2028, U+2029,
+U+202F, U+205F and U+3000 (the Unicode `White_Space` characters and U+001C to
+U+001F). Each token after the first
+that begins with `@` is an owner, and its *name* is the rest of the token. A
+name that contains `/` is a team; it is not expanded and trusts nobody. An
+empty name, from a bare `@`, names nobody. Any other name names the person
+with that login (AD3). A token that does not begin with `@`, such as an
+e-mail address, names nobody. CODEOWNERS only adds trust; it never removes it, and it never
 widens the scope (AD2).
 
 > *Commentary.* The file is the one on the default branch, as bundle rule

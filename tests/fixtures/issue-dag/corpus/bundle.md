@@ -74,8 +74,11 @@ members, which are the run parameters of profile rule I1:
 - `trust`: an object with the members `policy`, the name of the trust policy
   that makes the admission decisions, `logins`, the logins that policy trusts
   by name, and `codeowners`, true when that policy reads CODEOWNERS files.
-  The policy `taskalisk/threat-model` is defined by the [admission
-  policy](../profiles/admission.md), rules AD1 to AD10;
+  These are the trust parameters of profile rule I1. The policy
+  `taskalisk/threat-model` is defined by the [admission
+  policy](../profiles/admission.md), rules AD1 to AD10, and is the only one
+  this specification defines. A bundle that names another policy is a valid
+  bundle; its run is rejected (profile rule I2);
 - `capacities`: an object from semaphore names to positive integers, possibly
   empty.
 

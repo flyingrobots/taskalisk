@@ -730,7 +730,29 @@ NORMATIVE_GRAPHS += [
       subject(as_("NONE"), codeowners=True, contents_fail=True, logins=("o", CAROL)), admitted(), ["AD5", "AD10"]),
     G("ad10-permission-not-reached", "The permission of an author whose association decides is not required",
       subject(MALLORY, collaborators_forbidden=True), refused(), ["AD5", "AD10"]),
+    G("ad10-owner-permission-not-reached", "The permission of an author trusted as OWNER is not required",
+      subject(as_("OWNER"), collaborators_forbidden=True), admitted(), ["AD5", "AD10"]),
+    G("ad10-allowlisted-permission-not-reached", "The permission of an allowlisted login is not required",
+      subject(as_("MEMBER"), logins=("dev", CAROL), collaborators_forbidden=True), admitted(), ["AD4", "AD5", "AD10"]),
+    G("ad10-bot-lookups-not-reached", "Neither the permission nor the CODEOWNERS a bot would need is required",
+      subject(HELPER, logins=("o",), codeowners=True, contents_fail=True, mutate=perms(R, "helper")), refused(), ["AD5", "AD10"]),
+    # AD7: how CODEOWNERS is read
+    G("ad7-codeowners-nbsp-separates", "U+00A0 separates CODEOWNERS owners",
+      subject(as_("NONE"), codeowners=True, codeowners_files={R: {OWNERS_FILE: "* @o @carol\n"}}), admitted(), ["AD7"]),
+    G("ad7-codeowners-line-separator-ends-a-line", "U+2028 ends a CODEOWNERS line: `@carol` after it is the next line's pattern, not an owner",
+      subject(as_("NONE"), codeowners=True, codeowners_files={R: {OWNERS_FILE: "* @o @carol\n"}}), refused(), ["AD7"]),
+    G("ad7-codeowners-bare-at", "A bare `@` in CODEOWNERS names nobody",
+      subject(as_("NONE"), codeowners=True, codeowners_files={R: {OWNERS_FILE: "* @o @\n"}}), refused(), ["AD7"]),
+    G("ad7-codeowners-email", "An e-mail address in CODEOWNERS names nobody",
+      subject(as_("NONE"), codeowners=True, codeowners_files={R: {OWNERS_FILE: "* @o carol@example.com\n"}}), refused(), ["AD7"]),
+    G("ad7-codeowners-trusts-an-editor", "An editor named in CODEOWNERS is trusted without a permission",
+      subject({"editors": ["o", CAROL]}, codeowners=True, codeowners_files={R: {OWNERS_FILE: "* @o @carol\n"}}), admitted(), ["AD7", "AD8"]),
 ]
+
+NORMATIVE_GRAPHS.append(
+    G("i2-other-trust-policy", "A run under a trust policy that the specification does not define is rejected",
+      bundle({R1: i(d(R1))}, roots=(R1,), mutate=lambda b: b["parameters"]["trust"].update(policy="someone/else")),
+      {"outcome": "rejected"}, ["I2", "I6", "F1"]))
 
 
 # --------------------------------------------------------------------------- #

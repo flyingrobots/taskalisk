@@ -28,12 +28,16 @@ plan.
 - Optionally, a non-empty list of *root references*.
 - A *read scope*: the set of repositories the run may read. It includes `H`.
   It is also the scope of admission (admission rule AD2).
+- The *trust parameters* of admission (AD1): the name of the trust policy,
+  the *allowlist* (the logins the policy trusts by name), and whether the
+  policy reads CODEOWNERS files.
 - A map from semaphore names to capacities, each a positive integer. It may be
   empty.
 
-**I2. Root references.** Each root reference MUST be a reference under the
-format's rule L1, in a repository of the read scope. Otherwise the run is
-rejected.
+**I2. Root references and trust policy.** Each root reference MUST be a
+reference under the format's rule L1, in a repository of the read scope. The
+trust policy MUST be `taskalisk/threat-model`, the one policy this
+specification defines (I6). Otherwise the run is rejected.
 
 **I3. Observations of an issue.** For each reference the run reads, the
 planner observes:
@@ -61,7 +65,8 @@ listing that may have been truncated is unavailable. A draft flag that is not
 a boolean is unavailable.
 
 **I6. Admission.** Admission decisions are made under the [admission
-policy](admission.md), rules AD1 to AD10, from the observations alone. An
+policy](admission.md), rules AD1 to AD10, from the run parameters and the
+observations alone. An
 unavailable observation that those rules read makes the run incomplete
 (AD10).
 

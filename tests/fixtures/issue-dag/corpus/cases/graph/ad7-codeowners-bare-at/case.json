@@ -1,0 +1,10 @@
+{
+  "cites": [
+    "AD7"
+  ],
+  "id": "graph/ad7-codeowners-bare-at",
+  "kind": "normative",
+  "level": "graph",
+  "source": "constructed from the rule text",
+  "title": "A bare `@` in CODEOWNERS names nobody"
+}
