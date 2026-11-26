@@ -1372,13 +1372,18 @@ def _resources_cell(holds: list[str], meters: list[dict[str, Any]], empty: str, 
 def _md_code(text: str, in_table: bool) -> str:
     """Text as a code span, which shows its characters literally and never links: line breaks fold
     to a space, controls are dropped, and the fence is one backtick longer than the longest run of
-    backticks inside (padded with a space when the text starts or ends with one). In a table, `|`
+    backticks inside (padded with a space when the text starts or ends with a backtick or a space;
+    an empty result is shown as an em dash). In a table, `|`
     must still be written `\\|`, the one escape GFM reads inside a code span there."""
     text = MD_CONTROL_RE.sub("", MD_LINE_BREAK_RE.sub(" ", str(text)))
     if in_table:
         text = text.replace("|", "\\|")
+    if not text:
+        return "\u2014"  # nothing left to show
     fence = "`" * (max((len(r) for r in re.findall("`+", text)), default=0) + 1)
-    pad = " " if text.startswith("`") or text.endswith("`") else ""
+    # GFM strips one space from each end when both are spaces, and a backtick at an end would join
+    # the fence: padding either keeps the text as written.
+    pad = " " if text[0] in "` " or text[-1] in "` " else ""
     return f"{fence}{pad}{text}{pad}{fence}"
 
 
