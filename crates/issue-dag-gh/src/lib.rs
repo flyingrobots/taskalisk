@@ -26,6 +26,7 @@
 mod error;
 mod read;
 mod run;
+mod write;
 
 use std::cell::RefCell;
 use std::collections::BTreeMap;
@@ -40,6 +41,7 @@ pub use error::GhError;
 use read::Label;
 pub use read::{CODEOWNERS_PATHS, EDIT_HISTORY_QUERY};
 use run::Runner;
+pub use write::WriteFailure;
 
 /// What the reads returned only to be shown, never to plan from.
 ///

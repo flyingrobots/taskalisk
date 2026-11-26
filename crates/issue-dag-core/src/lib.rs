@@ -2,7 +2,9 @@
 //!
 //! A hand-written reader for the `issue-dag/2` format: the carrier
 //! ([`parse`]), validity ([`validate`]), the decoded record ([`admit`]), and
-//! the `.blocked_by` rewrite of the edge-edit contract ([`rewrite_blocked_by`]),
+//! the `.blocked_by` rewrite of the edge-edit contract ([`rewrite_blocked_by`])
+//! and the checks of an edge edit before its write ([`check_edit`], [`recheck`])
+//! through the forge write port ([`ForgeWrite`]),
 //! and a planning run under `issue-dag-planning/2` ([`plan`]) over the
 //! observations a [`Forge`] answers with, admission included, with the
 //! ranking of its graph ([`rank`]) and its batch ([`select`]).
@@ -14,6 +16,7 @@ mod admission;
 mod batch;
 mod body;
 mod carrier;
+mod edit;
 mod finding;
 mod forge;
 mod label;
@@ -33,6 +36,7 @@ use std::collections::BTreeSet;
 pub use admission::{Admission, Identity, Undecided, codeowners_persons};
 pub use batch::{Batch, Skip, keys_conflict, select};
 pub use body::{BODY_WARNINGS, BodyWarning, body_warnings};
+pub use edit::{Checked, Conflict, EditRefusal, ForgeWrite, Proposed, check_edit, recheck, writer_admitted};
 pub use carrier::{Block, Entry, Integer, Parse, Slot, Value, parse, trim};
 pub use finding::{CODES, Code, Finding, LABELS, PROFILE_RULES, Rule, Severity, code, findings};
 pub use forge::{Bundle, Forge, LocalRepository, NoLocalRepository, Observations, RecordedForge};
