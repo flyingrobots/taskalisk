@@ -126,6 +126,9 @@ pub struct Graph {
     /// The numbers in `untrusted_pull_requests`, in the order the pull
     /// requests were observed.
     pub untrusted_pull_request_order: Vec<u64>,
+    /// The edges in `not_planned`, by the order the closure read their
+    /// tasks, then in the order of each task's `.blocked_by`.
+    pub not_planned_order: Vec<Edge>,
 }
 
 impl Graph {
@@ -655,6 +658,18 @@ impl<'c> Assembly<'c> {
                 }
             }
         }
+        // Each task's edges are in its `.blocked_by` order; a stable sort
+        // puts the tasks in the order read.
+        let read: BTreeMap<&IssueRef, usize> = self
+            .graph
+            .visit_order
+            .iter()
+            .enumerate()
+            .map(|(i, id)| (id, i))
+            .collect();
+        let mut order = std::mem::take(&mut self.graph.not_planned_order);
+        order.sort_by_key(|e| read.get(&e.to).copied().unwrap_or(usize::MAX));
+        self.graph.not_planned_order = order;
     }
 
     fn prerequisite(&mut self, prerequisite: &IssueRef, task: &IssueRef) {
@@ -678,8 +693,8 @@ impl<'c> Assembly<'c> {
             .issues
             .get(prerequisite)
             .is_some_and(|i| i.state_reason.as_deref() == Some("not_planned"));
-        if not_planned {
-            self.graph.not_planned.insert(edge.clone());
+        if not_planned && self.graph.not_planned.insert(edge.clone()) {
+            self.graph.not_planned_order.push(edge.clone());
         }
         self.graph.satisfied.insert(edge);
     }

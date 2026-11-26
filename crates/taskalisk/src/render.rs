@@ -907,9 +907,9 @@ struct Discovery {
 
 impl Discovery {
     /// Each list in the order 1.x writes it: the order discovery read the
-    /// issues in (`Graph::visit_order`), and for not-planned prerequisites
-    /// that of the task, then of the prerequisite; untrusted pull requests
-    /// in the order they were observed.
+    /// issues in (`Graph::visit_order`); not-planned prerequisites by task
+    /// read, then in its `.blocked_by` order (`Graph::not_planned_order`);
+    /// untrusted pull requests in the order they were observed.
     fn of<'a>(graph: &'a Graph, shown: &Shown) -> Self {
         let position: BTreeMap<&IssueRef, usize> = graph
             .visit_order
@@ -970,10 +970,9 @@ impl Discovery {
                 Value::Object(o)
             })
             .collect();
-        let mut not_planned_edges: Vec<_> = graph.not_planned.iter().collect();
-        not_planned_edges.sort_by_key(|e| (read(&e.to), read(&e.from)));
-        let not_planned = not_planned_edges
-            .into_iter()
+        let not_planned = graph
+            .not_planned_order
+            .iter()
             .map(|e| {
                 let mut n =
                     object(json!({"parent": e.from.to_string(), "child": e.to.to_string()}));
