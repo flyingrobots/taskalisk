@@ -103,6 +103,12 @@ const CATALOGUE: [(&str, Severity); CODE_COUNT] = {
 /// ```compile_fail
 /// let invented = issue_dag_core::Code(0);
 /// ```
+///
+/// Nor is there a public way to build one from text:
+///
+/// ```compile_fail
+/// let found = issue_dag_core::Code::of("format.V1");
+/// ```
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Code(usize);
 
@@ -244,6 +250,26 @@ impl Severity {
 ///     severity: Severity::Error,
 ///     message: "a code in no catalogue",
 /// };
+/// ```
+///
+/// Its code and severity are read with [`Finding::code`] and
+/// [`Finding::severity`], and cannot be assigned, so the pair cannot be split:
+/// a caller can neither give a finding a severity other than its code's, nor
+/// change its code and keep the old severity.
+///
+/// ```compile_fail
+/// use issue_dag_core::{Finding, IssueRef, Rule, Severity};
+///
+/// let mut found = Finding::new(IssueRef::parse("o/r#1").expect("a reference"), Rule::D4, None);
+/// found.severity = Severity::Warning;
+/// ```
+///
+/// ```compile_fail
+/// use issue_dag_core::{Finding, IssueRef, Rule};
+///
+/// let mut found = Finding::new(IssueRef::parse("o/r#1").expect("a reference"), Rule::D4, None);
+/// let other = Finding::new(IssueRef::parse("o/r#1").expect("a reference"), Rule::G4, None);
+/// found.code = other.code;
 /// ```
 #[derive(Clone, Debug)]
 pub struct Finding {

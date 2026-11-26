@@ -71,26 +71,26 @@ fn every_emitted_finding_has_a_catalogued_code_and_its_severity() {
             .chain(PROFILE_RULES)
             .map(|rule| Finding::new(subject(), rule, None)),
     );
-    let severities: Vec<Severity> = emitted.iter().map(|f| f.severity).collect();
+    let severities: Vec<Severity> = emitted.iter().map(|f| f.severity()).collect();
     assert!(severities.contains(&Severity::Warning));
     assert!(severities.contains(&Severity::Error));
     let catalogued: BTreeSet<&str> = CODES.iter().map(|(c, _)| *c).collect();
     for finding in &emitted {
         assert!(
-            catalogued.contains(finding.code.as_str()),
+            catalogued.contains(finding.code().as_str()),
             "{}",
-            finding.code
+            finding.code()
         );
         assert_eq!(
-            finding.severity,
-            finding.code.severity(),
+            finding.severity(),
+            finding.code().severity(),
             "{}",
-            finding.code
+            finding.code()
         );
     }
     let body: BTreeSet<&str> = emitted
         .iter()
-        .map(|f| f.code.as_str())
+        .map(|f| f.code().as_str())
         .filter(|c| c.starts_with("taskalisk."))
         .collect();
     let expected: BTreeSet<&str> = BODY_WARNINGS
@@ -110,8 +110,8 @@ fn rules_and_body_warnings_name_catalogued_codes() {
         .chain(PROFILE_RULES)
     {
         let finding = Finding::new(subject(), rule, None);
-        assert!(finding.code == rule.code(), "{rule}");
-        assert_eq!(finding.code.severity(), rule.severity(), "{rule}");
+        assert!(finding.code() == rule.code(), "{rule}");
+        assert_eq!(finding.code().severity(), rule.severity(), "{rule}");
     }
     for warning in BODY_WARNINGS {
         let code = Code::all()
