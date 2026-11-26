@@ -2,7 +2,8 @@
 //! (`tests/fixtures/issue-dag/corpus/cases/document/`) through the crate.
 //!
 //! - A normative case passes when every member of its expected result equals
-//!   the crate's (corpus rule CC8): `violations` and `warnings` compare as sets.
+//!   the crate's (corpus rule CC8): `violations` and `warnings` compare exactly: each label once, in
+//!   ascending order (CC5).
 //! - A characterisation case with a `normative_case` (a `--python` twin)
 //!   records what the Python computes where it disagrees with the
 //!   specification. The crate must match the normative case instead, on the
@@ -49,9 +50,8 @@ fn record_json(record: &Record) -> Value {
 }
 
 fn labels(set: &BTreeSet<issue_dag_core::Label>) -> Value {
-    let mut list: Vec<&str> = set.iter().map(|l| l.as_str()).collect();
-    list.sort_unstable();
-    json!(list)
+    // In the crate's own order, which must be CC5's ascending order.
+    json!(set.iter().map(|l| l.as_str()).collect::<Vec<_>>())
 }
 
 /// The crate's result in the form of corpus rule CC5.
@@ -75,22 +75,13 @@ fn result_json(input: &Value) -> Value {
     }
 }
 
-fn as_set(value: &Value) -> Option<BTreeSet<String>> {
-    value
-        .as_array()
-        .map(|a| a.iter().map(ToString::to_string).collect())
-}
-
 /// CC8 for a normative case: every member the expected result holds equals
-/// the actual one; `violations` and `warnings` compare as sets.
+/// the actual one. Labels compare exactly, each once in ascending
+/// order (CC5).
 fn normative_mismatch(expected: &Map<String, Value>, actual: &Value) -> Option<String> {
     for (member, want) in expected {
         let got = &actual[member.as_str()];
-        let equal = match member.as_str() {
-            "violations" | "warnings" => as_set(want) == as_set(got),
-            _ => want == got,
-        };
-        if !equal {
+        if want != got {
             return Some(format!("{member}: expected {want}, got {got}"));
         }
     }

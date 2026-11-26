@@ -81,3 +81,41 @@ impl fmt::Display for Label {
         f.write_str(self.as_str())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::Label;
+
+    const ALL: [Label; 19] = [
+        Label::C4,
+        Label::C6,
+        Label::C7,
+        Label::C8,
+        Label::L1,
+        Label::L2,
+        Label::L3,
+        Label::L4,
+        Label::P3,
+        Label::V1,
+        Label::V2,
+        Label::V3,
+        Label::V4,
+        Label::V5,
+        Label::V6,
+        Label::V7,
+        Label::V8,
+        Label::V10,
+        Label::X1,
+    ];
+
+    /// A set of labels iterates in the ascending order corpus rule CC5 writes
+    /// them in: the order of their text, so `V10` comes before `V2`.
+    #[test]
+    fn labels_order_as_their_text() {
+        let mut by_ord = ALL;
+        by_ord.sort_unstable();
+        let mut by_text = ALL;
+        by_text.sort_unstable_by_key(|l| l.as_str());
+        assert_eq!(by_ord, by_text);
+    }
+}
