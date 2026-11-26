@@ -28,7 +28,10 @@ State shape:
    "writer": {"login": str, "type": str},             # the authenticated account (`gh api user`); default the default author
    "writer_fail": bool,                               # `gh api user` fails (HTTP 403, as for an app token)
    "edit_on_read": {"issue": "owner/repo#N", "read": int, "body": str, "editors": [...]},
-                                                      # another person's edit, made just before that edit-history read of the issue
+                                                      # another person's edit, made just before that edit-history read of the issue;
+                                                      # with "fail": true that read fails instead
+   "edit_on_get": {"issue": "owner/repo#N", "read": int, "set": {...}},
+                                                      # sets these issue fields (such as "is_pr") just before that REST read of it
    "issues_list_fail_message": str,                   # the REST issue list fails with this text; {GH_TOKEN}, {$NAME} (any variable) and {HOME} expand
    "issues_list_drop_number": bool,                   # the REST issue list omits "number" (a malformed response)
    "issues_list_pages": [["owner/repo#N", ...], ...], # the REST issue list as these pages; --paginate writes every one
@@ -107,6 +110,8 @@ def graphql(state, args):
                 if field in change:
                     it[field] = change[field]
         save(state)
+        if reads[key] == change["read"] and change.get("fail"):
+            fail(f"gh: GraphQL unavailable for {key} on read {reads[key]} (fake)")
     author = author_of(state, it)
     # The creation edit is by the author actor, with the author's own type.
     editors = it.get("editors", [{"login": author, "type": it.get("author_type", "User")}])
@@ -225,6 +230,13 @@ def main(argv):
     if not m.group(3):
         if method == "GET" and state.get("issue_get_returns_list"):
             print("[]"); return
+        change = state.get("edit_on_get") or {}
+        if method == "GET" and change.get("issue") == key:
+            gets = state.setdefault("issue_gets", {})
+            gets[key] = gets.get(key, 0) + 1
+            if gets[key] == change["read"]:
+                state["issues"][key].update(change.get("set", {}))
+            save(state)
         if method == "PATCH":
             if state.get("patch_fail"):
                 fail("gh: Bad Gateway (HTTP 502)")

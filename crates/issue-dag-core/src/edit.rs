@@ -825,6 +825,58 @@ mod tests {
         );
     }
 
+    #[test]
+    fn a_cycle_in_a_trusted_other_repository_is_refused_without_roots() {
+        // p/q is in the scope by --trust-repo, so the home listing never
+        // reaches it: only seeding the child does (M-F-1).
+        let observations = backlog(&[
+            ("o/r#1", task("o/r#1", &[])),
+            ("p/q#1", task("p/q#1", &[])),
+            ("p/q#2", task("p/q#2", &["p/q#1"])),
+        ]);
+        let mut parameters = parameters(&[]);
+        parameters
+            .read_scope
+            .repositories
+            .insert(Repo::parse("p/q").expect("a repository"));
+        let refused = check_edit(
+            &parameters,
+            &RecordedForge::new(&observations),
+            &r("p/q#1"),
+            &add("p/q#2"),
+        );
+        assert!(
+            matches!(&refused, Err(EditRefusal::Cycle(nodes)) if nodes.contains(&r("p/q#1"))),
+            "{refused:?}"
+        );
+    }
+
+    #[test]
+    fn a_cycle_the_edit_brings_into_the_plan_is_a_cycle() {
+        // 8 and 9 wait on each other, outside the plan of root 5 until 5
+        // names 8. 8 is not reachable from 5, so only the new G4 findings
+        // show the cycle (M-F-2).
+        let mut observations = chain();
+        put(
+            &mut observations,
+            "o/r#8",
+            &task("o/r#8", &["o/r#9"]),
+            &["owner"],
+        );
+        put(
+            &mut observations,
+            "o/r#9",
+            &task("o/r#9", &["o/r#8"]),
+            &["owner"],
+        );
+        let refused = check(&observations, &["o/r#5"], "o/r#5", &add("o/r#8"));
+        assert!(
+            matches!(&refused, Err(EditRefusal::Cycle(nodes))
+                if nodes.contains(&r("o/r#8")) && nodes.contains(&r("o/r#9"))),
+            "{refused:?}"
+        );
+    }
+
     fn checked_five() -> (Observations, Checked) {
         let observations = chain();
         let checked = check(&observations, &[], "o/r#5", &add("o/r#1")).expect("passes");

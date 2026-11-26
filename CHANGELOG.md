@@ -27,7 +27,10 @@ schema version under `Unreleased` is a draft and may change in place.
   `PATCH` in the edit history under the authenticated account, can apply another person's edit just
   before a given edit-history read (`edit_on_read`), and can lose a `PATCH`'s answer after applying
   it (`patch_lost`). The optimistic concurrency limit (E8) is stated in the skill, the output
-  contract and the threat model (T13). The Python script is unchanged.
+  contract and the threat model (T13). The Python script is unchanged. `edit` refuses `--from-bundle`,
+  `--from-record`, `--offline` and `--capture-bundle` (exit 3): an edit reads GitHub live. The fake
+  can also fail a given edit-history read (`edit_on_read.fail`) or change an issue before a given
+  REST read (`edit_on_get`), for the final reread's failures.
 
 - **Capture an observation bundle and replan from it offline** (flyingrobots/taskalisk#59). The
   Rust binary's `plan --capture-bundle` (off by default) writes the `issue-dag-observations/1`

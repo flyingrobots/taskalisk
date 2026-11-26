@@ -263,6 +263,30 @@ fn a_cycle_is_refused_when_the_roots_do_not_reach_the_child() {
     assert_refused(&fixture, &run, "edge.cycle");
 }
 
+#[test]
+fn a_cycle_in_a_trusted_other_repository_is_refused_without_roots() {
+    // The home listing never reaches p/q; the child must be seeded (M-F-1).
+    let mut state = chain();
+    state["collaborators"]["p/q"] = json!(["owner"]);
+    state["issues"]["p/q#1"] = issue(91, &task("p/q#1", &[]));
+    state["issues"]["p/q#2"] = issue(92, &task("p/q#2", &["p/q#1"]));
+    let fixture = Fixture::new(&state);
+    let run = fixture.run(&["--trust-repo", "p/q", "--add-edge", "p/q#2->p/q#1"]);
+    assert_refused(&fixture, &run, "edge.cycle");
+}
+
+#[test]
+fn a_cycle_the_edit_brings_into_the_plan_is_refused_as_a_cycle() {
+    // 8 and 9 wait on each other, outside the plan of root 5 until 5 names
+    // 8; 8 is not reachable from 5, so the new G4 findings name it (M-F-2).
+    let mut state = chain();
+    state["issues"]["o/r#8"] = issue(8, &task("o/r#8", &["o/r#9"]));
+    state["issues"]["o/r#9"] = issue(9, &task("o/r#9", &["o/r#8"]));
+    let fixture = Fixture::new(&state);
+    let run = fixture.run(&["--root", "o/r#5", "--add-edge", "o/r#8->o/r#5"]);
+    assert_refused(&fixture, &run, "edge.cycle");
+}
+
 // Acceptance 2: an observed body change or newly untrusted editor before the
 // write is refused without PATCH. The fake applies another person's edit just
 // before the child's second edit-history read, the final reread.
@@ -296,6 +320,37 @@ fn a_newly_untrusted_editor_before_the_final_reread_is_refused() {
     let run = fixture.run(&["--add-edge", "o/r#1->o/r#5"]);
     assert_refused(&fixture, &run, "edge.conflict");
     assert_eq!(run.errors()[0]["detail"]["conflict"], "trust");
+}
+
+#[test]
+fn a_child_that_became_a_pull_request_before_the_final_reread_is_refused() {
+    // The child's second REST read, the final reread, answers a pull request.
+    let mut state = chain();
+    state["edit_on_get"] = json!({"issue": "o/r#5", "read": 2, "set": {"is_pr": true}});
+    let fixture = Fixture::new(&state);
+    let run = fixture.run(&["--add-edge", "o/r#1->o/r#5"]);
+    assert_refused(&fixture, &run, "edge.conflict");
+    assert_eq!(run.errors()[0]["detail"]["conflict"], "address");
+    assert_eq!(run.errors()[0]["detail"]["child"], "o/r#5");
+}
+
+#[test]
+fn a_failed_read_on_the_final_reread_reports_the_gh_failure() {
+    // The child's second edit-history read, the final reread, fails (M-F-3).
+    let mut state = chain();
+    state["edit_on_read"] = json!({"issue": "o/r#5", "read": 2, "fail": true});
+    let fixture = Fixture::new(&state);
+    let run = fixture.run(&["--add-edge", "o/r#1->o/r#5"]);
+    assert_refused(&fixture, &run, "gh.command_failed");
+    let error = &run.errors()[0];
+    assert_eq!(error["detail"]["phase"], "edge_edit");
+    assert!(
+        error["detail"]["error"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("on read 2"),
+        "{error}"
+    );
 }
 
 // Acceptance 3: an unknown or untrusted writer is refused before PATCH;

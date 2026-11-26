@@ -15,7 +15,7 @@
 //! starts (exit 3), never ignored.
 //!
 //! Its own flags capture and replay a plan's observations
-//! (flyingrobots/taskalisk#59, [`crate::replay`]): `--capture-bundle`
+//! (flyingrobots/taskalisk#59, its `replay` module): `--capture-bundle`
 //! saves the bundle a live plan was made from; `--from-bundle FILE` and
 //! `--from-record FILE` plan from a bundle or an evaluation record, as
 //! `--from-github` plans from GitHub, with no `gh` or `git` read; and
@@ -339,16 +339,9 @@ fn parse(raw: &[String]) -> Result<Arguments, StartupFailure> {
             _ => parsed.trust_repos.push(value),
         }
     }
-    if parsed.command != "edit" && (!edges.is_empty() || parsed.reason.is_some()) {
-        return Err(usage(
-            "--add-edge, --remove-edge and --reason belong to the edit command",
-        ));
-    }
+    edge_arguments(&mut parsed, &edges)?;
     if parsed.writer.help {
         return Ok(parsed);
-    }
-    if parsed.command == "edit" {
-        parsed.edge = Some(edit::Request::parse(&edges).map_err(usage)?);
     }
     contradictions(&parsed, &rest)?;
     if capacities(&parsed.capacities).is_none() {
@@ -369,8 +362,23 @@ fn parse(raw: &[String]) -> Result<Arguments, StartupFailure> {
     Ok(parsed)
 }
 
+/// `--add-edge`, `--remove-edge` and `--reason`: only `edit` takes them, and
+/// it needs exactly one edge (checked unless `--help` is given).
+fn edge_arguments(parsed: &mut Arguments, edges: &[(bool, String)]) -> Result<(), StartupFailure> {
+    if parsed.command != "edit" && (!edges.is_empty() || parsed.reason.is_some()) {
+        return Err(usage(
+            "--add-edge, --remove-edge and --reason belong to the edit command",
+        ));
+    }
+    if parsed.command == "edit" && !parsed.writer.help {
+        parsed.edge = Some(edit::Request::parse(edges).map_err(usage)?);
+    }
+    Ok(())
+}
+
 /// The capture and replay flags that contradict each other or the run
 /// parameters a recorded bundle already holds (flyingrobots/taskalisk#59).
+/// An edit reads GitHub live, so it takes none of them.
 fn contradictions(parsed: &Arguments, rest: &[String]) -> Result<(), StartupFailure> {
     if parsed.command == "edit"
         && (parsed.replay.is_some() || parsed.offline() || parsed.capture_bundle())
