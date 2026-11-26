@@ -15,6 +15,12 @@ schema version under `Unreleased` is a draft and may change in place.
   `gh` and `git` text before it reaches a line or the receipt, as `user:secret@` already was.
   Other parameters, and the quotes, brackets or full stop around a URL, are kept.
 
+- **One `retryable` for every `gh.` and `git.` code** (flyingrobots/taskalisk#79). The
+  `gh.response_invalid` remedy no longer says to rerun, since the code is not retryable;
+  `SKILL.md` names both exceptions (`gh.list_limit_reached`, `gh.response_invalid`); the output
+  reference gains the missing `root.invalid_reference` row. No flag, code or schema changes; the
+  `gh.response_invalid` remedy text changed.
+
 ## 2.1.2 - 2026-11-24
 
 ### Changed
