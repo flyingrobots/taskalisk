@@ -134,9 +134,17 @@ pub enum Parse {
     Block(Block),
 }
 
+#[cfg(test)]
+thread_local! {
+    /// How many bodies this thread has parsed.
+    pub(crate) static PARSES: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
 /// Locates and reads the frontmatter block of a body.
 #[must_use]
 pub fn parse(body: &str) -> Parse {
+    #[cfg(test)]
+    PARSES.with(|parses| parses.set(parses.get() + 1));
     let Some(lines) = block_lines(body) else {
         return Parse::NoDocument;
     };

@@ -4,7 +4,7 @@
 use core::fmt;
 use std::collections::{BTreeMap, BTreeSet};
 
-use crate::reference::IssueRef;
+use crate::reference::{IssueRef, is_name};
 
 /// The one trust policy this specification defines (profile rule I2).
 pub const TRUST_POLICY: &str = "taskalisk/threat-model";
@@ -57,13 +57,6 @@ impl fmt::Display for Repo {
     }
 }
 
-fn is_name(text: &str) -> bool {
-    !text.is_empty()
-        && text
-            .bytes()
-            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'.' | b'-'))
-}
-
 /// One observation slot (bundle rule OB4): what was observed, or why it
 /// could not be observed. An unavailable observation is never an empty one.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -77,7 +70,7 @@ pub enum Observed<T> {
 
 /// A slot the run needs and the observations do not hold (bundle rule
 /// OB5). It is neither empty nor unavailable: the evidence is unusable.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Missing {
     /// The observation that was not recorded.
     pub what: String,

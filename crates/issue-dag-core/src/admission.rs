@@ -5,7 +5,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::forge::Forge;
-use crate::observation::{Actor, Body, Missing, Observed, PullRequest, ReadScope, Repo};
+use crate::observation::{Actor, Body, Lookup, Missing, Observed, PullRequest, ReadScope, Repo};
 
 /// An actor's identity (rule AD3): whether it is a bot, and its name in
 /// ASCII lower case. A bot and a person never share an identity.
@@ -112,6 +112,52 @@ impl From<Missing> for Undecided {
     }
 }
 
+/// The lookups that could not be made, gathered so that none hides another.
+/// A caller notes each one and goes on reading whatever the rules still
+/// reach. A missing slot (bundle rule OB5) takes precedence over an
+/// unavailable one (AD10, profile rule F1), and the one reported is the
+/// least of its kind, so the order of reading never changes the result
+/// (profile rule D2).
+#[derive(Debug, Default)]
+pub struct Gaps {
+    unavailable: BTreeSet<String>,
+    missing: BTreeSet<Missing>,
+}
+
+impl Gaps {
+    /// The value of `result`, or `None` after noting why it has none.
+    pub fn note<T>(&mut self, result: Result<T, Undecided>) -> Option<T> {
+        match result {
+            Ok(v) => Some(v),
+            Err(Undecided::Unavailable(why)) => {
+                self.unavailable.insert(why);
+                None
+            }
+            Err(Undecided::Missing(missing)) => {
+                self.missing.insert(missing);
+                None
+            }
+        }
+    }
+
+    /// Whether every lookup was made; otherwise the one to report.
+    pub fn check(self) -> Result<(), Undecided> {
+        if let Some(missing) = self.missing.into_iter().next() {
+            return Err(Undecided::Missing(missing));
+        }
+        if let Some(why) = self.unavailable.into_iter().next() {
+            return Err(Undecided::Unavailable(why));
+        }
+        Ok(())
+    }
+}
+
+/// The value of a lookup: the observation, when it was recorded and is
+/// available.
+pub fn lookup<T>(slot: Lookup<T>) -> Result<T, Undecided> {
+    value(slot?)
+}
+
 fn value<T>(slot: Observed<T>) -> Result<T, Undecided> {
     match slot {
         Observed::Value(v) => Ok(v),
@@ -155,12 +201,16 @@ impl<'a, F: Forge + ?Sized> Admission<'a, F> {
         let Some(actor) = actor else {
             return Ok(false);
         };
+        if !self.scope.contains(repo) {
+            // A repository outside the scope is never judged (AD2), so not
+            // even the allowlist trusts anyone there.
+            return Ok(false);
+        }
         let identity = Identity::of(actor);
         if self.allowlist.contains(&identity) {
             return Ok(true);
         }
-        if identity.bot || !self.scope.contains(repo) {
-            // A repository outside the scope is never judged (AD2).
+        if identity.bot {
             return Ok(false);
         }
         if self.read_codeowners && self.named_in_codeowners(repo, &identity.name)? {
@@ -201,16 +251,20 @@ impl<'a, F: Forge + ?Sized> Admission<'a, F> {
         body: &Body,
         repo: &Repo,
     ) -> Result<bool, Undecided> {
-        let mut seen: Vec<Option<Identity>> = vec![author.map(Identity::of)];
+        let mut seen: BTreeSet<Option<Identity>> = BTreeSet::from([author.map(Identity::of)]);
         let mut all = true;
+        // Every editor is judged, even after one is undecided: a later
+        // missing lookup must not hide behind an earlier unavailable one.
+        let mut gaps = Gaps::default();
         for editor in &body.editors {
-            let identity = editor.as_ref().map(Identity::of);
-            if seen.contains(&identity) {
+            if !seen.insert(editor.as_ref().map(Identity::of)) {
                 continue;
             }
-            seen.push(identity);
-            all &= self.trusted(editor.as_ref(), repo, None)?;
+            if let Some(trusted) = gaps.note(self.trusted(editor.as_ref(), repo, None)) {
+                all &= trusted;
+            }
         }
+        gaps.check()?;
         Ok(all)
     }
 
@@ -236,8 +290,65 @@ impl<'a, F: Forge + ?Sized> Admission<'a, F> {
 mod tests {
     use std::collections::BTreeSet;
 
-    use super::{Identity, codeowners_persons};
-    use crate::observation::Actor;
+    use std::collections::BTreeMap;
+
+    use super::{Admission, Identity, Undecided, codeowners_persons};
+    use crate::forge::{Observations, RecordedForge};
+    use crate::observation::{Actor, Body, Observed, ReadScope, Repo};
+
+    #[test]
+    fn ad2_an_allowlisted_actor_is_not_trusted_outside_the_scope() {
+        let observations = Observations::default();
+        let forge = RecordedForge::new(&observations);
+        let scope = ReadScope {
+            owners: BTreeSet::from(["o".to_owned()]),
+            repositories: BTreeSet::new(),
+        };
+        let logins = ["dev".to_owned(), "helper[bot]".to_owned()];
+        let mut admission = Admission::new(&forge, &scope, &logins, false);
+        let home = Repo::parse("o/r").expect("repo");
+        let other = Repo::parse("other/r").expect("repo");
+        let dev = actor("dev", "User");
+        assert_eq!(admission.trusted(Some(&dev), &other, None), Ok(false));
+        assert_eq!(admission.trusted(Some(&dev), &home, None), Ok(true));
+        // AD5 steps 2 and 3, in scope: an allowlisted bot is trusted and
+        // another bot is not, with no lookup.
+        let helper = actor("helper", "Bot");
+        assert_eq!(admission.trusted(Some(&helper), &home, None), Ok(true));
+        assert_eq!(admission.trusted(Some(&helper), &other, None), Ok(false));
+        let stranger = actor("stranger", "Bot");
+        assert_eq!(admission.trusted(Some(&stranger), &home, None), Ok(false));
+    }
+
+    #[test]
+    fn ad8_a_missing_editor_lookup_is_not_hidden_by_an_earlier_unavailable_one() {
+        // Every editor is judged (AD8 step 2): carol's permission is
+        // unavailable, dave's was not recorded. The bundle is unusable (OB5).
+        let home = Repo::parse("o/r").expect("repo");
+        let mut observations = Observations::default();
+        observations.permissions.insert(
+            home.clone(),
+            BTreeMap::from([(
+                "carol".to_owned(),
+                Observed::Unavailable("HTTP 502".to_owned()),
+            )]),
+        );
+        let forge = RecordedForge::new(&observations);
+        let scope = ReadScope {
+            owners: BTreeSet::from(["o".to_owned()]),
+            repositories: BTreeSet::new(),
+        };
+        let mut admission = Admission::new(&forge, &scope, &[], false);
+        let body = Body {
+            text: String::new(),
+            editors: vec![Some(actor("carol", "User")), Some(actor("dave", "User"))],
+        };
+        let decided = admission.editors_trusted(Some(&actor("o", "User")), &body, &home);
+        assert!(
+            matches!(decided, Err(Undecided::Missing(_))),
+            "got {decided:?}"
+        );
+    }
 
     fn actor(login: &str, actor_type: &str) -> Actor {
         Actor {
