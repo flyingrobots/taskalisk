@@ -12,8 +12,8 @@ use crate::finding::{Finding, Rule, Severity};
 use crate::forge::Forge;
 use crate::label::Label;
 use crate::observation::{Issue, IssueState, Missing, Observed, Parameters, Repo, TRUST_POLICY};
-use crate::record::{Kind, MeterClaim, Status};
-use crate::reference::IssueRef;
+use crate::record::{Kind, MeterClaim, Status, TaskType};
+use crate::reference::{IssueRef, MAX_NUMBER};
 use crate::{Judgement, judge};
 
 /// The status of an open node (rule S2).
@@ -49,7 +49,7 @@ impl NodeStatus {
 }
 
 /// A node of the graph (rule G1).
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Node {
     /// Whether its issue is closed (rule G2).
     pub complete: bool,
@@ -63,6 +63,28 @@ pub struct Node {
     pub holds: BTreeSet<String>,
     /// Its `.meters` claims; empty for an opaque node.
     pub meters: Vec<MeterClaim>,
+    /// Its `.type`; `None` for an opaque node or a task without one.
+    pub task_type: Option<TaskType>,
+    /// Its `.size_hours` when valid (rule L4); `None` otherwise.
+    pub size_hours: Option<u32>,
+    /// The admitted pull requests that close it, in the order observed,
+    /// where rule S2 reads them: an open home node that is trusted. Empty
+    /// otherwise.
+    pub pull_requests: Vec<LinkedPullRequest>,
+    /// For an opaque node, the documents that name it (in `.blocked_by` or
+    /// `.children`), in the order the closure read them, once per mention:
+    /// a document that names it twice appears twice, as in the Python.
+    /// Empty for any other node.
+    pub named_by: Vec<IssueRef>,
+}
+
+/// An admitted open pull request that closes a node (rules S1, S2).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct LinkedPullRequest {
+    /// Its number.
+    pub number: u64,
+    /// Whether it is a draft.
+    pub draft: bool,
 }
 
 /// An edge `(from, to)`: `from` must be complete before `to` is correct.
@@ -100,6 +122,15 @@ pub struct Graph {
     pub redundant: BTreeSet<Edge>,
     /// The ready set (rule Q1), unordered: its rank order is rule K6's.
     pub ready: BTreeSet<IssueRef>,
+    /// Every reference the closure visited, in the order it read them
+    /// (D2): the order a report lists what discovery found in.
+    pub visit_order: Vec<IssueRef>,
+    /// The numbers in `untrusted_pull_requests`, in the order the pull
+    /// requests were observed.
+    pub untrusted_pull_request_order: Vec<u64>,
+    /// The edges in `not_planned`, by the order the closure read their
+    /// tasks, then in the order of each task's `.blocked_by`.
+    pub not_planned_order: Vec<Edge>,
 }
 
 impl Graph {
@@ -146,6 +177,10 @@ pub enum Outcome {
         findings: BTreeSet<Finding>,
         /// The graph, for diagnosis only.
         graph: Option<Graph>,
+        /// Each unknown prerequisite (X3) as an edge from it to the task
+        /// that names it: by task in the order the closure read them, then
+        /// in the task's `.blocked_by` order, the order a report lists them.
+        unknown: Vec<Edge>,
     },
     /// A plan.
     Planned {
@@ -207,6 +242,8 @@ struct Reading {
     status: Option<Status>,
     holds: BTreeSet<String>,
     meters: Vec<MeterClaim>,
+    task_type: Option<TaskType>,
+    size_hours: Option<u32>,
 }
 
 impl Reading {
@@ -238,6 +275,18 @@ impl Reading {
             Some(Value::List(items)) => items.iter().filter(|i| !i.is_empty()).cloned().collect(),
             _ => BTreeSet::new(),
         };
+        let task_type = match one(".type") {
+            Some(Value::String(text)) => TaskType::parse(text),
+            _ => None,
+        };
+        // L4: a size from 1 to MAX_NUMBER; any other value is no size.
+        let size_hours = match one(".size_hours") {
+            Some(Value::Integer(n)) => n
+                .to_i64()
+                .and_then(|n| u32::try_from(n).ok())
+                .filter(|n| (1..=MAX_NUMBER).contains(n)),
+            _ => None,
+        };
         let meters = match one(".meters") {
             Some(Value::List(items)) => items.iter().filter_map(|i| MeterClaim::parse(i)).collect(),
             _ => Vec::new(),
@@ -257,6 +306,8 @@ impl Reading {
             status,
             holds,
             meters,
+            task_type,
+            size_hours,
         }
     }
 
@@ -289,9 +340,9 @@ struct Document {
     reading: Reading,
 }
 
-/// For each issue, the draft slots of the admitted pull requests that close
-/// it (S1). A slot is read only where S2 needs it (I5).
-type Linked = BTreeMap<IssueRef, Vec<Observed<bool>>>;
+/// For each issue, the number and draft slot of each admitted pull request
+/// that closes it (S1). A slot is read only where S2 needs it (I5).
+type Linked = BTreeMap<IssueRef, Vec<(u64, Observed<bool>)>>;
 
 /// The closure of a run (D2): every reference visited, and the documents
 /// that name each one.
@@ -299,14 +350,17 @@ struct Closure {
     has_roots: bool,
     seeds: BTreeSet<IssueRef>,
     visits: BTreeMap<IssueRef, Visit>,
-    named_by: BTreeMap<IssueRef, BTreeSet<IssueRef>>,
+    /// The references visited, in the order read.
+    order: Vec<IssueRef>,
+    /// The documents that name each reference, in the order read, once per
+    /// mention (a document that names it twice appears twice).
+    naming: BTreeMap<IssueRef, Vec<IssueRef>>,
 }
 
 impl Closure {
     /// A seed that no document read in the run names (D6, D7).
     fn unnamed_seed(&self, reference: &IssueRef) -> bool {
-        self.seeds.contains(reference)
-            && self.named_by.get(reference).is_none_or(BTreeSet::is_empty)
+        self.seeds.contains(reference) && self.naming.get(reference).is_none_or(Vec::is_empty)
     }
 
     /// F5: the issues that receive the D3 or D5 finding about a reference:
@@ -314,8 +368,13 @@ impl Closure {
     /// root that no document names. A seed of the home listing is not a
     /// root: unnamed, it gives no finding (D5).
     fn namers(&self, reference: &IssueRef) -> Vec<IssueRef> {
-        match self.named_by.get(reference) {
-            Some(by) => by.iter().cloned().collect(),
+        match self.naming.get(reference) {
+            Some(by) => {
+                let mut namers = by.clone();
+                namers.sort();
+                namers.dedup();
+                namers
+            }
             None if self.has_roots && self.seeds.contains(reference) => vec![reference.clone()],
             None => Vec::new(),
         }
@@ -368,9 +427,9 @@ impl<'a, F: Forge + ?Sized> Run<'a, F> {
 
     /// I4 and AD9: for each issue, the draft slots of the admitted pull
     /// requests that close it; and the numbers of those not admitted.
-    fn pull_requests(&mut self, gaps: &mut Gaps) -> (Linked, BTreeSet<u64>) {
+    fn pull_requests(&mut self, gaps: &mut Gaps) -> (Linked, Vec<u64>) {
         let mut linked = Linked::new();
-        let mut untrusted = BTreeSet::new();
+        let mut untrusted = Vec::new();
         let home = &self.parameters.home;
         let pulls = gaps
             .note(lookup(self.forge.home_open_pull_requests()))
@@ -382,13 +441,16 @@ impl<'a, F: Forge + ?Sized> Run<'a, F> {
             match gaps.note(self.admission.pull_request_admitted(&pull, home)) {
                 Some(true) => {
                     for closed in pull.closes {
-                        linked.entry(closed).or_default().push(pull.draft.clone());
+                        linked
+                            .entry(closed)
+                            .or_default()
+                            .push((pull.number, pull.draft.clone()));
                     }
                 }
-                Some(false) => {
-                    untrusted.insert(pull.number);
+                Some(false) if !untrusted.contains(&pull.number) => {
+                    untrusted.push(pull.number);
                 }
-                None => {}
+                Some(false) | None => {}
             }
         }
         (linked, untrusted)
@@ -402,7 +464,8 @@ impl<'a, F: Forge + ?Sized> Run<'a, F> {
             has_roots,
             seeds: seeds.iter().cloned().collect(),
             visits: BTreeMap::new(),
-            named_by: BTreeMap::new(),
+            order: Vec::new(),
+            naming: BTreeMap::new(),
         };
         let mut undecided = BTreeSet::new();
         let mut queue: VecDeque<IssueRef> = seeds.into_iter().collect();
@@ -417,13 +480,14 @@ impl<'a, F: Forge + ?Sized> Run<'a, F> {
             if let Visit::Document(document) = &visit {
                 for name in document.reading.names() {
                     closure
-                        .named_by
+                        .naming
                         .entry(name.clone())
                         .or_default()
-                        .insert(reference.clone());
+                        .push(reference.clone());
                     queue.push_back(name.clone());
                 }
             }
+            closure.order.push(reference.clone());
             closure.visits.insert(reference, visit);
         }
         closure
@@ -476,18 +540,23 @@ struct Assembly<'c> {
     findings: BTreeSet<Finding>,
     readings: BTreeMap<IssueRef, &'c Reading>,
     issues: BTreeMap<IssueRef, &'c Issue>,
+    /// The X3 edges, in the order of `Outcome::Invalid::unknown`.
+    unknown: Vec<Edge>,
 }
 
 impl<'c> Assembly<'c> {
     /// D3 to D9 and G1: the nodes, containers and lists, and the findings
     /// of discovery and of each document.
-    fn new(closure: &'c Closure, untrusted_pull_requests: BTreeSet<u64>) -> Self {
+    fn new(closure: &'c Closure, untrusted_pull_requests: Vec<u64>) -> Self {
         let mut a = Self {
             graph: Graph {
-                untrusted_pull_requests,
+                untrusted_pull_requests: untrusted_pull_requests.iter().copied().collect(),
+                untrusted_pull_request_order: untrusted_pull_requests,
+                visit_order: closure.order.clone(),
                 ..Graph::default()
             },
             findings: BTreeSet::new(),
+            unknown: Vec::new(),
             readings: BTreeMap::new(),
             issues: BTreeMap::new(),
         };
@@ -499,14 +568,14 @@ impl<'c> Assembly<'c> {
                 Visit::Untrusted(issue) => {
                     a.graph.untrusted.insert(reference.clone());
                     if !closure.unnamed_seed(reference) {
-                        a.opaque(reference, issue, true);
+                        a.opaque(closure, reference, issue, true);
                     }
                 }
                 Visit::NoDocument(issue) => {
                     if !closure.has_roots && closure.unnamed_seed(reference) {
                         a.graph.unmodeled.insert(reference.clone());
                     } else {
-                        a.opaque(reference, issue, false);
+                        a.opaque(closure, reference, issue, false);
                     }
                 }
                 Visit::Document(document) => a.document(reference, document),
@@ -527,16 +596,21 @@ impl<'c> Assembly<'c> {
         }
     }
 
-    fn opaque(&mut self, reference: &IssueRef, issue: &'c Issue, untrusted: bool) {
+    fn opaque(
+        &mut self,
+        closure: &Closure,
+        reference: &IssueRef,
+        issue: &'c Issue,
+        untrusted: bool,
+    ) {
         self.graph.nodes.insert(
             reference.clone(),
             Node {
                 complete: issue.state == IssueState::Closed,
                 opaque: true,
                 untrusted,
-                status: None,
-                holds: BTreeSet::new(),
-                meters: Vec::new(),
+                named_by: closure.naming.get(reference).cloned().unwrap_or_default(),
+                ..Node::default()
             },
         );
         self.issues.insert(reference.clone(), issue);
@@ -570,6 +644,10 @@ impl<'c> Assembly<'c> {
                 status: None,
                 holds: reading.holds.clone(),
                 meters: reading.meters.clone(),
+                task_type: reading.task_type,
+                size_hours: reading.size_hours,
+                pull_requests: Vec::new(),
+                named_by: Vec::new(),
             },
         );
         self.readings.insert(reference.clone(), reading);
@@ -592,6 +670,20 @@ impl<'c> Assembly<'c> {
                 }
             }
         }
+        // Each task's edges are in its `.blocked_by` order; a stable sort
+        // puts the tasks in the order read.
+        let read: BTreeMap<&IssueRef, usize> = self
+            .graph
+            .visit_order
+            .iter()
+            .enumerate()
+            .map(|(i, id)| (id, i))
+            .collect();
+        let key = |e: &Edge| read.get(&e.to).copied().unwrap_or(usize::MAX);
+        let mut order = std::mem::take(&mut self.graph.not_planned_order);
+        order.sort_by_key(key);
+        self.graph.not_planned_order = order;
+        self.unknown.sort_by_key(key);
     }
 
     fn prerequisite(&mut self, prerequisite: &IssueRef, task: &IssueRef) {
@@ -601,6 +693,10 @@ impl<'c> Assembly<'c> {
         }
         let Some(node) = self.graph.nodes.get(prerequisite) else {
             self.finding(task, Rule::X3, Some(prerequisite));
+            self.unknown.push(Edge {
+                from: prerequisite.clone(),
+                to: task.clone(),
+            });
             return;
         };
         let edge = Edge {
@@ -615,8 +711,8 @@ impl<'c> Assembly<'c> {
             .issues
             .get(prerequisite)
             .is_some_and(|i| i.state_reason.as_deref() == Some("not_planned"));
-        if not_planned {
-            self.graph.not_planned.insert(edge.clone());
+        if not_planned && self.graph.not_planned.insert(edge.clone()) {
+            self.graph.not_planned_order.push(edge.clone());
         }
         self.graph.satisfied.insert(edge);
     }
@@ -632,12 +728,19 @@ impl<'c> Assembly<'c> {
             if node.complete {
                 continue;
             }
-            let mut drafts = Vec::new();
+            let mut pulls = Vec::new();
             if Repo::of(id) == *home && !node.untrusted {
-                for slot in linked.get(id).into_iter().flatten() {
-                    drafts.extend(gaps.note(value(slot.clone())));
+                for (number, slot) in linked.get(id).into_iter().flatten() {
+                    if let Some(draft) = gaps.note(value(slot.clone())) {
+                        pulls.push(LinkedPullRequest {
+                            number: *number,
+                            draft,
+                        });
+                    }
                 }
             }
+            let drafts: Vec<bool> = pulls.iter().map(|p| p.draft).collect();
+            node.pull_requests = pulls;
             node.status = Some(if drafts.iter().any(|draft| !draft) {
                 NodeStatus::InReview
             } else if !drafts.is_empty() {
@@ -686,6 +789,7 @@ impl<'c> Assembly<'c> {
             Outcome::Invalid {
                 findings,
                 graph: (!unresolved).then_some(graph),
+                unknown: self.unknown,
             }
         } else {
             Outcome::Planned { findings, graph }
@@ -810,12 +914,13 @@ mod tests {
 
     use std::time::{Duration, Instant};
 
-    use super::{DESCENDANT_SETS, Edge, NodeStatus, Outcome, plan};
+    use super::{DESCENDANT_SETS, Edge, LinkedPullRequest, NodeStatus, Outcome, plan};
     use crate::forge::{Forge, Observations, RecordedForge};
     use crate::observation::{
         Actor, Body, CodeownersFile, Issue, IssueState, Lookup, Missing, Observed, Parameters,
         PullRequest, ReadScope, Repo, TRUST_POLICY, TrustParameters,
     };
+    use crate::record::TaskType;
     use crate::reference::IssueRef;
 
     fn reference(text: &str) -> IssueRef {
@@ -1120,7 +1225,10 @@ mod tests {
             &RecordedForge::new(&observations),
         );
         let took = start.elapsed();
-        let Ok(Outcome::Invalid { findings, graph }) = outcome else {
+        let Ok(Outcome::Invalid {
+            findings, graph, ..
+        }) = outcome
+        else {
             panic!("expected an invalid run, got {outcome:?}");
         };
         assert!(graph.is_none());
@@ -1356,5 +1464,117 @@ mod tests {
             matches!(outcome, Ok(Outcome::Incomplete { .. })),
             "got {outcome:?}"
         );
+    }
+
+    #[test]
+    fn a_node_carries_its_type_and_size() {
+        let sized = "```yaml\n.dag: issue-dag/2\n.id: o/r#2\n.kind: task\n.type: bug\n.blocked_by: []\n.size_hours: 3\n```\n";
+        let observations = tasks(vec![(1, task(1, &[])), (2, sized.to_owned())]);
+        let outcome = plan(
+            &parameters(&["o/r#1", "o/r#2"]),
+            &RecordedForge::new(&observations),
+        );
+        let Ok(Outcome::Planned { graph, .. }) = outcome else {
+            panic!("expected a plan, got {outcome:?}");
+        };
+        let one = &graph.nodes[&reference("o/r#1")];
+        assert_eq!(
+            (one.task_type, one.size_hours),
+            (Some(TaskType::Feature), None)
+        );
+        let two = &graph.nodes[&reference("o/r#2")];
+        assert_eq!(
+            (two.task_type, two.size_hours),
+            (Some(TaskType::Bug), Some(3))
+        );
+    }
+
+    #[test]
+    fn the_graph_keeps_the_order_the_closure_read_references_in() {
+        // The root container o/r#9 names o/r#2 before o/r#1; both are plain.
+        let container = "```yaml\n.dag: issue-dag/2\n.id: o/r#9\n.kind: container\n.children: [o/r#2, o/r#1]\n```\n";
+        let observations = tasks(vec![
+            (9, container.to_owned()),
+            (1, "Plain body.".to_owned()),
+            (2, "Plain body.".to_owned()),
+        ]);
+        let outcome = plan(&parameters(&["o/r#9"]), &RecordedForge::new(&observations));
+        let Ok(Outcome::Planned { graph, .. }) = outcome else {
+            panic!("expected a plan, got {outcome:?}");
+        };
+        assert_eq!(
+            graph.visit_order,
+            vec![reference("o/r#9"), reference("o/r#2"), reference("o/r#1")]
+        );
+    }
+
+    #[test]
+    fn an_opaque_node_carries_the_documents_that_name_it_in_the_order_read() {
+        // The root container o/r#9 names o/r#1 and o/r#2; o/r#1 waits on o/r#2,
+        // which has no frontmatter. o/r#9 is read before o/r#1.
+        let container = "```yaml\n.dag: issue-dag/2\n.id: o/r#9\n.kind: container\n.children: [o/r#1, o/r#2]\n```\n";
+        let observations = tasks(vec![
+            (9, container.to_owned()),
+            (1, task(1, &[2])),
+            (2, "Plain body.".to_owned()),
+        ]);
+        let outcome = plan(&parameters(&["o/r#9"]), &RecordedForge::new(&observations));
+        let Ok(Outcome::Planned { graph, .. }) = outcome else {
+            panic!("expected a plan, got {outcome:?}");
+        };
+        assert_eq!(
+            graph.nodes[&reference("o/r#2")].named_by,
+            vec![reference("o/r#9"), reference("o/r#1")]
+        );
+        assert_eq!(graph.nodes[&reference("o/r#1")].named_by, Vec::new());
+    }
+
+    #[test]
+    fn an_opaque_node_has_no_type_and_no_size() {
+        let observations = tasks(vec![(1, "Plain body.".to_owned())]);
+        let outcome = plan(&parameters(&["o/r#1"]), &RecordedForge::new(&observations));
+        let Ok(Outcome::Planned { graph, .. }) = outcome else {
+            panic!("expected a plan, got {outcome:?}");
+        };
+        let node = &graph.nodes[&reference("o/r#1")];
+        assert_eq!((node.task_type, node.size_hours), (None, None));
+        assert_eq!(node.pull_requests, Vec::new());
+    }
+
+    #[test]
+    fn s2_a_node_carries_the_admitted_pull_requests_that_close_it() {
+        let mut observations = tasks(vec![(1, task(1, &[])), (2, task(2, &[]))]);
+        let mut ready = pull("o/r#1", Observed::Value(false));
+        ready.number = 9;
+        let draft = pull("o/r#1", Observed::Value(true));
+        observations.home_open_pull_requests = Some(Observed::Value(vec![draft, ready]));
+        let mut owner = BTreeMap::new();
+        owner.insert("o".to_owned(), Observed::Value(Some("admin".to_owned())));
+        observations
+            .permissions
+            .insert(Repo::parse("o/r").expect("repo"), owner);
+        let outcome = plan(
+            &parameters(&["o/r#1", "o/r#2"]),
+            &RecordedForge::new(&observations),
+        );
+        let Ok(Outcome::Planned { graph, .. }) = outcome else {
+            panic!("expected a plan, got {outcome:?}");
+        };
+        let one = &graph.nodes[&reference("o/r#1")];
+        assert_eq!(
+            one.pull_requests,
+            vec![
+                LinkedPullRequest {
+                    number: 8,
+                    draft: true
+                },
+                LinkedPullRequest {
+                    number: 9,
+                    draft: false
+                },
+            ]
+        );
+        assert_eq!(one.status, Some(NodeStatus::InReview));
+        assert_eq!(graph.nodes[&reference("o/r#2")].pull_requests, Vec::new());
     }
 }
