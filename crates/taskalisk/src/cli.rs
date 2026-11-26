@@ -39,6 +39,7 @@ use serde_json::{Value, json};
 use crate::parley::{self, Run, Start, StartupFailure, schemas};
 use crate::render::{self, Display};
 use crate::replay::{self, Source};
+use crate::views::{self, View};
 use crate::{human, sha256};
 
 /// The tool's name in every line and receipt: the Python's, because this
@@ -98,7 +99,7 @@ const ANSWERED_BY_THE_BUNDLE: [&str; 9] = [
 ];
 /// The Python's flags this binary refuses: the core or the binary cannot
 /// honour them yet.
-const REFUSED: [&str; 12] = [
+const REFUSED: [&str; 10] = [
     "--milestone",
     "--verify-dag",
     "--min-confidence",
@@ -106,8 +107,6 @@ const REFUSED: [&str; 12] = [
     "--remove-edge",
     "--reason",
     "--compare-relationships",
-    "--emit-mermaid",
-    "--emit-roadmap",
     "--since-last",
     "--dry-run",
     "--schema",
@@ -115,7 +114,7 @@ const REFUSED: [&str; 12] = [
 
 /// The message schemas `plan --help` describes: the result lines it writes
 /// and the errors it can report.
-const DESCRIBED: [(&str, &str); 9] = [
+const DESCRIBED: [(&str, &str); 10] = [
     (
         "taskalisk.plan",
         include_str!("../../../skills/taskalisk/schemas/taskalisk.plan.schema.json"),
@@ -143,6 +142,10 @@ const DESCRIBED: [(&str, &str); 9] = [
     (
         "taskalisk.finding",
         include_str!("../../../skills/taskalisk/schemas/taskalisk.finding.schema.json"),
+    ),
+    (
+        "taskalisk.rendering",
+        include_str!("../../../skills/taskalisk/schemas/taskalisk.rendering.schema.json"),
     ),
     (
         "parley.error",
@@ -179,6 +182,9 @@ struct Arguments {
     trust_codeowners: bool,
     /// `--from-bundle` or `--from-record`, and its file.
     replay: Option<(Source, String)>,
+    /// `--emit-roadmap` or `--emit-mermaid`: the view written after the
+    /// plan's other result lines (flyingrobots/taskalisk#68).
+    emit: Option<View>,
     /// The flags given, by name: `--capture-bundle` and `--offline` are read
     /// from here, and a replay refuses those its bundle answers.
     given: BTreeSet<String>,
@@ -292,12 +298,24 @@ fn parse(raw: &[String]) -> Result<Arguments, StartupFailure> {
         parsed.given.insert(flag.to_owned());
         if matches!(
             flag,
-            "--from-github" | "--trust-codeowners" | "--capture-bundle" | "--offline"
+            "--from-github"
+                | "--trust-codeowners"
+                | "--capture-bundle"
+                | "--offline"
+                | "--emit-roadmap"
+                | "--emit-mermaid"
         ) {
             if inline.is_some() {
                 return Err(usage(format!("{flag} takes no value")));
             }
             parsed.trust_codeowners |= flag == "--trust-codeowners";
+            match flag {
+                "--emit-roadmap" => parsed.emit = Some(View::Roadmap),
+                // The status-coloured diagram: the Python's flowchart with
+                // each node coloured by its state, posted with its legend.
+                "--emit-mermaid" => parsed.emit = Some(View::StatusMermaid),
+                _ => {}
+            }
             continue;
         }
         if !VALUE_FLAGS.contains(&flag) && !OWN_VALUE_FLAGS.contains(&flag) {
@@ -371,6 +389,11 @@ fn contradictions(parsed: &Arguments, rest: &[String]) -> Result<(), StartupFail
             "{flag} cannot be given with {}: the recorded bundle holds the run's repository, roots, trust and capacities, and a replay reads nothing live",
             source.flag()
         )));
+    }
+    if parsed.given.contains("--emit-roadmap") && parsed.given.contains("--emit-mermaid") {
+        return Err(usage(
+            "--emit-roadmap and --emit-mermaid are mutually exclusive",
+        ));
     }
     if parsed.offline() && parsed.capture_bundle() {
         return Err(usage(
@@ -480,7 +503,7 @@ pub fn main(args: &[OsString], cwd: &Path, stdout: &mut dyn Write, stderr: &mut 
             );
         }
         match recorded {
-            Some((source, file)) => replay::replay(&mut run, source, &file),
+            Some((source, file)) => replay::replay(&mut run, source, &file, arguments.emit),
             None if arguments.offline() => run.error(
                 "plan.reads_disabled",
                 "--offline disables the gh and git reads, and no recorded source was given",
@@ -553,7 +576,7 @@ fn resolved(arguments: &Arguments, cwd: &Path, repo_dir: &Path) -> Value {
                 "codeowners": arguments.trust_codeowners,
             },
         },
-        "options": {"emit": null, "compare_relationships": false, "since_last": false, "sem_capacity": capacities},
+        "options": {"emit": arguments.emit.map(View::format), "compare_relationships": false, "since_last": false, "sem_capacity": capacities},
     })
 }
 
@@ -961,7 +984,14 @@ fn plan_live(run: &mut Run<'_>, arguments: &Arguments, repo_dir: &Path) {
     } else {
         record(run, &parameters, &outcome);
     }
-    conclude(run, &parameters, &outcome, &failures, &display);
+    conclude(
+        run,
+        &parameters,
+        &outcome,
+        &failures,
+        &display,
+        arguments.emit,
+    );
 }
 
 /// A reference that resolves to nothing, for the recorded reason (profile
@@ -989,17 +1019,25 @@ pub(crate) fn not_found(run: &mut Run<'_>, unavailable: &str, cause: NotFound, s
     );
 }
 
-/// The result lines of a plan and the errors its `error_codes` call for.
+/// The result lines of a plan, the view `emit` asks for after them (only
+/// when the plan is `ok`, as in 1.x), and the errors its `error_codes`
+/// call for.
 pub(crate) fn results(
     run: &mut Run<'_>,
     parameters: &Parameters,
     outcome: &Outcome,
     display: &Display,
+    emit: Option<View>,
 ) {
     match render::lines(parameters, outcome, Some(display)) {
         Ok(lines) => {
             for line in &lines {
                 run.result(line.clone());
+            }
+            if let Some(which) = emit
+                && let Ok(Some(line)) = views::rendering(parameters, outcome, Some(display), which)
+            {
+                run.result(line);
             }
             plan_errors(run, &lines);
         }
@@ -1023,6 +1061,7 @@ fn conclude(
     outcome: &Outcome,
     failures: &[GhError],
     display: &Display,
+    emit: Option<View>,
 ) {
     match outcome {
         Outcome::Invalid { .. } | Outcome::Planned { .. } if !failures.is_empty() => {
@@ -1058,7 +1097,7 @@ fn conclude(
             }
         }
         Outcome::Invalid { .. } | Outcome::Planned { .. } => {
-            results(run, parameters, outcome, display);
+            results(run, parameters, outcome, display, emit);
         }
     }
 }
@@ -1176,6 +1215,7 @@ mod tests {
             outcome,
             failures,
             &Display::default(),
+            None,
         );
         let status = run.end();
         let _ = std::fs::remove_dir_all(&dir);

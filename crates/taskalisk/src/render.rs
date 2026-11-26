@@ -252,7 +252,7 @@ impl Shown<'_> {
 }
 
 /// One message: its fields, its event and its schema.
-fn message(name: &str, mut fields: Map<String, Value>) -> Value {
+pub(crate) fn message(name: &str, mut fields: Map<String, Value>) -> Value {
     fields.insert("event".into(), json!(name));
     fields.insert(
         "_schema".into(),

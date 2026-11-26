@@ -33,7 +33,7 @@ use std::fmt::Write as _;
 use issue_dag_core::{Outcome, Parameters};
 use serde_json::Value;
 
-use crate::render::{Display, NotRendered, result_document};
+use crate::render::{Display, NotRendered, message, result_document};
 
 /// A view of a plan.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -122,6 +122,31 @@ pub fn view(
         View::Roadmap => roadmap_block(&document),
         View::Mermaid => flowchart(&document),
         View::StatusMermaid => status_flowchart(&document),
+    }))
+}
+
+/// The `taskalisk.rendering` line of a view, written after every other
+/// result line: `format` and `text`, and for [`View::StatusMermaid`] the
+/// [`LEGEND`] in `legend`, to paste with the diagram. `None` when the plan
+/// is not `ok`, which has no view.
+///
+/// # Errors
+///
+/// [`NotRendered`] when the run has no plan to render.
+pub fn rendering(
+    parameters: &Parameters,
+    outcome: &Outcome,
+    display: Option<&Display>,
+    which: View,
+) -> Result<Option<Value>, NotRendered> {
+    Ok(view(parameters, outcome, display, which)?.map(|text| {
+        let mut fields = serde_json::Map::new();
+        fields.insert("format".into(), Value::from(which.format()));
+        fields.insert("text".into(), Value::from(text));
+        if which == View::StatusMermaid {
+            fields.insert("legend".into(), Value::from(LEGEND));
+        }
+        message("rendering", fields)
     }))
 }
 

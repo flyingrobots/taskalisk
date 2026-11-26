@@ -81,6 +81,20 @@ pub fn render(line: &Value) -> Option<String> {
             Some(out.join("\n"))
         }
         "node" | "wave" | "edge" => Some(String::new()),
+        // The view as written, each of its lines made safe, then the
+        // legend to paste with a status-coloured diagram.
+        "rendering" => {
+            let text = line["text"].as_str().unwrap_or_default();
+            let mut out: Vec<String> = text
+                .split('\n')
+                .map(|part| hs(&Value::String(part.to_owned())))
+                .collect();
+            if let Some(legend) = line.get("legend") {
+                out.push(String::new());
+                out.push(hs(legend));
+            }
+            Some(out.join("\n"))
+        }
         "finding" => {
             let message = line["message"].as_str().unwrap_or_default();
             let about = match line["subject"].as_str() {

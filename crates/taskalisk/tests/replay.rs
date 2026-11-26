@@ -755,11 +755,13 @@ fn a_replay_renders_the_status_coloured_diagram() {
     assert_eq!(lines.len(), 1, "{}", run.explain());
     validate(&lines);
     let text = lines[0]["text"].as_str().expect("text");
+    // A bundle records no title (OB12): each node shows the replay's
+    // placeholder.
     for node in [
-        r#"["flyingrobots/geordi#1: (title not recorded)"]:::review"#,
-        r#"["flyingrobots/geordi#3: (title not recorded)"]:::active"#,
-        r#"["flyingrobots/echo#5: (title not recorded)"]:::open"#,
-        r#"["flyingrobots/echo#6: (title not recorded)"]:::blocked"#,
+        r#"["flyingrobots/geordi#1: (title not recorded in the bundle)"]:::review"#,
+        r#"["flyingrobots/geordi#3: (title not recorded in the bundle)"]:::active"#,
+        r#"["flyingrobots/echo#5: (title not recorded in the bundle)"]:::open"#,
+        r#"["flyingrobots/echo#6: (title not recorded in the bundle)"]:::blocked"#,
         r#"["flyingrobots/bunny#7: done"]:::done"#,
     ] {
         assert!(text.contains(node), "{node}:\n{text}");

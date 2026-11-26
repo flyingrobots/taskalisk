@@ -38,6 +38,7 @@ use serde_json::{Value, json};
 use crate::cli::{self, TOOL, VERSION};
 use crate::parley::Run;
 use crate::sha256;
+use crate::views::View;
 
 /// The title a replayed issue shows: a bundle records none (OB12).
 pub const TITLE_NOT_RECORDED: &str = "(title not recorded in the bundle)";
@@ -160,8 +161,9 @@ fn read_limited(path: &Path) -> std::io::Result<String> {
     Ok(text)
 }
 
-/// Plans from the bundle or record at `path`, with reads disabled.
-pub fn replay(run: &mut Run<'_>, source: Source, path: &Path) {
+/// Plans from the bundle or record at `path`, with reads disabled, and
+/// writes the view `emit` asks for after the result lines.
+pub fn replay(run: &mut Run<'_>, source: Source, path: &Path, emit: Option<View>) {
     let kind = source.kind();
     let text = match read_limited(path) {
         Ok(text) => text,
@@ -223,7 +225,13 @@ pub fn replay(run: &mut Run<'_>, source: Source, path: &Path) {
         "the run reads only the bundle, through a recorded forge: no gh or git call is made, and a slot the bundle does not hold is missing, never empty",
         Some(json!({"source": source.flag(), "home": bundle.parameters.home.to_string()})),
     );
-    conclude(run, &bundle.parameters, &bundle.observations, &outcome);
+    conclude(
+        run,
+        &bundle.parameters,
+        &bundle.observations,
+        &outcome,
+        emit,
+    );
 }
 
 /// The bundle a record retains, once [`replay_record`] has planned it
@@ -300,6 +308,7 @@ fn conclude(
     parameters: &Parameters,
     observations: &Observations,
     outcome: &Outcome,
+    emit: Option<View>,
 ) {
     match outcome {
         Outcome::Rejected(rejection) => cli::reject(run, rejection),
@@ -331,7 +340,7 @@ fn conclude(
                 ..Shown::default()
             };
             let display = cli::display(shown, observations, parameters, &[]);
-            cli::results(run, parameters, outcome, &display);
+            cli::results(run, parameters, outcome, &display, emit);
         }
     }
 }
