@@ -182,7 +182,7 @@ fn result_json(bundle_text: &str) -> Result<(Map<String, Value>, Option<Dispatch
         Err(missing) => {
             // OB5: the bundle is unusable; `missing` is the slot reported (OB16).
             out.insert("outcome".into(), json!("unusable"));
-            out.insert("missing".into(), slot_path(&missing.what)?);
+            out.insert("missing".into(), json!(missing.path));
             return Ok((out, None));
         }
     };
@@ -215,30 +215,6 @@ fn result_json(bundle_text: &str) -> Result<(Map<String, Value>, Option<Dispatch
     }
     let dispatchable = graph.map(|g| g.dispatchable().iter().map(ToString::to_string).collect());
     Ok((out, dispatchable))
-}
-
-/// The path from `observations` to a slot the bundle lacks (CC6), from the
-/// text `RecordedForge` gives it.
-fn slot_path(what: &str) -> Result<Value, String> {
-    let path: Vec<&str> = if what == "the listing of the open home issues" {
-        vec!["home_open_issues"]
-    } else if what == "the open home pull requests" {
-        vec!["home_open_pull_requests"]
-    } else if let Some(reference) = what.strip_prefix("the issue ") {
-        vec!["issues", reference]
-    } else if let Some(reference) = what.strip_prefix("the body of ") {
-        vec!["issues", reference, "value", "body"]
-    } else if let Some(repo) = what.strip_prefix("the CODEOWNERS of ") {
-        vec!["codeowners", repo]
-    } else if let Some((login, repo)) = what
-        .strip_prefix("the permission of ")
-        .and_then(|rest| rest.split_once(" on "))
-    {
-        vec!["permissions", repo, login]
-    } else {
-        return Err(format!("no slot of a bundle is {what:?}"));
-    };
-    Ok(json!(path))
 }
 
 /// Q2: in a normative planned case, every member of the expected batch is

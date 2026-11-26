@@ -1,0 +1,18 @@
+{
+  "cites": [
+    "OB16",
+    "S2",
+    "I5"
+  ],
+  "disagreement": {
+    "classification": "compatibility-exception",
+    "difference": 26,
+    "note": "the compiler reports an incomplete run without the reason recorded in any slot"
+  },
+  "id": "graph/ob16-least-draft-flag-on-the-last-node--python",
+  "kind": "characterisation",
+  "level": "graph",
+  "normative_case": "graph/ob16-least-draft-flag-on-the-last-node",
+  "source": "the Python compiler, on the bundle of graph/ob16-least-draft-flag-on-the-last-node",
+  "title": "Where graph/ob16-least-draft-flag-on-the-last-node differs: the compiler reports an incomplete run without the reason recorded in any slot"
+}

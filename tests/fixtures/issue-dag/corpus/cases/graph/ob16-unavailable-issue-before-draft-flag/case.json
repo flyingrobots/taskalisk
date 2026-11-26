@@ -1,0 +1,17 @@
+{
+  "cites": [
+    "OB16",
+    "S2",
+    "F2"
+  ],
+  "disagreement": {
+    "classification": "compatibility-exception",
+    "difference": 26,
+    "note": "the compiler reports an incomplete run without the reason recorded in any slot"
+  },
+  "id": "graph/ob16-unavailable-issue-before-draft-flag",
+  "kind": "normative",
+  "level": "graph",
+  "source": "constructed from the rule text",
+  "title": "An unavailable issue is reported, not a draft flag with a lesser reason: S2 is not reached"
+}

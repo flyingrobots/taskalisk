@@ -844,14 +844,47 @@ def slots(changes: dict[str, str | None], codeowners_of: str | None = None) -> C
     return go
 
 
+def no_body(ref: str) -> Callable[[dict[str, Any]], None]:
+    """Leaves out the body of `ref` (OB8, OB14), which the run reads."""
+    def go(b: dict[str, Any]) -> None:
+        del b["observations"]["issues"][ref]["value"]["body"]
+    return go
+
+
+def no_permission(repo: str, login: str) -> Callable[[dict[str, Any]], None]:
+    def go(b: dict[str, Any]) -> None:
+        b["observations"]["permissions"].get(repo, {}).pop(login, None)
+    return go
+
+
+def drafts(reasons: dict[int, str]) -> Callable[[dict[str, Any]], None]:
+    """Records the draft flag of each pull request numbered in `reasons` as unavailable, with that reason (OB7)."""
+    def go(b: dict[str, Any]) -> None:
+        for item in b["observations"]["home_open_pull_requests"]["value"]:
+            if item["number"] in reasons:
+                item["draft"] = {"unavailable": reasons[item["number"]]}
+    return go
+
+
+def steps(*fns: Callable[[dict[str, Any]], None]) -> Callable[[dict[str, Any]], None]:
+    def go(b: dict[str, Any]) -> None:
+        for fn in fns:
+            fn(b)
+    return go
+
+
 def both_orders(name: str, title: str, first: str, second: str, mutate: Callable[[dict[str, Any]], None],
-                expected: dict[str, Any], cites: list[str], disagreement: dict[str, Any], **opts: Any) -> list[Graph]:
-    issues = {first: i(d(first)), second: i(d(second))}
+                expected: dict[str, Any], cites: list[str], disagreement: dict[str, Any] | None,
+                issues: dict[str, dict[str, Any]] | None = None, **opts: Any) -> list[Graph]:
+    issues = issues or {first: i(d(first)), second: i(d(second))}
     return [G(f"{name}{suffix}", f"{title}{note}", bundle(issues, roots=roots, mutate=mutate, **opts), expected, cites, disagreement=disagreement)
             for suffix, note, roots in (("", "", (first, second)), ("-roots-reversed", ", with the roots in the other order", (second, first)))]
 
 
+# Two open home tasks, each closed by an admitted pull request (S1): #10 closes o/r#2, #11 closes o/r#3.
+LINKED = (pr(10, [2]), pr(11, [3]))
 STOPS = "the compiler stops at the first lookup it cannot make"
+NO_REASON = "the compiler reports an incomplete run without the reason recorded in any slot"
 NORMATIVE_GRAPHS += [
     *both_orders("ob16-missing-over-unavailable", "A missing slot is reported, not an unavailable one", R2, R3,
                  slots({R2: "HTTP 502", R3: None}), {"outcome": "unusable", "missing": ["issues", R3]}, ["OB16", "OB5", "F1"],
@@ -864,7 +897,24 @@ NORMATIVE_GRAPHS += [
                  exception(25, f"{STOPS}: it reads the issue o/r#2 first and reports it"), codeowners=True),
     *both_orders("ob16-least-of-two-unavailable", "Of two unavailable slots, the least reason is reported", R2, R3,
                  slots({R2: "timeout", R3: "HTTP 502"}), {"outcome": "incomplete", "unavailable": "HTTP 502"}, ["OB16", "F1", "I5"],
-                 exception(26, "the compiler reports an incomplete run without the reason recorded in any slot")),
+                 exception(26, NO_REASON)),
+    # The draft flags S2 reads: the least reason, whichever node holds it.
+    *both_orders("ob16-least-draft-flag-on-the-last-node", "Of two unavailable draft flags, the least reason is reported, on the later node",
+                 R2, R3, drafts({10: "timeout", 11: "HTTP 502"}), {"outcome": "incomplete", "unavailable": "HTTP 502"},
+                 ["OB16", "S2", "I5"], exception(26, NO_REASON), prs=LINKED),
+    *both_orders("ob16-least-draft-flag-on-the-first-node", "Of two unavailable draft flags, the least reason is reported, on the earlier node",
+                 R2, R3, drafts({10: "HTTP 502", 11: "timeout"}), {"outcome": "incomplete", "unavailable": "HTTP 502"},
+                 ["OB16", "S2", "I5"], exception(26, NO_REASON), prs=LINKED),
+    *both_orders("ob16-unavailable-issue-before-draft-flag", "An unavailable issue is reported, not a draft flag with a lesser reason: "
+                 "S2 is not reached", R2, R3, steps(slots({R2: "timeout"}), drafts({11: "HTTP 502"})),
+                 {"outcome": "incomplete", "unavailable": "timeout"}, ["OB16", "S2", "F2"], exception(26, NO_REASON), prs=LINKED),
+    # Missing slots by path (OB16): kinds that the order of the bundle's member names decides.
+    *both_orders("ob16-missing-issue-before-a-later-body", "The missing issue o/r#2 comes before the missing body of o/r#3", R2, R3,
+                 steps(slots({R2: None}), no_body(R3)), {"outcome": "unusable", "missing": ["issues", R2]}, ["OB16", "OB5"], None),
+    *both_orders("ob16-least-of-two-permissions", "Of two missing permissions, the one on o/r comes first, whatever the logins",
+                 R2, S3, steps(no_permission(R, "dave"), no_permission("o/s", CAROL)),
+                 {"outcome": "unusable", "missing": ["permissions", R, "dave"]}, ["OB16", "OB5", "AD5"], None,
+                 issues={R2: i(d(R2), **as_("COLLABORATOR", "dave")), S3: i(d(S3), **as_("COLLABORATOR"))}),
 ]
 
 

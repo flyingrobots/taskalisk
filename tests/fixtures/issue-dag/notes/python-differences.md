@@ -139,7 +139,9 @@ against a bundle. The Python's offline forge answers an unavailable slot with
 one fixed failure, never the recorded reason, so that a reason such as
 `HTTP 404` cannot read as an observed answer; the Python therefore cannot
 report a reason. The normative cases `graph/ob16-*` show both, each with the
-roots in either order.
+roots in either order. The Python agrees with
+`graph/ob16-missing-issue-before-a-later-body` and
+`graph/ob16-least-of-two-permissions`: the slot it reads first is the least.
 
 ## Edge edit
 

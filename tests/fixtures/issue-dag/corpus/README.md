@@ -118,9 +118,9 @@ holds every slot its run reads (OB14). It may also hold:
   in ascending order of their UTF-8 bytes, as labels are in CC5, so `Tpu`
   sorts before `gpu`.
 
-A rejected run has only `outcome`. An incomplete run has no member but
-`outcome` and `unavailable`, and an unusable one none but `outcome` and
-`missing` (rule F2).
+A rejected run has only `outcome`, and an incomplete run no member but
+`outcome` and `unavailable` (rule F2). An unusable run has no member but
+`outcome` and `missing` (bundle rules OB5 and OB16).
 
 **CC7. Labels.** The labels in `violations`, `warnings` and `findings` are
 the ones format rule V12 gives a document's violations and warnings, and the

@@ -1,0 +1,11 @@
+{
+  "cites": [
+    "OB16",
+    "OB5"
+  ],
+  "id": "graph/ob16-missing-issue-before-a-later-body",
+  "kind": "normative",
+  "level": "graph",
+  "source": "constructed from the rule text",
+  "title": "The missing issue o/r#2 comes before the missing body of o/r#3"
+}

@@ -142,7 +142,8 @@ value is an object with exactly these members:
 - `body`: a slot whose value is an object with the members `text`, the issue
   body, and `editors`, the actor of every edit of the body's edit history,
   the creation included, in order, with null for a deleted account. The two
-  are observed together, so that the editors are those of that text.
+  are observed together, so that the editors are those of that text. The
+  member MAY be absent when the run does not read the body (OB14).
 
 A reference that resolves to no issue that the planner can see is recorded as
 unavailable (profile rule D10).
@@ -212,12 +213,11 @@ unavailable (OB4) leaves undecided only the decision that reads it: the run
 does not read the slots that only that decision would lead to, and goes on
 with every other lookup of discovery (profile rules D1, D2 and I4) and of
 admission (I6), every editor of a body included (AD8). The draft flags that
-profile rule S2 reads are read last, and only when every other slot the run
-reached holds a value: the run takes the open nodes in ascending order of
-issue number, and for each the pull requests that close it in the order of
-`home_open_pull_requests` (OB7), and stops at the first draft flag that is
-unavailable. When the run reached a slot it could not read, it reports
-exactly one:
+profile rule S2 reads are reached only when every slot of discovery and
+admission that the run reached holds a value, since S2 gives a status only
+to a node of a graph and a run that cannot make a lookup has no graph (F2);
+the run then reads every one of them. When the run reached a slot it could
+not read, it reports exactly one:
 
 1. When a slot it reached is missing, the bundle is unusable (OB5) and the
    run reports the least missing slot it reached. It reports no unavailable
@@ -226,20 +226,22 @@ exactly one:
    reasons (OB4) recorded in the unavailable slots it reached, as strings
    compared by their UTF-8 bytes.
 
-Missing slots are ordered first by kind, in this order: a CODEOWNERS file
-(OB11), a body (OB8), an issue (OB8), the home listing (OB6), the home pull
-requests (OB7), a permission (OB10). Two slots of one kind are ordered by
-the reference of the issue, by the repository of the CODEOWNERS file, or by
-the login and then the repository of the permission, each in canonical form
-(OB13) and compared by its UTF-8 bytes, so `o/r#10` comes before `o/r#2`.
-Neither the order of the roots nor the order in which discovery visits
-references (D2) changes the slot a run reports.
+A missing slot is identified by its path: the member names that lead to it
+from `observations`, in canonical form (OB13), as corpus rule CC6 writes it,
+such as `["issues", "o/r#2"]` or `["permissions", "o/r", "carol"]`. Paths
+are compared member name by member name, each name by its UTF-8 bytes, and a
+path that begins another comes before it. So the home pull requests come
+before an issue, `o/r#10` before `o/r#2`, the body of `o/r#2`
+(`["issues", "o/r#2", "value", "body"]`) before the issue `o/r#3`, and a
+permission on `o/r` before any permission on `o/s`. Neither the order of the
+roots, nor the order in which discovery visits references (D2), nor the
+order of the nodes changes the slot a run reports.
 
 > *Commentary.* A planner that stopped at the first lookup it could not make
 > would report whichever slot the order of the roots put first. Reading on
 > is what makes the report a function of the bundle. A missing slot comes
 > first because it says the evidence is unusable, and an unavailable slot
-> must not hide that. The order of the kinds is arbitrary; it is fixed so
-> that two planners given one bundle report the same slot. Two unavailable
-> slots with the same reason are not told apart, since the reason is what is
-> reported.
+> must not hide that. Ordering by path needs no list of kinds: it is the
+> order of the bundle's own member names, and the path is what a case
+> reports. Two unavailable slots with the same reason are not told apart,
+> since the reason is what is reported.

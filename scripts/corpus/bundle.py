@@ -157,7 +157,8 @@ def validate(bundle: Any) -> list[str]:
         if not _in_scope(params, ref.split("#", 1)[0]):
             p.append(f"{where}: a reference outside the read scope is never read (OB8)")
         ok, it = _slot(p, where, slot)
-        if not ok or not _keys(p, where, it, {"address", "pull_request", "state", "state_reason", "author", "author_association", "body"}):
+        # OB8, OB14: `body` may be left out when the run does not read it.
+        if not ok or not _keys(p, where, it, {"address", "pull_request", "state", "state_reason", "author", "author_association"}, {"body"}):
             continue
         _ref(p, f"{where}.address", it["address"])
         if not isinstance(it["pull_request"], bool):
@@ -169,6 +170,8 @@ def validate(bundle: Any) -> list[str]:
         _actor(p, f"{where}.author", it["author"])
         if it["author_association"] is not None and not isinstance(it["author_association"], str):
             p.append(f"{where}.author_association: a string or null (OB8)")
+        if "body" not in it:
+            continue
         ok, body = _slot(p, f"{where}.body", it["body"])
         if ok and _keys(p, f"{where}.body", body, {"text", "editors"}):
             if not isinstance(body["text"], str):
