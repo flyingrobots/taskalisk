@@ -46,6 +46,31 @@ schema version under `Unreleased` is a draft and may change in place.
   and `[bot]` suffix are matched without regard to case; a bundle with an `observations` member
   the bundle rules do not define is rejected.
 
+- **The gh adapter** (flyingrobots/taskalisk#56). A new crate, `crates/issue-dag-gh`, implements
+  the core's `Forge` port by running `gh` (an argument vector, never a shell string; `gh` on `PATH`
+  unless another program is configured). It makes the Python compiler's reads with its limits: the
+  REST issue list (`--paginate`, 1,000 issues) and issue, the body edit history in GraphQL (a page
+  that claims another without a cursor, a repeated cursor, or more than 1,000 pages is refused),
+  `gh pr list` with closing references (`--limit 500`), the collaborator permission and the first
+  CODEOWNERS file. It fails closed: a failed read, an answer in the wrong shape, or a list that
+  fills its limit is a `GhError` with the Python's code (`gh.command_failed`,
+  `gh.response_invalid`, `gh.list_limit_reached`), and its slot is answered unavailable, so the run
+  is incomplete and exits 2, never planned from an empty answer. HTTP 404 means "none" only for a
+  permission (not a collaborator) and a CODEOWNERS path; an issue that answers 404 is unavailable
+  (D10). Each slot is read once, and what was read replays through `RecordedForge`. As in the
+  Python, the body's edit history is read only after the author is trusted, so an issue a stranger
+  wrote costs no further query (threat model C15): the `Forge` port gains `body(reference)`, which
+  the planner calls only after admission, and an issue of the home listing is filled from the
+  listing, never fetched again; `Issue` has no body, and `Observations` keeps the bodies
+  read in their own map, `bodies`. The bundle format is unchanged: the loader reads an issue
+  slot's nested `body` into that map, a bundle may leave out a body the run never reads (OB14),
+  and a run that reads one not recorded finds it missing (OB5). An issue listed on two pages makes the listing unavailable
+  (OB6), and an edit-history page without a boolean `hasNextPage` is refused. `gh` runs without
+  `GH_FORCE_TTY`, `CLICOLOR_FORCE`, `GH_DEBUG` and `DEBUG`, and with `GH_PROMPT_DISABLED=1`,
+  `NO_COLOR=1`, `GH_NO_UPDATE_NOTIFIER=1` and `GH_PAGER=cat`, which no configured variable
+  overrides; text the server returns is left out of an error's reason. Unlike the Python, a pull
+  request's head repository is not observed.
+
 - **Ranking and batch selection in the Rust core** (flyingrobots/taskalisk#29). `issue-dag-core`
   gains `rank`, which scores every open node of a reported graph (K1 to K5: in-flight and parked
   terms from the S2 status, a trusted linked pull request included; descendants by bit set; depth;
