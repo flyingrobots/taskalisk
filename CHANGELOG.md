@@ -166,12 +166,14 @@ schema version under `Unreleased` is a draft and may change in place.
   CC6 gains the outcome `unusable` with the `missing` slot, and the `unavailable` reason of an
   incomplete run in normative cases. The corpus gains 22 normative graph cases, `graph/ob16-*`,
   each in both orders of its roots, and 16 `--python` twins (differences 25 and 26, compatibility
-  exceptions), digest `sha256:0a0fe0a5…`. `issue-dag-core`: a `Missing` slot carries its path and
+  exceptions), digest `sha256:5d8d5e86…`. `issue-dag-core`: a `Missing` slot carries its path and
   is ordered by it, and every unavailable draft flag S2 reads is read, the least reason reported,
   instead of stopping at the first. `scripts/corpus/` replays a normative case or twin whose bundle
   lacks a slot as `unusable`, and still refuses any other case with a lacking slot; its bundle
   validator accepts an issue without a body (OB8, OB14) and a bundle without the home pull
-  requests (OB5, OB15), as the Rust reader does.
+  requests (OB5, OB15), as the Rust reader does. The evaluation-record test of #118 now also
+  requires each `unusable` case to be refused for want of exactly its `missing` slot, and counts
+  both kinds.
 
 - **Document findings with stable codes** (flyingrobots/taskalisk#43). `issue-dag-core`
   judges a body with its issue's address, so rule X1 always applies, and returns findings: a stable

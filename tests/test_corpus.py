@@ -301,7 +301,7 @@ class ForgeFidelity(unittest.TestCase):
 
 # The digest of the corpus this suite checks: the issue-dag repository's corpus/DIGEST and the
 # version table name the same value. A change to the corpus changes this constant in the same commit.
-CORPUS_DIGEST = "sha256:0a0fe0a5372d3b88ae262d4e078f081fd3bbaffed0d2017fd01b047862fe9950"
+CORPUS_DIGEST = "sha256:5d8d5e863206acbbf6cf1e3aab5afaf4d9131cca85554c3e56e554a3d955598e"
 
 
 class CorpusPin(unittest.TestCase):

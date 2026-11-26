@@ -189,7 +189,9 @@ a misspelt slot would otherwise be read as a slot that was not recorded.
 > graph case of the corpus can hold one: a case's input is a bundle (corpus
 > rule CC2) and its expected result is the outcome of a run (CC6). A bundle
 > that lacks a slot its run reads breaks OB14 but is still a bundle: OB5
-> makes it unusable, and a case can expect that (CC6, OB16).
+> makes it unusable, and a case can expect that (CC6, OB16). The corpus
+> tooling still requires the home listing (OB6) in a run without roots, so
+> no case lacks it; such a run would read no issue anyway.
 >
 > OB5 is what keeps a bundle honest. A recorder that forgets to
 > record a lookup produces a bundle that a replay rejects, rather than one
