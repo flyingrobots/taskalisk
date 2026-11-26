@@ -866,7 +866,7 @@ fn conclude(
             }
         }
         Outcome::Rejected(rejection) => reject(run, rejection),
-        Outcome::Incomplete { unavailable } => {
+        Outcome::Incomplete { unavailable, .. } => {
             if failures.is_empty() {
                 run.error(
                     "gh.response_invalid",
@@ -955,20 +955,22 @@ mod tests {
     use crate::parley::{Run, Start};
     use crate::render::Display;
     use issue_dag_core::{
-        Graph, Outcome, Parameters, ReadScope, Repo, TRUST_POLICY, TrustParameters,
+        Graph, NotFound, Outcome, Parameters, ReadScope, Repo, TRUST_POLICY, TrustParameters,
     };
     use issue_dag_gh::GhError;
     use serde_json::json;
     use std::collections::{BTreeMap, BTreeSet};
     use std::path::Path;
 
-    /// The exit status and stdout of a run that concludes `outcome` after
-    /// the gh adapter recorded `failures`.
-    fn concluded(outcome: &Outcome, failures: &[GhError]) -> (u8, String) {
+    static NEXT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+    /// The exit status, stdout and stderr of a run that concludes `outcome`
+    /// after the gh adapter recorded `failures`.
+    fn concluded(outcome: &Outcome, failures: &[GhError]) -> (u8, String, String) {
         let dir = std::env::temp_dir().join(format!(
             "taskalisk-conclude-{}-{}",
             std::process::id(),
-            failures.len()
+            NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
         ));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).expect("a directory");
@@ -1012,7 +1014,49 @@ mod tests {
         );
         let status = run.end();
         let _ = std::fs::remove_dir_all(&dir);
-        (status, String::from_utf8(out).expect("UTF-8"))
+        (
+            status,
+            String::from_utf8(out).expect("UTF-8"),
+            String::from_utf8(err).expect("UTF-8"),
+        )
+    }
+
+    /// The `parley.error` lines of a stream.
+    fn errors(stream: &str) -> Vec<serde_json::Value> {
+        stream
+            .lines()
+            .map(|l| serde_json::from_str::<serde_json::Value>(l).expect("JSON"))
+            .filter(|l| l["_schema"]["id"] == "parley.error")
+            .collect()
+    }
+
+    #[test]
+    fn an_incomplete_run_with_a_cause_reports_the_cause_code() {
+        for (cause, code) in [
+            (NotFound::Owner, "profile.D11"),
+            (NotFound::Repository, "profile.D12"),
+            (NotFound::Number, "profile.D13"),
+        ] {
+            let incomplete = Outcome::Incomplete {
+                unavailable: "o/r#9 resolves to no issue gh can see (HTTP 404)".to_owned(),
+                cause: Some(cause),
+            };
+            let (status, _, err) = concluded(&incomplete, &[]);
+            assert_eq!(status, 2, "{err}");
+            let errors = errors(&err);
+            assert_eq!(errors.len(), 1, "{err}");
+            assert_eq!(errors[0]["code"], code, "{err}");
+            assert_eq!(errors[0]["detail"]["not_found"], cause.as_str(), "{err}");
+        }
+        // Without a cause, an unavailable read the adapter did not record is
+        // a malformed answer.
+        let incomplete = Outcome::Incomplete {
+            unavailable: "truncated".to_owned(),
+            cause: None,
+        };
+        let (status, _, err) = concluded(&incomplete, &[]);
+        assert_eq!(status, 2);
+        assert_eq!(errors(&err)[0]["code"], "gh.response_invalid", "{err}");
     }
 
     #[test]
@@ -1021,14 +1065,14 @@ mod tests {
             findings: BTreeSet::new(),
             graph: Graph::default(),
         };
-        let (status, out) = concluded(&planned, &[]);
+        let (status, out, _) = concluded(&planned, &[]);
         assert_eq!(status, 0, "{out}");
         assert!(out.contains("\"taskalisk.plan\""), "{out}");
         let failed = GhError::CommandFailed {
             source: "gh api x".to_owned(),
             detail: "boom".to_owned(),
         };
-        let (status, out) = concluded(&planned, &[failed]);
+        let (status, out, _) = concluded(&planned, &[failed]);
         assert_eq!(status, 2, "{out}");
         assert!(
             !out.contains("\"taskalisk.plan\""),
