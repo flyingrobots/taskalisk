@@ -84,7 +84,7 @@ hold:
 - `findings`: the violations, unknown prerequisites, cyclic nodes and
   warnings of the run, each `{"subject", "rule"}` with `concerns` when the
   rule concerns a reference: the issue that receives it, the label, and the
-  reference (edge-edit rule E6a). They form a set;
+  reference (profile rule F5). They form a set;
 - `nodes`: each node, `{"id", "complete", "opaque", "untrusted"}`, with
   `status` (rule S2) for an open node;
 - `containers`, each with its `children` (rule W1); `unmodeled` and
@@ -100,23 +100,10 @@ hold:
 
 An incomplete or rejected run has only `outcome` (rule F2).
 
-**CC7. Labels of violations.** A violation is labelled with the rule that
-states the failing requirement most specifically:
-
-- the form of a reference, a resource key, a meter claim or the value of
-  `.size_hours` (L1 to L4) over the validity rule that applies it (V3, V5,
-  V6, V8); a value of the wrong kind, such as a scalar where a list is
-  required, under the validity rule (V5, V6, V8);
-- the presence and kind of `.dag` under V1; a `.dag` string that declares
-  another format under P3;
-- a block line under the carrier rule it fails (C4, C6, C7, C8);
-- a reference outside the scope, to a pull request, or transferred under D3,
-  D4 or D5; a container prerequisite under X2; an unknown prerequisite under
-  X3; a cyclic node under G4.
-
-The subject of a D3 or D5 finding is each document that names the reference,
-or the reference itself when it is a root that no document names; the
-subject of a D4 finding is the reference.
+**CC7. Labels.** The labels in `violations`, `warnings` and `findings` are
+the ones format rule V12 gives a document's violations and warnings, and the
+findings of a run, with their subjects and the references they concern, are
+the ones profile rule F5 states. The corpus defines no label of its own.
 
 **CC8. Comparison.** A characterisation case passes when the
 implementation's result equals the expected result. A normative case passes

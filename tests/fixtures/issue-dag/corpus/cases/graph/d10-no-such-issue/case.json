@@ -1,0 +1,13 @@
+{
+  "cites": [
+    "D10",
+    "I5",
+    "F1",
+    "F2"
+  ],
+  "id": "graph/d10-no-such-issue",
+  "kind": "normative",
+  "level": "graph",
+  "source": "constructed from the rule text",
+  "title": "A reference that names no issue is an unavailable observation: the run is incomplete"
+}

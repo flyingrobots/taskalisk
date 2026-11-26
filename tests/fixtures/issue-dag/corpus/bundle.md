@@ -134,7 +134,8 @@ value is an object with exactly these members:
   the creation included, in order, with null for a deleted account. The two
   are observed together, so that the editors are those of that text.
 
-A reference that GitHub does not resolve is recorded as unavailable.
+A reference that resolves to no issue that the planner can see is recorded as
+unavailable (profile rule D10).
 
 **OB9. Actors.** An actor is an object with exactly the members `login`, as
 GitHub returns it, and `type`, the actor type GitHub reports, such as `User`

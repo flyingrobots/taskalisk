@@ -18,7 +18,8 @@ compiler against its offline fake. Difference 16 was observed on 2026-11-25
 by running the compiler's discovery with the GitHub calls stubbed.
 Differences 8, 10 to 15, 17 and 18 come from reading the code. On 2026-11-25
 the corpus confirmed differences 1 to 10 and 16 by running the compiler at
-`flyingrobots/taskalisk@394a5e9`, and found no other difference among its
+`flyingrobots/taskalisk@394a5e9`, and found difference 19 among the cases it
+added for the amended rule C8; it found no other difference among its
 normative cases.
 
 None of these differences changes the verdict on any document in the
@@ -37,6 +38,7 @@ specification and the Python accept the same 282 documents.
 | 6 | A list item spelled as an integer, such as `.holds: [007]` | The item is the string `007` | The item becomes `7` (`str(int(...))`); `-0` becomes `0` | C8 | defect |
 | 7 | A list as the value of `.dag`, `.kind`, `.type` or `.status`, such as `.type: [bug]` | Invalid | The validator raises `TypeError`; the run ends with a traceback and no outcome | V1, V4, V5, V8 | defect |
 | 8 | An item of `.blocked_by` or `.children` equal to the issue's address but not to its `.id`, or the reverse | V7 compares with `.id`; X1 reports the address mismatch | The self-reference check compares with the address | V7, X1 | compatibility-exception |
+| 19 | A key given twice, where one of the two lines opens a list without closing it, such as `.size_hours: [3` and `.size_hours: 3` | Invalid under C7 and C8: the unterminated line is still an entry line | Invalid under one of them: an unterminated line sets no field, so a later line with the key is no duplicate; a duplicate line is skipped before its list is judged | C7, C8 | compatibility-exception |
 
 Difference 1 is the one Decision 7 of the Taskalisk decision record names:
 the rule as written stands, and the Python's behaviour is a defect.
@@ -47,6 +49,11 @@ Difference 8 is a compatibility exception. Its scope: a document whose `.id`
 is not its address. Such a document is invalid under X1 in both, and the same
 issue receives the violations, which is what rule F4 makes observable; only
 the set of rule labels differs (V7 is added or left out).
+
+Difference 19 is a compatibility exception with the same kind of scope: the
+document is invalid in both, and only its set of labels (V12) differs. Where
+the key appears once, the Python does what C8 states: the key is absent for
+the other rules.
 
 ## Planning profile
 

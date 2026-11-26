@@ -98,7 +98,10 @@ invalid. This applies to free keys as well as `.` keys.
   the trimmed inner text is empty, the list is empty. Otherwise the inner text
   is split at every `,`, and each part is trimmed and then unquoted under C9 to
   give one item. Every item is a string. A comma cannot occur inside an item,
-  quoted or not.
+  quoted or not. An entry line whose value begins with `[` and does not end
+  with `]` is still an entry line, so C7 applies to its key, but it gives its
+  key no value: for the rules of sections 3 to 5 the key is absent unless
+  another entry line gives it a value.
 - Otherwise it is a scalar. A scalar is unquoted under C9. If the scalar was
   not quoted and consists of an optional `-` followed by one or more ASCII
   digits, it is an *integer*, whose value is the decimal number it spells.
@@ -218,7 +221,34 @@ task is probably not atomic. A warning never affects validity.
 identity of a person. Whether an issue may be read as a document at all is
 decided outside the document; see the planning profile.
 
-> *Commentary.* V3 checks only the form of `.id`. Whether `.id` names the
+**V12. Labels of violations.** A document receives one violation for each
+requirement it fails, and each violation carries the label of exactly one
+rule, the rule that states the requirement most specifically:
+
+- a line of the block that fails C4, C6, C7 or C8 is labelled with that rule;
+- a format key outside M2 is labelled V2;
+- an absent `.dag`, or a `.dag` that is not a string, is labelled V1. A
+  `.dag` string other than `issue-dag/2` is labelled P3 when it is a format
+  name, `issue-dag/` followed by a number as in L1, and V1 otherwise;
+- an absent `.id`, or one that is not a string, is labelled V3; a string that
+  is not a reference is labelled L1;
+- an absent, extra or wrongly kinded value of `.kind`, `.type`,
+  `.blocked_by`, `.children`, `.size_hours`, `.holds`, `.meters` or
+  `.status`, or a string outside its values, is labelled with the rule that
+  requires it: V4 for `.kind`, V5 for a task's keys, V6 for a container's
+  `.blocked_by`, `.children` and `.type`, V8 for the optional keys. A scalar
+  where a list is required, a list where a scalar is required, and a string
+  where an integer is required are wrongly kinded;
+- an item of a list, or an integer, whose form fails L1, L2, L3 or L4 is
+  labelled with that rule;
+- a self reference is labelled V7;
+- when the document is judged with its issue's address, a `.id` reference
+  that is not that address is labelled X1 (profile rule X1).
+
+Each label is reported once for a document, however many of its values fail
+the rule. A warning under V10 carries the label V10.
+
+> *Commentary.* V3 and L1 check only `.id` itself. Whether `.id` names the
 > issue that holds the document needs the issue's address, which is an
 > observation, so the rule is in the planning profile (rule X1). Conformance
 > cases at document level carry the address, so they test both.

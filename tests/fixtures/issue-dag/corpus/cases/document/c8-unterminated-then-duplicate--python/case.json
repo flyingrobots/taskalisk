@@ -1,0 +1,18 @@
+{
+  "cites": [
+    "C7",
+    "C8",
+    "V12"
+  ],
+  "disagreement": {
+    "classification": "compatibility-exception",
+    "difference": 19,
+    "note": "the compiler does not count the unterminated line as an entry, so it reports no duplicate"
+  },
+  "id": "document/c8-unterminated-then-duplicate--python",
+  "kind": "characterisation",
+  "level": "document",
+  "normative_case": "document/c8-unterminated-then-duplicate",
+  "source": "the Python compiler, on the input of document/c8-unterminated-then-duplicate",
+  "title": "What the compiler does: An unterminated list is still an entry line: a later line with its key is a duplicate"
+}

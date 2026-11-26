@@ -89,6 +89,17 @@ diagnosis. Its ready set and batch MUST NOT be used to start work.
 with the issue it is attached to. The set of issues with violations is
 observable. The wording of a message is not.
 
+**F5. Findings.** A finding is identified by the issue that receives it, the
+label of the rule it fails, and, for D3, D5, X2 and X3, the reference it
+concerns; its wording is not part of its identity. A document's violations
+are labelled as format rule V12 states. A reference outside the scope (D3)
+or transferred (D5) gives its finding to each document that names it, or to
+the reference itself when it is a root that no document names. A reference
+to a pull request (D4) gives its finding to the reference. An unknown
+prerequisite gives a finding labelled X3 to the task that names it, and each
+node G4 reports receives a finding labelled G4. A document's warnings are
+findings labelled V10.
+
 > *Commentary.* The reference implementation exits with status 1 for an
 > invalid run, 2 for an incomplete one, and 0 for a plan. It reports a bad
 > `--root` with status 2, as an input failure.
@@ -137,6 +148,10 @@ so even when the document has violations.
 a container and not a node. It is listed with its children. Discovery walks
 its children whatever its state.
 
+**D10. No issue.** A reference in the read scope that resolves to neither an
+issue nor a pull request, because no such issue exists or the planner cannot
+see it, is an unavailable observation (I5): the run is incomplete.
+
 > *Commentary.* Discovery follows only what a document says about itself, so
 > it reaches the prerequisites and the container members of the seeds and
 > nothing downstream of them. A plan's discovery scope is its seeds, the
@@ -144,9 +159,10 @@ its children whatever its state.
 
 ## 4. Cross-document rules
 
-**X1. Own address.** The `.id` of a document MUST equal the address of the
-issue that holds it. Otherwise the document receives a violation: it was
-copied or transferred.
+**X1. Own address.** When the `.id` of a document is a reference, it MUST
+equal the address of the issue that holds it; otherwise the document receives
+a violation: it was copied or transferred. A missing or malformed `.id` has
+its own violation (format rules V3 and L1) and receives none under X1.
 
 **X2. No container prerequisite.** An item of the `.blocked_by` of an open
 task MUST NOT name an issue whose document is a container. Such an item gives

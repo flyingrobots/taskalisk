@@ -1,0 +1,12 @@
+{
+  "cites": [
+    "V3",
+    "V12",
+    "X1"
+  ],
+  "id": "document/v3-id-not-a-string",
+  "kind": "normative",
+  "level": "document",
+  "source": "constructed from the rule text",
+  "title": "An integer `.id` is not a reference string"
+}

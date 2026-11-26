@@ -48,7 +48,7 @@
   ],
   "findings": [
     {
-      "rule": "V3",
+      "rule": "L1",
       "subject": "flyingrobots/geordi#1"
     }
   ],
