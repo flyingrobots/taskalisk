@@ -29,7 +29,7 @@ issues must be complete before it is correct.
 | [Planning profile `issue-dag-planning/2`](profiles/issue-dag-planning-2.md) | Compute the graph, the ready set, the ranking and the batch from a set of documents and their issues' state |
 | [Versions and compatibility](versions.md) | Find the accepted and retired versions, and the rules for adding a version or claiming two are compatible |
 | [Edge edit contract](contracts/edge-edit.md) | Change a `.blocked_by` list on GitHub without losing a concurrent edit unawares |
-| [Typepack sketch `issue-dag@2`](typepacks/issue-dag@2/) | See the shape and laws as GraphQL SDL and weslaw (unvalidated) |
+| [Typepack `issue-dag@2`](typepacks/issue-dag@2/) | See the shape and laws as GraphQL SDL and weslaw, validated with a pinned Wesley ([`WESLEY.json`](typepacks/issue-dag@2/WESLEY.json)) |
 | [Census of frontmatter shapes, 2026-11-12](evidence/2026-11-12-frontmatter-shapes.md) | See every shape of block in use and the format's verdict on each |
 | [Differences from the Python compiler](notes/python-differences.md) | See where the reference implementation and this specification disagree, and how each difference is classified |
 | [Conformance corpus](corpus/README.md) | Test an implementation against cases for the format and the profile |
@@ -53,3 +53,7 @@ A change to the version table, a format or a profile is a pull request to
 this repository, reviewed by its maintainers ([versions.md](versions.md),
 rule P5). Every rule a conformance case tests has a normative statement here
 (rule A9); a case never defines a rule on its own.
+
+## License
+
+Apache-2.0. See [LICENSE](LICENSE) and [NOTICE](NOTICE). Contributing: [CONTRIBUTING.md](CONTRIBUTING.md). Security: [SECURITY.md](SECURITY.md).

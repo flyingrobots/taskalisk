@@ -274,8 +274,11 @@ equal records have the same decoded meaning.
 Free keys, comments, blank lines, key order, spacing, quoting and line ends
 are not part of the record.
 
-## 7. Typepack sketch
+## 7. Typepack
 
-The shape and laws of `issue-dag@2` are sketched in
-[`typepacks/issue-dag@2`](../typepacks/issue-dag@2/). The sketch has not been
-run through Wesley. Where it and this document differ, this document governs.
+The shape and laws of `issue-dag@2` are in
+[`typepacks/issue-dag@2`](../typepacks/issue-dag@2/). They are checked with a
+pinned Wesley (`WESLEY.json` there, `scripts/check_typepack.py`): the shape is
+within the dialect of [versions.md](../versions.md) A6, and the laws are bound
+to it. They are not normative: where they and this document differ, this
+document governs.
