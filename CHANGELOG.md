@@ -9,6 +9,14 @@ schema version under `Unreleased` is a draft and may change in place.
 
 ### Fixed
 
+- **A ROADMAP cell keeps a hostile title inert** (flyingrobots/taskalisk#75). The backslash is
+  escaped first, every Unicode line break (CR, NEL, U+2028 and the rest) becomes a space, every
+  other C0 or C1 control character (ESC included) and every bidirectional control is dropped, and
+  a bare URL, a `www.` address, an email address or a mention gets a zero-width space so it does
+  not link, whatever precedes it; a character reference such as `&#64;` stays text. A resource
+  key is shown as written in its code span, no longer with doubled backslashes or `\[` escapes.
+  A title that needs none of this renders byte-for-byte as before.
+
 - **A repeated edit-history cursor ends the run** (flyingrobots/taskalisk#76). Reading an
   issue's body edit history, a page that repeats an earlier cursor, or a history past 1,000 pages
   of 100 edits, is `gh.response_invalid` (exit 2) instead of a loop without end.
