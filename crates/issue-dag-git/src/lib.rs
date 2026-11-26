@@ -75,6 +75,20 @@ pub enum GitError {
         /// The common git directory its `.git` belongs to.
         common_dir: PathBuf,
     },
+    /// A listed worktree's directory holds the `.git` of another worktree
+    /// of the same repository: the directories were moved or swapped.
+    MisplacedWorktree {
+        /// The worktree's directory, as listed.
+        worktree: PathBuf,
+        /// The administrative directory its `.git` names.
+        admin_dir: PathBuf,
+    },
+    /// A revision or base given to `ahead_behind` is empty or holds `..`,
+    /// so it is not one revision.
+    InvalidRevision {
+        /// The text given.
+        revision: String,
+    },
     /// `git` could not be started.
     Spawn {
         /// The command line, for the report.
@@ -121,6 +135,18 @@ impl fmt::Display for GitError {
                 worktree.display(),
                 common_dir.display()
             ),
+            Self::MisplacedWorktree {
+                worktree,
+                admin_dir,
+            } => write!(
+                f,
+                "the worktree {} holds the .git of another worktree ({})",
+                worktree.display(),
+                admin_dir.display()
+            ),
+            Self::InvalidRevision { revision } => {
+                write!(f, "{revision:?} is not one revision")
+            }
             Self::Spawn { command, message } => {
                 write!(f, "{command} could not be started: {message}")
             }
@@ -369,7 +395,10 @@ impl GitRepository {
     }
 
     /// The dirty state of one listed worktree, read against its own `.git`
-    /// once that is known to belong to this repository.
+    /// once that is known to be this worktree's: it belongs to this
+    /// repository (the same common git directory), and its git directory is
+    /// the common one for the main worktree, or, for a linked worktree, an
+    /// administrative directory whose `gitdir` names this `.git`.
     fn dirty(&self, dir: &Path, main: bool) -> Result<Option<bool>, GitError> {
         if main && dir.canonicalize().ok().as_ref() == Some(&self.common_dir) {
             // Listed at its git directory: the work tree is known only when
@@ -386,18 +415,52 @@ impl GitRepository {
             git_dir: &git_dir,
             work_tree: dir,
         };
-        let args = ["rev-parse", "--path-format=absolute", "--git-common-dir"];
+        let args = [
+            "rev-parse",
+            "--absolute-git-dir",
+            "--path-format=absolute",
+            "--git-common-dir",
+        ];
         let out = text(at, &args, git(at, &args)?)?;
-        let common_dir = Path::new(out.trim_end_matches('\n'));
-        let unreadable = |error: std::io::Error| GitError::Unreadable {
+        let unreadable = |why: String| GitError::Unreadable {
             command: command_line(at, &args),
-            why: format!("the common git directory cannot be resolved: {error}"),
+            why,
         };
-        if common_dir.canonicalize().map_err(unreadable)? != self.common_dir {
+        let lines: Vec<&str> = out.lines().collect();
+        let [admin_dir, common_dir] = lines[..] else {
+            return Err(unreadable(format!("{} lines, not 2", lines.len())));
+        };
+        let (admin_dir, common_dir) = (Path::new(admin_dir), Path::new(common_dir));
+        let resolve = |path: &Path| {
+            path.canonicalize().map_err(|error| {
+                unreadable(format!("{} cannot be resolved: {error}", path.display()))
+            })
+        };
+        if resolve(common_dir)? != self.common_dir {
             return Err(GitError::ForeignWorktree {
                 worktree: dir.to_path_buf(),
                 common_dir: common_dir.to_path_buf(),
             });
+        }
+        let misplaced = || GitError::MisplacedWorktree {
+            worktree: dir.to_path_buf(),
+            admin_dir: admin_dir.to_path_buf(),
+        };
+        let is_common = resolve(admin_dir)? == self.common_dir;
+        if main != is_common {
+            return Err(misplaced());
+        }
+        if !main {
+            // The administrative directory records where its worktree's
+            // `.git` is, absolute or relative to itself.
+            let gitdir_file = admin_dir.join("gitdir");
+            let recorded = std::fs::read_to_string(&gitdir_file).map_err(|error| {
+                unreadable(format!("{} cannot be read: {error}", gitdir_file.display()))
+            })?;
+            let recorded = admin_dir.join(recorded.trim_end_matches(['\n', '\r']));
+            if recorded.canonicalize().ok() != Some(resolve(&git_dir)?) {
+                return Err(misplaced());
+            }
         }
         is_dirty(at).map(Some)
     }
@@ -407,9 +470,18 @@ impl GitRepository {
     ///
     /// # Errors
     ///
-    /// A [`GitError`] when either does not resolve to a commit, git fails,
-    /// or its output cannot be read.
+    /// [`GitError::InvalidRevision`] when either is empty (git would read
+    /// it as `HEAD`) or holds `..` (a range, not one revision); another
+    /// [`GitError`] when either does not resolve to a commit, git fails, or
+    /// its output cannot be read.
     pub fn read_ahead_behind(&self, revision: &str, base: &str) -> Result<AheadBehind, GitError> {
+        for given in [revision, base] {
+            if given.is_empty() || given.contains("..") {
+                return Err(GitError::InvalidRevision {
+                    revision: given.to_owned(),
+                });
+            }
+        }
         let range = format!("{revision}...{base}");
         let args = [
             "rev-list",

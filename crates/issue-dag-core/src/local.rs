@@ -42,7 +42,8 @@ pub struct Worktree {
     /// administrative files are gone).
     pub prunable: bool,
     /// Whether it has uncommitted changes, untracked files included; `None`
-    /// when there is no directory or no working tree to inspect.
+    /// when there is no directory or no working tree to inspect, or its work
+    /// tree is not known.
     pub dirty: Option<bool>,
 }
 

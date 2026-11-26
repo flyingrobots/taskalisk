@@ -571,15 +571,20 @@ fn a_stale_untracked_cache_never_hides_a_new_file() {
         std::thread::sleep(std::time::Duration::from_millis(1100));
         git_as_adapter(&repo, &["status", "--porcelain"]);
     }
-    let mtime = fs::metadata(&sub)
-        .expect("stat the directory")
-        .modified()
-        .expect("its mtime");
+    let stat = fs::metadata(&sub).expect("stat the directory");
+    let mtime = stat.modified().expect("its mtime");
     fs::rename(sub.join("kept.ignored"), sub.join("hidden.txt")).expect("rename");
     fs::File::open(&sub)
         .expect("open the directory")
         .set_modified(mtime)
         .expect("restore its mtime");
+    let after = fs::metadata(&sub).expect("stat the directory again");
+    assert_eq!(after.len(), stat.len(), "the directory's size changed");
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        assert_eq!(after.ino(), stat.ino(), "the directory's inode changed");
+    }
     assert_eq!(
         git_as_adapter(&repo, &["--no-optional-locks", "status", "--porcelain"]),
         "",
@@ -587,4 +592,99 @@ fn a_stale_untracked_cache_never_hides_a_new_file() {
     );
     let local = GitRepository::open(&repo).expect("a repository");
     assert_eq!(value(local.worktrees())[0].dirty, Some(true));
+}
+
+#[test]
+fn swapped_worktree_directories_are_never_read_under_each_others_record() {
+    let scratch = Scratch::new("swapped");
+    let (repo, extra) = fixture(&scratch);
+    let other = scratch.path().join("other");
+    git(
+        &repo,
+        &[
+            "worktree",
+            "add",
+            "-q",
+            "--detach",
+            &path_of(&other),
+            "main",
+        ],
+    );
+    fs::write(extra.join("untracked.txt"), "u\n").expect("write");
+    let parked = scratch.path().join("parked");
+    fs::rename(&extra, &parked).expect("move one aside");
+    fs::rename(&other, &extra).expect("move the other in");
+    fs::rename(&parked, &other).expect("complete the swap");
+    let listing = git(&repo, &["worktree", "list", "--porcelain"]);
+    assert!(
+        !listing.contains("prunable"),
+        "git still lists both as live"
+    );
+    let local = GitRepository::open(&repo).expect("a repository");
+    assert!(matches!(local.worktrees(), Observed::Unavailable(_)));
+    assert!(matches!(
+        local.read_worktrees(),
+        Err(GitError::MisplacedWorktree { .. })
+    ));
+}
+
+#[test]
+fn a_linked_worktree_of_a_separate_git_dir_repository_does_not_know_the_main_one() {
+    let scratch = Scratch::new("separate-linked");
+    let work = scratch.path().join("work");
+    let separate = scratch.path().join("separate.git");
+    git(
+        scratch.path(),
+        &[
+            "init",
+            "-q",
+            "--separate-git-dir",
+            &path_of(&separate),
+            &path_of(&work),
+        ],
+    );
+    fs::write(work.join("a.txt"), "a\n").expect("write");
+    git(&work, &["add", "a.txt"]);
+    git(&work, &["commit", "-q", "-m", "first"]);
+    let linked = scratch.path().join("linked");
+    git(
+        &work,
+        &[
+            "worktree",
+            "add",
+            "-q",
+            "--detach",
+            &path_of(&linked),
+            "main",
+        ],
+    );
+    let local = GitRepository::open(&linked).expect("the linked worktree");
+    let dirty: Vec<_> = value(local.worktrees())
+        .into_iter()
+        .map(|w| w.dirty)
+        .collect();
+    assert_eq!(dirty, vec![None, Some(false)]);
+}
+
+#[test]
+fn an_empty_or_ranged_revision_is_unavailable() {
+    let scratch = Scratch::new("ranged");
+    let (repo, _) = fixture(&scratch);
+    let local = GitRepository::open(&repo).expect("a repository");
+    for (revision, base) in [
+        ("", "main"),
+        ("main", ""),
+        ("", ""),
+        ("main..main", "main"),
+        ("main", "main...main"),
+    ] {
+        assert!(
+            matches!(local.ahead_behind(revision, base), Observed::Unavailable(_)),
+            "{revision:?} against {base:?} answered a value"
+        );
+        assert!(matches!(
+            local.read_ahead_behind(revision, base),
+            Err(GitError::InvalidRevision { .. })
+        ));
+    }
 }
