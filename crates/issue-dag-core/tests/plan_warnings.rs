@@ -8,7 +8,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use issue_dag_core::{
     Actor, Body, Code, DENSITY_BAND, Graph, Issue, IssueRef, IssueState, Observations, Observed,
     Outcome, PLAN_WARNINGS, Parameters, PlanDetail, PlanWarning, ReadScope, RecordedForge, Repo,
-    Severity, TRUST_POLICY, TrustParameters, plan, plan_warnings,
+    Severity, TRUST_POLICY, TrustParameters, edge_density, plan, plan_warnings,
 };
 
 fn reference(text: &str) -> IssueRef {
@@ -29,6 +29,12 @@ fn task(id: u32, blocked_by: &[u32], extra: &str) -> String {
 /// The graph of a run over the open home issues `bodies`, by number, each
 /// written by the owner; the run must give a plan.
 fn graph(bodies: &[(u32, String)]) -> Graph {
+    graph_closing(bodies, &[])
+}
+
+/// As [`graph`], with the issues numbered in `closed` closed: they are not
+/// seeds, and are read only when a document names them.
+fn graph_closing(bodies: &[(u32, String)], closed: &[u32]) -> Graph {
     let owner = Actor {
         login: "o".to_owned(),
         actor_type: "User".to_owned(),
@@ -37,6 +43,7 @@ fn graph(bodies: &[(u32, String)]) -> Graph {
         home_open_issues: Some(Observed::Value(
             bodies
                 .iter()
+                .filter(|(n, _)| !closed.contains(n))
                 .map(|(n, _)| reference(&format!("o/r#{n}")))
                 .collect(),
         )),
@@ -50,7 +57,11 @@ fn graph(bodies: &[(u32, String)]) -> Graph {
             Observed::Value(Issue {
                 address: address.clone(),
                 pull_request: false,
-                state: IssueState::Open,
+                state: if closed.contains(n) {
+                    IssueState::Closed
+                } else {
+                    IssueState::Open
+                },
                 state_reason: None,
                 author: Some(owner.clone()),
                 author_association: Some("OWNER".to_owned()),
@@ -162,4 +173,55 @@ fn density_counts_reduced_edges_and_the_band_includes_its_ends() {
 #[test]
 fn a_plan_of_one_open_task_gives_no_warning() {
     assert_eq!(plan_warnings(&tasks(1, &[])), []);
+}
+
+/// A chain of 64 tasks: 63 edges over 2,016 pairs, exactly 0.03125. Python's
+/// `round(x, 4)` and the renderer's `{:.4}` round the exact decimal value,
+/// ties to even, to 0.0312; rounding ties away from zero would give 0.0313.
+#[test]
+fn density_rounds_a_tie_to_even_as_python_does() {
+    let chain: Vec<(u32, u32)> = (1..64).map(|n| (n, n + 1)).collect();
+    assert_eq!(edge_density(&tasks(64, &chain)), Some(0.0312));
+}
+
+/// 25 tasks and 3 edges: 3/300, exactly the band's lower end, which is
+/// inside it.
+#[test]
+fn the_band_includes_its_lower_end() {
+    let graph = tasks(25, &[(1, 2), (3, 4), (5, 6)]);
+    assert_eq!(edge_density(&graph), Some(0.01));
+    assert_eq!(plan_warnings(&graph), []);
+}
+
+/// Two open tasks with no edge: density 0 over one pair, below the band. A
+/// plan of exactly two open nodes is judged.
+#[test]
+fn a_plan_of_two_open_tasks_is_judged() {
+    let found = plan_warnings(&tasks(2, &[]));
+    assert_eq!(found.len(), 1, "{found:?}");
+    assert_eq!(density(&found[0]), (0, 2, 0.0, (0.01, 0.50)));
+}
+
+/// Open o/r#3 is blocked by open o/r#2, which is blocked by closed o/r#1.
+/// Only the two open nodes count: one edge over one pair, 1.0, above the
+/// band. Counted as open, o/r#1 would make it 1/3, inside.
+#[test]
+fn a_closed_prerequisite_is_not_an_open_node() {
+    let graph = graph_closing(
+        &[
+            (1, task(1, &[], "")),
+            (2, task(2, &[1], "")),
+            (3, task(3, &[2], "")),
+        ],
+        &[1],
+    );
+    let found = plan_warnings(&graph);
+    assert_eq!(found.len(), 1, "{found:?}");
+    assert_eq!(density(&found[0]), (1, 2, 1.0, (0.01, 0.50)));
+}
+
+/// One open node has no density.
+#[test]
+fn one_open_node_has_no_density() {
+    assert_eq!(edge_density(&tasks(1, &[])), None);
 }

@@ -81,13 +81,11 @@ impl PlanWarning {
 ///   number of pairs of open nodes, as the Python compiler computes it.
 #[must_use]
 pub fn plan_warnings(graph: &Graph) -> Vec<PlanWarning> {
-    let open_nodes = graph.nodes.values().filter(|n| !n.complete).count();
-    if open_nodes < 2 {
+    let Some(density) = edge_density(graph) else {
         return Vec::new();
-    }
-    let reduced_edges = graph.edges.difference(&graph.redundant).count();
-    let pairs = open_nodes * (open_nodes - 1) / 2;
-    let density = round4(ratio(reduced_edges, pairs));
+    };
+    let open_nodes = open_nodes(graph);
+    let reduced_edges = reduced_edges(graph);
     let (low, high) = DENSITY_BAND;
     if (low..=high).contains(&density) {
         return Vec::new();
@@ -103,6 +101,32 @@ pub fn plan_warnings(graph: &Graph) -> Vec<PlanWarning> {
             band: DENSITY_BAND,
         },
     }]
+}
+
+/// A plan's edge density: the edges of its reduced graph (its edges less
+/// the redundant ones, G5) over the pairs of its open nodes,
+/// `n(n-1)/2`, rounded to four decimal places. `None` with fewer than two
+/// open nodes, which have no pairs. Both [`plan_warnings`] and the
+/// renderer's `edge_density` metric read it, as the Python compiler's
+/// `edge_density`.
+#[must_use]
+pub fn edge_density(graph: &Graph) -> Option<f64> {
+    let open_nodes = open_nodes(graph);
+    if open_nodes < 2 {
+        return None;
+    }
+    let pairs = open_nodes * (open_nodes - 1) / 2;
+    Some(round4(ratio(reduced_edges(graph), pairs)))
+}
+
+/// The open nodes of `graph`.
+fn open_nodes(graph: &Graph) -> usize {
+    graph.nodes.values().filter(|n| !n.complete).count()
+}
+
+/// The edges of `graph`'s reduced graph.
+fn reduced_edges(graph: &Graph) -> usize {
+    graph.edges.difference(&graph.redundant).count()
 }
 
 /// `a / b` as a float. Counts of nodes and edges are far below 2^52, so
