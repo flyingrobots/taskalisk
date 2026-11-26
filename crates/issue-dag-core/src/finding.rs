@@ -126,6 +126,21 @@ impl Severity {
 /// Equality, order and hash follow that identity alone: findings sort by
 /// subject, then code, then the reference concerned, so two runs give the
 /// same report, and a finding with other wording is the same finding.
+///
+/// Its code is a [`Code`], which only the catalogue builds, so no emitter can
+/// give a finding a code that is in no catalogue:
+///
+/// ```compile_fail
+/// use issue_dag_core::{Finding, IssueRef, Severity};
+///
+/// let invented = Finding {
+///     subject: IssueRef::parse("o/r#1").expect("a reference"),
+///     code: "made.up",
+///     concerns: None,
+///     severity: Severity::Error,
+///     message: "a code in no catalogue",
+/// };
+/// ```
 #[derive(Clone, Debug)]
 pub struct Finding {
     /// The issue that receives it.
