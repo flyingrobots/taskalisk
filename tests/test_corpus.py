@@ -168,6 +168,21 @@ class Forge(unittest.TestCase):
         body = "```yaml\n.dag: issue-dag/2\n.id: o/r#1\n.kind: [task]\n```\n"
         self.assertEqual(forge.run_document(body, "o/r#1"), {"result": "error", "error": "TypeError"})
 
+    def test_an_unavailable_permission_stays_unavailable_whatever_its_reason(self):
+        b = json.loads((SPEC_COPY / "corpus" / "cases" / "graph" / "i5-permission-unavailable" / "bundle.json").read_text())
+        slots = [s for row in b["observations"]["permissions"].values() for s in row.values() if "unavailable" in s]
+        self.assertTrue(slots)
+        for slot in slots:
+            slot["unavailable"] = "gh: Not Found (HTTP 404)"
+        self.assertEqual(forge.run_graph(b), {"outcome": "incomplete"})
+
+    def test_an_unavailable_codeowners_stays_unavailable_whatever_its_reason(self):
+        state = plan_state()
+        state["issues"][f"{HOME}#1"]["editors"] = ["owner", "carol"]
+        b = ob.from_fake_state(state, roots=[f"{HOME}#9"], trust={"codeowners": True})
+        b["observations"]["codeowners"][HOME] = {"unavailable": "gh: Not Found (HTTP 404)"}
+        self.assertEqual(forge.run_graph(b), {"outcome": "incomplete"})
+
     def test_a_malformed_id_is_l1_and_a_missing_or_non_string_id_is_v3(self):
         """Format rule V12: the form of a reference is L1; the kind of `.id` is V3."""
         self.assertEqual(forge.label_for(".id '#1' must be owner/repo#N", {".id": "#1"}), ("L1", None))
@@ -392,6 +407,19 @@ class Checker(unittest.TestCase):
         (where / "notes.txt").unlink()
         (where / "input.json").unlink()
         self.assertTrue(any("input.json" in p for p in self.problems()))
+
+    def test_a_bundle_that_is_not_an_object_fails(self):
+        where, _ = self.case("characterisation")
+        (where / "bundle.json").write_text("null\n")
+        self.assertTrue(any("bundle" in p and where.name in p for p in self.problems()))
+
+    def test_findings_compare_as_a_set(self):
+        where = self.corpus / "cases" / "graph" / "d3-outside-the-scope"
+        expected = json.loads((where / "expected.json").read_text())
+        self.assertGreaterEqual(len(expected["findings"]), 2)
+        expected["findings"].reverse()
+        self.rewrite(where / "expected.json", expected)
+        self.assertEqual([p for p in self.problems() if where.name in p], [])
 
     def test_a_stale_digest_fails(self):
         (self.corpus / "README.md").write_text((self.corpus / "README.md").read_text() + "\nmore\n")
