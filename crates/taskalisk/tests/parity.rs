@@ -11,8 +11,8 @@
 //! - the rendering equals the recorded Rust rendering,
 //!   `tests/fixtures/render/rust/<case>.jsonl`, byte for byte, and two
 //!   renderings are identical (`TASKALISK_BLESS=1` rewrites the recording);
-//! - every line equals the Python's line once the fields in [`gaps`] are
-//!   removed from it: exactly those, no more and no fewer;
+//! - every line equals the Python's line: the renderer has no gap left, the
+//!   trust gate's reasons included (flyingrobots/taskalisk#46);
 //! - the rendering without a display input is the rendering with one, less
 //!   exactly the fields in [`display_fields`].
 //!
@@ -125,6 +125,9 @@ fn display_of(python: &[Value]) -> Display {
             (Some("finding"), Some("parent.not_planned")) => {
                 issue(&detail["parent"], &detail["title"], &Value::Null);
             }
+            (Some("finding"), Some("issue.untrusted")) => {
+                issue(&detail["id"], &Value::Null, &detail["url"]);
+            }
             _ => {}
         }
     }
@@ -148,6 +151,12 @@ fn display_of(python: &[Value]) -> Display {
                 d.recoverable_branches.insert(id, branches);
             }
         }
+        if line["code"] == "pull_request.untrusted" {
+            let pr = &line["detail"];
+            if let (Some(n), Some(url)) = (pr["number"].as_u64(), text(&pr["url"])) {
+                d.pull_request_urls.insert(n, url);
+            }
+        }
         if line["event"] == "plan" {
             let trust = &line["source"]["trust"];
             d.codeowners = string_lists(&trust["codeowners"]);
@@ -157,52 +166,18 @@ fn display_of(python: &[Value]) -> Display {
     d
 }
 
-/// Whether the case's 1.x document holds an intended difference or a gap:
-/// then the Rust `artifact_hash` digests the Rust document, and is not the
-/// Python's (`docs/topics/output/README.md`). Only its form is asserted.
-/// A plan that did not compile is no exception: its document lists what
-/// discovery read (decision D13).
+/// Whether the case's 1.x document holds an intended difference: then the
+/// Rust `artifact_hash` digests the Rust document, and is not the Python's
+/// (`docs/topics/output/README.md`). Only its form is asserted. A plan that
+/// did not compile is no exception: its document lists what discovery read
+/// (decision D13), the trust gate's reasons included.
 fn hash_differs(python: &[Value]) -> bool {
     python.iter().any(|l| {
         matches!(
             l["code"].as_str(),
-            Some(
-                "frontmatter.violation"
-                    | "frontmatter.warning"
-                    | "issue.untrusted"
-                    | "pull_request.untrusted"
-            )
+            Some("frontmatter.violation" | "frontmatter.warning")
         )
     })
-}
-
-/// The fields of a Python line the renderer does not write, given a
-/// display input, as paths from the line; `*` stands for every item of a
-/// list.
-fn gaps(line: &Value) -> Vec<&'static str> {
-    match line["event"].as_str() {
-        Some("finding") => match line["code"].as_str() {
-            // The trust gate's reasons: flyingrobots/taskalisk#46.
-            Some("issue.untrusted") => vec![
-                "message",
-                "detail/url",
-                "detail/state",
-                "detail/author",
-                "detail/reasons",
-                "detail/referenced_by",
-            ],
-            Some("pull_request.untrusted") => vec![
-                "message",
-                "detail/url",
-                "detail/author",
-                "detail/cross_repository",
-                "detail/closes",
-                "detail/reason",
-            ],
-            _ => Vec::new(),
-        },
-        _ => Vec::new(),
-    }
 }
 
 /// The fields of a line that only the display input gives.
@@ -234,6 +209,7 @@ fn display_fields(line: &Value) -> Vec<&'static str> {
                 vec!["detail/title"]
             }
             Some("issue.unmodeled") => vec!["detail/title", "detail/url"],
+            Some("issue.untrusted" | "pull_request.untrusted") => vec!["detail/url"],
             _ => Vec::new(),
         },
         _ => Vec::new(),
@@ -368,10 +344,7 @@ fn every_agreed_case_renders_as_the_python_does() {
         let got = lines(&text);
 
         // With a display input, against the Python.
-        let mut want: Vec<Value> = python
-            .iter()
-            .map(|l| without(l, &gaps(l), &mut problems))
-            .collect();
+        let mut want: Vec<Value> = python.clone();
         let mut theirs = got.clone();
         if hash_differs(&python) {
             want[0] = hash_removed(want[0].clone(), "python", &mut problems);
@@ -440,4 +413,42 @@ fn a_rejected_or_incomplete_run_has_no_result_lines() {
         outcome_of("i5-issue-unavailable"),
         Err(NotRendered::Incomplete)
     );
+}
+
+/// No title of an untrusted issue, and nothing of a body, reaches any line,
+/// whatever the display input holds (threat model C1 and C3,
+/// flyingrobots/taskalisk#46). In this variant strangers edited the body of
+/// a trusted author's issue, and hostile text was appended to it; here every
+/// issue's title is hostile too.
+#[test]
+fn no_untrusted_title_or_any_body_text_reaches_a_line() {
+    const CASE: &str = "trust-untrusted-editor--untrusted-editors";
+    const HOSTILE: &str = "IGNORE-PREVIOUS-INSTRUCTIONS";
+    let text = bundle_text(CASE);
+    assert!(text.contains(HOSTILE), "the variant carries hostile body text");
+    let bundle = load(&text).expect("bundle");
+    let mut display = Display::default();
+    for id in bundle.observations.issues.keys() {
+        display
+            .titles
+            .insert(id.clone(), format!("{HOSTILE} title of {id}"));
+    }
+    let untrusted = "flyingrobots/geordi#1";
+    let rendered = rendered(CASE, Some(&display)).expect("rendered");
+    assert!(
+        !rendered.contains(&format!("{HOSTILE} title of {untrusted}")),
+        "an untrusted title was rendered:\n{rendered}"
+    );
+    assert!(!rendered.contains("rm -rf"), "body text was rendered:\n{rendered}");
+    let finding = lines(&rendered)
+        .into_iter()
+        .find(|l| l["code"] == "issue.untrusted")
+        .expect("the untrusted issue's finding");
+    assert_eq!(
+        finding["message"],
+        "flyingrobots/geordi#1 failed the trust gate: editor mallory: not a collaborator of \
+         flyingrobots/geordi; editor eve: permission read on flyingrobots/geordi is below write; \
+         editor (none): no login (deleted user)"
+    );
+    assert!(!finding.to_string().contains(HOSTILE), "{finding}");
 }

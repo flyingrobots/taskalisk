@@ -5,9 +5,8 @@
   output fails here until the fixtures are recaptured.
 - `tests/fixtures/render/rust/` is the Rust rendering of the same cases, which the Rust test
   holds byte for byte. Each of its lines must validate against the exact schema its `_schema`
-  names, once the writer's envelope (`t`, `seq`, `run`) is added, except that a field the Rust
-  renderer cannot write yet may be missing (RUST_GAPS, FINDING_GAPS): the trust gate's reasons
-  (flyingrobots/taskalisk#46).
+  names, once the writer's envelope (`t`, `seq`, `run`) is added. The renderer has no gap left:
+  the trust gate's reasons (flyingrobots/taskalisk#46) were the last.
 """
 import json
 import re
@@ -19,26 +18,11 @@ from parley_emit import validate_line
 
 RUST = capture.FIXTURES / "rust"
 
-# {schema id: the errors allowed}; `*` is any list index; a finding's depend on its code. The Rust
-# rendering here is given a display input, so only what the core cannot know yet is missing; every
-# plan line carries `artifact_hash`.
-RUST_GAPS: dict = {}
-# The trust gate's reasons: flyingrobots/taskalisk#46.
-FINDING_GAPS = {
-    "issue.untrusted": {"/ is missing message"} | {f"/detail is missing {f}" for f in ("url", "state", "author", "reasons", "referenced_by")},
-    "pull_request.untrusted": {"/ is missing message"},
-}
 
 # Not a gap but an intended difference: a frontmatter finding is read by its `code` and `subject`;
 # its message is prose that neither the schema nor the specification fixes, so the Rust one (the
 # core's fixed text, one per rule) differs from the Python's (one per message, with the value).
 INTENDED_DIFFERENCES = {"frontmatter.violation": "message", "frontmatter.warning": "message"}
-
-
-def allowed(line):
-    if line["_schema"]["id"] == "taskalisk.finding":
-        return FINDING_GAPS.get(line["code"], set())
-    return RUST_GAPS.get(line["_schema"]["id"], set())
 
 
 class PythonFixtures(unittest.TestCase):
@@ -60,7 +44,7 @@ class RustRecordings(unittest.TestCase):
         self.assertEqual(sorted(p.stem for p in RUST.glob("*.jsonl")),
                          sorted(p.stem for p in (capture.FIXTURES / "python").glob("*.jsonl")))
 
-    def test_every_line_validates_but_for_the_declared_gaps(self):
+    def test_every_line_validates(self):
         checked = 0
         for path in sorted(RUST.glob("*.jsonl")):
             for n, line in enumerate(pl.parse(path.read_text(), path.name), 1):
@@ -70,7 +54,7 @@ class RustRecordings(unittest.TestCase):
                 result = validate_line(full, pl.TOOL_SCHEMAS)
                 errors = {re.sub(r"/\d+", "/*", str(e)) for e in result.errors}
                 self.assertFalse(result.unsupported, f"{path.name}:{n}: {result.unsupported}")
-                self.assertLessEqual(errors, allowed(line), f"{path.name}:{n}: {line}")
+                self.assertEqual(errors, set(), f"{path.name}:{n}: {line}")
                 checked += 1
         self.assertGreater(checked, 1000)
 
