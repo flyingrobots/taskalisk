@@ -11,9 +11,20 @@ requirements and their tests are the [test plan](test-plan.md).
 
 Lines are written by `skills/taskalisk/scripts/parley_emit.py`, the Python Parley writer, copied
 unmodified from flyingrobots/parley's release `parley-emit-py-v0.3.0` (version 0.3.0, Parley spec 0.2.1).
-`parley_emit.pin.json` beside it records its SHA-256 and that commit, and a test fails when the
-copy's digest differs from the pin. `python3 parley_emit.py --vendor-info` prints the digest and a
-`shasum -c` command. The writer is Apache-2.0; its `LICENSE` and `NOTICE` sit beside it.
+`parley_emit.pin.json` beside it records its SHA-256 and that commit. Two checks hold it:
+
+- **Drift** (offline, every run of the suite): `Vendored.test_copy_matches_its_pin` fails when the
+  copy's digest or size differs from the pin. It proves only that copy and pin agree; both live
+  here, so a changed writer with a recomputed pin passes it.
+- **Provenance** (needs the network; CI runs it): `python3 scripts/check_vendored_writer.py` fetches
+  `packages/parley-emit-py/parley_emit.py` from flyingrobots/parley at the pinned commit and
+  requires its digest and size to equal the pin's and the copy's. A failed fetch is a failure. In
+  the offline suite its test (`TASKALISK_UPSTREAM_CHECK=1` to run it) is reported as skipped;
+  `-v` shows why. The pin must name a full 40-character commit: a short SHA or a branch is a
+  moving target, and is refused before anything is fetched.
+
+`python3 parley_emit.py --vendor-info` prints the digest and a `shasum -c` command. The writer is
+Apache-2.0; its `LICENSE` and `NOTICE` sit beside it.
 
 The writer owns the envelope (`event`, `t`, `seq`, `run`, `_schema`), the bootstrap line, the
 receipt, redaction, `--help`, `--schema`, `--human`, `--dry-run`, the top-level handler and the
