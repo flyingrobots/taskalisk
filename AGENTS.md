@@ -21,6 +21,11 @@ Instructions for agents that work in this repository.
 
 This repository's own work is planned with its own tool. Every open issue
 carries `issue-dag/2` frontmatter; a new issue is not complete without it.
+File a new issue from one of the forms in `.github/ISSUE_TEMPLATE/`, and set
+its `.id` to the number GitHub assigns. The forms are the skill's canonical
+templates installed with its snippet; change a template only in
+`skills/taskalisk/templates/issue/` and reinstall it, because
+`tests/test_issue_templates.py` fails when the two differ.
 Before you pick up work, compile the graph and take a frontier task:
 
 ```sh
