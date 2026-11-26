@@ -58,6 +58,9 @@ macro_rules! shape_warnings {
 }
 
 shape_warnings! {
+    /// An open task without `.size_hours`.
+    EstimateMissing => "taskalisk.estimate-missing",
+        "the open task has no .size_hours: the plan cannot be reported at its true size",
     /// An edge the transitive reduction removes (profile rule G5).
     RedundantEdge => "taskalisk.redundant-edge",
         "the .blocked_by edge is implied by a path of other edges; the reduction removes it",
@@ -79,12 +82,15 @@ pub enum Detail {
 pub struct ShapeFinding {
     /// The finding: its subject, code, the reference it concerns, message.
     pub finding: Finding,
-    /// What it measured.
-    pub detail: Detail,
+    /// What it measured, or `None` when the finding says it all.
+    pub detail: Option<Detail>,
 }
 
 /// The shape warnings of a plan's graph, sorted by their findings.
 ///
+/// - `taskalisk.estimate-missing`, for each open task without `.size_hours`
+///   ([`crate::Node::size_hours`]): an opaque node has no document to hold
+///   the key, and a closed node or a container draws none. It has no detail.
 /// - `taskalisk.redundant-edge`, for each edge the reduction removes (G5):
 ///   the subject is the dependent, whose `.blocked_by` declares the edge,
 ///   the finding concerns the prerequisite, and the detail is the node the
@@ -96,11 +102,25 @@ pub fn shape_warnings(graph: &Graph) -> Vec<ShapeFinding> {
     for edge in &graph.redundant {
         found.push(ShapeFinding {
             finding: finding(ShapeWarning::RedundantEdge, &edge.to, Some(&edge.from)),
-            detail: Detail::ImpliedVia(via.of_edge(edge)),
+            detail: Some(Detail::ImpliedVia(via.of_edge(edge))),
         });
     }
+    estimates_missing(graph, &mut found);
     found.sort_by(|a, b| a.finding.cmp(&b.finding));
     found
+}
+
+/// `taskalisk.estimate-missing`: each open task with a document and no
+/// `.size_hours`.
+fn estimates_missing(graph: &Graph, found: &mut Vec<ShapeFinding>) {
+    for (id, node) in &graph.nodes {
+        if !node.complete && !node.opaque && node.size_hours.is_none() && id.number() == 0 {
+            found.push(ShapeFinding {
+                finding: finding(ShapeWarning::EstimateMissing, id, None),
+                detail: None,
+            });
+        }
+    }
 }
 
 /// The finding of `warning` for `subject`, about `concerns`.

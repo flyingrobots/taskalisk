@@ -25,9 +25,24 @@ fn task(id: u32, blocked_by: &[u32], extra: &str) -> String {
     )
 }
 
+/// A container document for `o/r#<id>` with `children`.
+fn container(id: u32, children: &[u32]) -> String {
+    let refs: Vec<String> = children.iter().map(|n| format!("o/r#{n}")).collect();
+    format!(
+        "```yaml\n.dag: issue-dag/2\n.id: o/r#{id}\n.kind: container\n.children: [{}]\n```\n",
+        refs.join(", ")
+    )
+}
+
 /// The graph of a run over the open home issues `bodies`, by number, each
 /// written by the owner; the run must give a plan.
 fn graph(bodies: &[(u32, String)]) -> Graph {
+    graph_closing(bodies, &[])
+}
+
+/// As [`graph`], with the issues numbered in `closed` closed: they are not
+/// seeds, and are read only when a document names them.
+fn graph_closing(bodies: &[(u32, String)], closed: &[u32]) -> Graph {
     let owner = Actor {
         login: "o".to_owned(),
         actor_type: "User".to_owned(),
@@ -36,6 +51,7 @@ fn graph(bodies: &[(u32, String)]) -> Graph {
         home_open_issues: Some(Observed::Value(
             bodies
                 .iter()
+                .filter(|(n, _)| !closed.contains(n))
                 .map(|(n, _)| reference(&format!("o/r#{n}")))
                 .collect(),
         )),
@@ -49,7 +65,11 @@ fn graph(bodies: &[(u32, String)]) -> Graph {
             Observed::Value(Issue {
                 address: address.clone(),
                 pull_request: false,
-                state: IssueState::Open,
+                state: if closed.contains(n) {
+                    IssueState::Closed
+                } else {
+                    IssueState::Open
+                },
                 state_reason: None,
                 author: Some(owner.clone()),
                 author_association: Some("OWNER".to_owned()),
@@ -109,7 +129,7 @@ fn every_shape_warning_is_a_catalogued_warning() {
 /// The detail of a redundant-edge warning: the node it is implied via.
 fn via(warning: &ShapeFinding) -> &IssueRef {
     match &warning.detail {
-        Detail::ImpliedVia(node) => node,
+        Some(Detail::ImpliedVia(node)) => node,
         other => panic!("not a redundant edge's detail: {other:?}"),
     }
 }
@@ -162,7 +182,7 @@ fn a_redundant_edge_gives_one_warning_naming_it_and_its_implied_via() {
     assert_eq!(warning.finding.subject, r(3));
     assert_eq!(warning.finding.concerns, Some(r(1)));
     assert_eq!(warning.finding.severity(), Severity::Warning);
-    assert_eq!(warning.detail, Detail::ImpliedVia(r(2)));
+    assert_eq!(warning.detail, Some(Detail::ImpliedVia(r(2))));
 }
 
 /// #62: the same plan, reduced, gives no redundant-edge warning.
@@ -241,4 +261,49 @@ fn perf_redundant_edge_warnings_of_a_chain_with_a_hub_take_under_a_second() {
     let took = start.elapsed();
     assert!(took < std::time::Duration::from_secs(1), "took {took:?}");
     check_chain_with_a_hub(&found);
+}
+
+/// #64: an open task without `.size_hours` gives one warning naming it, with
+/// no detail; the same task with the key gives none.
+#[test]
+fn an_open_task_without_an_estimate_gives_one_warning() {
+    let found = shape_warnings(&graph(&[
+        (1, task(1, &[], ".size_hours: 2\n")),
+        (2, task(2, &[1], "")),
+    ]));
+    let missing = of(&found, ShapeWarning::EstimateMissing);
+    assert_eq!(missing.len(), 1, "{found:?}");
+    let warning = missing[0];
+    assert_eq!(warning.finding.subject, r(2));
+    assert_eq!(warning.finding.concerns, None);
+    assert_eq!(warning.finding.severity(), Severity::Warning);
+    assert_eq!(warning.detail, None);
+
+    let found = shape_warnings(&graph(&[
+        (1, task(1, &[], ".size_hours: 2\n")),
+        (2, task(2, &[1], ".size_hours: 3\n")),
+    ]));
+    assert!(
+        of(&found, ShapeWarning::EstimateMissing).is_empty(),
+        "{found:?}"
+    );
+}
+
+/// #64: a closed task without `.size_hours`, read because an open task
+/// names it, and a container draw no warning.
+#[test]
+fn a_closed_task_and_a_container_give_no_estimate_warning() {
+    let found = shape_warnings(&graph_closing(
+        &[
+            (1, task(1, &[], "")),
+            (2, task(2, &[1], ".size_hours: 3\n")),
+            (3, task(3, &[], ".size_hours: 1\n")),
+            (9, container(9, &[2, 3])),
+        ],
+        &[1],
+    ));
+    assert!(
+        of(&found, ShapeWarning::EstimateMissing).is_empty(),
+        "{found:?}"
+    );
 }

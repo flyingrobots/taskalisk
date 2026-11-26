@@ -516,6 +516,7 @@ impl fmt::Display for Rule {
 /// | `taskalisk.outcome-sentences` | an Outcome of more than one sentence | warning |
 /// | `taskalisk.scope-missing` | a task body without `## Scope` | warning |
 /// | `taskalisk.title-joins` | a title joining two things with "and" or `;` | warning |
+/// | `taskalisk.estimate-missing` | an open task without `.size_hours` | warning |
 /// | `taskalisk.redundant-edge` | an edge the reduction removes (G5) | warning |
 #[must_use]
 pub const fn code(label: Label) -> &'static str {
