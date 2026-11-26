@@ -423,9 +423,8 @@ impl<'a, F: Forge + ?Sized> Run<'a, F> {
         {
             return Ok(Visit::Untrusted(Box::new(issue)));
         }
-        let body = value(issue.body.clone().ok_or_else(|| Missing {
-            what: format!("the body of {reference}"),
-        })?)?;
+        // C15: the body is read only once the author is trusted.
+        let body = value(self.forge.body(reference)?)?;
         if !self.admission.editors_trusted(author, &body, &repo)? {
             return Ok(Visit::Untrusted(Box::new(issue)));
         }

@@ -471,9 +471,11 @@ fn issue(value: &Value, at: &str) -> Read<Issue> {
             "state_reason",
             "author",
             "author_association",
-            "body",
         ],
-        &[],
+        // OB14: a body the run never reads, such as that of an issue whose
+        // author is not trusted, may be left out; a run that reads it then
+        // finds it missing (OB5).
+        &["body"],
     )?;
     let address = reference(
         text(&i["address"], &format!("{at}.address"))?,
@@ -499,7 +501,10 @@ fn issue(value: &Value, at: &str) -> Read<Issue> {
             &i["author_association"],
             &format!("{at}.author_association"),
         )?,
-        body: Some(slot(&i["body"], &format!("{at}.body"), body)?),
+        body: i
+            .get("body")
+            .map(|b| slot(b, &format!("{at}.body"), body))
+            .transpose()?,
     })
 }
 

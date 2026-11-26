@@ -145,8 +145,16 @@ impl Forge for RecordedForge<'_> {
     }
 
     fn issue(&self, reference: &IssueRef) -> Lookup<Issue> {
-        recorded(self.observations.issues.get(reference), || {
+        let slot = recorded(self.observations.issues.get(reference), || {
             format!("the issue {reference}")
+        })?;
+        // The body is its own read, [`Forge::body`].
+        Ok(match slot {
+            Observed::Value(issue) => Observed::Value(Issue {
+                body: None,
+                ..issue
+            }),
+            Observed::Unavailable(why) => Observed::Unavailable(why),
         })
     }
 

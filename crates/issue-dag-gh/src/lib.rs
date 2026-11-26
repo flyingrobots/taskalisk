@@ -6,6 +6,9 @@
 //! the REST issue list and issue, the edit-history GraphQL query with its
 //! pagination guards, `gh pr list` with closing references, the
 //! collaborator permission and the CODEOWNERS file, with the same limits.
+//! The edit-history query runs only when [`Forge::body`] is asked, which the
+//! planner does only for an issue whose author is trusted, so an issue a
+//! stranger wrote costs no further query (threat model C15).
 //!
 //! The forge fails closed. A read that fails, answers in the wrong shape, or
 //! fills its list limit is a [`GhError`], never an empty answer: the slot is
@@ -163,30 +166,51 @@ impl Forge for GhForge {
         Ok(slot)
     }
 
+    /// The REST issue alone; its body is [`Forge::body`]'s read.
     fn issue(&self, reference: &IssueRef) -> Lookup<Issue> {
         let cached = self.read.borrow().issues.get(reference).cloned();
-        let slot =
-            cached.unwrap_or_else(|| match read::issue(&self.runner, reference, self.limits) {
-                Ok((slot, body_failure)) => {
-                    self.failures.borrow_mut().extend(body_failure);
-                    slot
-                }
+        let slot = cached.unwrap_or_else(|| {
+            let slot = match read::issue(&self.runner, reference) {
+                Ok(slot) => slot,
                 Err(error) => self.settle(Err(error)),
-            });
-        self.read
-            .borrow_mut()
-            .issues
-            .insert(reference.clone(), slot.clone());
-        Ok(slot)
-    }
-
-    fn body(&self, reference: &IssueRef) -> Lookup<Body> {
-        Ok(match self.issue(reference)? {
-            Observed::Value(issue) => issue
-                .body
-                .unwrap_or_else(|| Observed::Unavailable(format!("the body of {reference}"))),
+            };
+            self.read
+                .borrow_mut()
+                .issues
+                .insert(reference.clone(), slot.clone());
+            slot
+        });
+        Ok(match slot {
+            Observed::Value(issue) => Observed::Value(Issue {
+                body: None,
+                ..issue
+            }),
             Observed::Unavailable(why) => Observed::Unavailable(why),
         })
+    }
+
+    /// The edit-history query, run only when the body is asked for (threat
+    /// model C15), once; the body is recorded in the issue's slot.
+    fn body(&self, reference: &IssueRef) -> Lookup<Body> {
+        let issue = match self.issue(reference)? {
+            Observed::Value(issue) => issue,
+            Observed::Unavailable(why) => return Ok(Observed::Unavailable(why)),
+        };
+        let cached = match self.read.borrow().issues.get(reference) {
+            Some(Observed::Value(recorded)) => recorded.body.clone(),
+            _ => None,
+        };
+        if let Some(slot) = cached {
+            return Ok(slot);
+        }
+        let slot = read::body_not_read(reference, &issue).map_or_else(
+            || self.settle(read::edit_history(&self.runner, reference, self.limits)),
+            Observed::Unavailable,
+        );
+        if let Some(Observed::Value(recorded)) = self.read.borrow_mut().issues.get_mut(reference) {
+            recorded.body = Some(slot.clone());
+        }
+        Ok(slot)
     }
 
     fn permission(&self, repo: &Repo, login: &str) -> Lookup<Option<String>> {

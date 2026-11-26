@@ -59,9 +59,13 @@ schema version under `Unreleased` is a draft and may change in place.
   `gh.response_invalid`, `gh.list_limit_reached`), and its slot is answered unavailable, so the run
   is incomplete and exits 2, never planned from an empty answer. HTTP 404 means "none" only for a
   permission (not a collaborator) and a CODEOWNERS path; an issue that answers 404 is unavailable
-  (D10). Each slot is read once, and what was read replays through `RecordedForge`. Unlike the
-  Python, the body's edit history is read with the issue, before admission, and a pull request's
-  head repository is not observed.
+  (D10). Each slot is read once, and what was read replays through `RecordedForge`. As in the
+  Python, the body's edit history is read only after the author is trusted, so an issue a stranger
+  wrote costs no further query (threat model C15): the `Forge` port gains `body(reference)`, which
+  the planner calls only after admission, and an issue's `body` is optional in the observations,
+  so a bundle may leave out a body the run never reads (OB14) and a run that reads one not
+  recorded finds it missing (OB5). Unlike the Python, a pull request's head repository is not
+  observed.
 
 - **Repeated keys, warnings and refusal order in the specification** (flyingrobots/taskalisk#104).
   The vendored issue-dag specification now states the rulings the Rust core implements: no rule of

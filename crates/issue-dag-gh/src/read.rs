@@ -248,13 +248,10 @@ fn repository_of(url: &str) -> Option<Repo> {
         .flatten()
 }
 
-/// What a reference resolves to (bundle rule OB8), and the failure of its
-/// edit history when the body could not be read.
-pub fn issue(
-    runner: &Runner,
-    reference: &IssueRef,
-    limits: Limits,
-) -> Result<(Observed<Issue>, Option<GhError>), GhError> {
+/// What a reference resolves to (bundle rule OB8), without its body: the
+/// REST issue alone, so that an issue a stranger wrote costs no further
+/// query (threat model C15).
+pub fn issue(runner: &Runner, reference: &IssueRef) -> Result<Observed<Issue>, GhError> {
     let path = format!(
         "repos/{}/{}/issues/{}",
         reference.owner(),
@@ -266,12 +263,9 @@ pub fn issue(
         Ok(out) => out,
         // Profile rule D10: a reference that resolves to nothing visible.
         Err(Refusal::NotFound) => {
-            return Ok((
-                Observed::Unavailable(format!(
-                    "{reference} resolves to no issue gh can see (HTTP 404)"
-                )),
-                None,
-            ));
+            return Ok(Observed::Unavailable(format!(
+                "{reference} resolves to no issue gh can see (HTTP 404)"
+            )));
         }
         Err(Refusal::Failed(error)) => return Err(error),
     };
@@ -297,42 +291,42 @@ pub fn issue(
             })
         }
     };
-    let mut failure = None;
-    let body = if pull_request {
-        Observed::Unavailable(format!(
-            "{reference} is a pull request; its body is not read"
-        ))
-    } else if address != *reference {
-        // The address may be outside the read scope; it is never read.
-        Observed::Unavailable(format!(
-            "{reference} was transferred to {address}; its body is not read"
-        ))
-    } else {
-        match edit_history(runner, reference, limits) {
-            Ok(body) => Observed::Value(body),
-            Err(error) => {
-                let why = error.to_string();
-                failure = Some(error);
-                Observed::Unavailable(why)
-            }
-        }
-    };
-    let issue = Issue {
+    Ok(Observed::Value(Issue {
         address,
         pull_request,
         state,
         state_reason: optional_text(&source, item, "state_reason")?,
         author,
         author_association: optional_text(&source, item, "author_association")?,
-        body: Some(body),
-    };
-    Ok((Observed::Value(issue), failure))
+        body: None,
+    }))
+}
+
+/// Why the body of an issue already read is not read: it is a pull request,
+/// or it was transferred (its address may be outside the read scope).
+pub fn body_not_read(reference: &IssueRef, issue: &Issue) -> Option<String> {
+    if issue.pull_request {
+        Some(format!(
+            "{reference} is a pull request; its body is not read"
+        ))
+    } else if issue.address == *reference {
+        None
+    } else {
+        Some(format!(
+            "{reference} was transferred to {}; its body is not read",
+            issue.address
+        ))
+    }
 }
 
 /// The body and every body editor, every page read (the Python compiler's
 /// `gh_issue_edit_history`): a page that claims another without a cursor,
 /// a repeated cursor, or more pages than the bound is an error.
-fn edit_history(runner: &Runner, reference: &IssueRef, limits: Limits) -> Result<Body, GhError> {
+pub fn edit_history(
+    runner: &Runner,
+    reference: &IssueRef,
+    limits: Limits,
+) -> Result<Body, GhError> {
     let source = format!("gh api graphql (edit history of {reference})");
     let mut text = None;
     let mut editors = Vec::new();
