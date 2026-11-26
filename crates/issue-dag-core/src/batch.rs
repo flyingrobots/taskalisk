@@ -368,3 +368,120 @@ mod tests {
         assert_eq!(b.skipped, Vec::new());
     }
 }
+
+#[cfg(test)]
+mod scale {
+    use std::collections::BTreeSet;
+    use std::time::{Duration, Instant};
+
+    use super::select;
+    use crate::plan::{Edge, Graph, Node, NodeStatus};
+    use crate::rank::rank;
+    use crate::record::MeterClaim;
+    use crate::reference::IssueRef;
+
+    /// The bound ranking and selection must finish within, in a debug
+    /// build, as for planning (`plan::tests::LARGE_GRAPH_BOUND`).
+    const BOUND: Duration = Duration::from_secs(1);
+    const LARGE: u32 = 5_000;
+
+    fn r(n: u32) -> IssueRef {
+        IssueRef::parse(&format!("o/r#{n}")).expect("a reference")
+    }
+
+    fn node(n: u32) -> Node {
+        Node {
+            complete: false,
+            opaque: false,
+            untrusted: false,
+            status: Some(NodeStatus::Open),
+            // Distinct keys under one root, and a shared semaphore.
+            holds: BTreeSet::from([format!("src/{n}"), format!("docs/{n}/")]),
+            meters: vec![MeterClaim {
+                name: "ci".to_owned(),
+                slots: 1,
+            }],
+        }
+    }
+
+    fn graph(edges: impl IntoIterator<Item = (u32, u32)>, nodes: u32) -> Graph {
+        let edges: BTreeSet<Edge> = edges
+            .into_iter()
+            .map(|(from, to)| Edge {
+                from: r(from),
+                to: r(to),
+            })
+            .collect();
+        let targets: BTreeSet<IssueRef> = edges.iter().map(|e| e.to.clone()).collect();
+        Graph {
+            nodes: (1..=nodes).map(|n| (r(n), node(n))).collect(),
+            ready: (1..=nodes)
+                .map(r)
+                .filter(|id| !targets.contains(id))
+                .collect(),
+            edges,
+            ..Graph::default()
+        }
+    }
+
+    #[test]
+    fn a_chain_of_5000_nodes_ranks_and_selects_within_the_bound() {
+        let g = graph((1..LARGE).map(|n| (n, n + 1)), LARGE);
+        let start = Instant::now();
+        let ranking = rank(&g).expect("acyclic");
+        let batch = select(&g, &ranking, &[("ci".to_owned(), 1)].into());
+        let took = start.elapsed();
+        println!("took {took:?}");
+        assert_eq!(
+            ranking.scores[&r(1)],
+            100 * u64::from(LARGE - 1) + 10 * u64::from(LARGE) + 1
+        );
+        assert_eq!(ranking.waves.len(), LARGE as usize);
+        assert_eq!(ranking.critical_path.len(), LARGE as usize);
+        assert_eq!(batch.selected, vec![r(1)]);
+        assert!(took < BOUND, "a chain took {took:?}");
+    }
+
+    #[test]
+    fn a_wide_frontier_of_5000_nodes_ranks_and_selects_within_the_bound() {
+        // Every node is ready, so B5 considers 5000 nodes against a batch
+        // that grows to 5000 nodes holding 10000 keys.
+        let g = graph([], LARGE);
+        let capacities = [("ci".to_owned(), u64::from(LARGE))].into();
+        let start = Instant::now();
+        let ranking = rank(&g).expect("acyclic");
+        let batch = select(&g, &ranking, &capacities);
+        let took = start.elapsed();
+        println!("took {took:?}");
+        assert_eq!(batch.selected.len(), LARGE as usize);
+        assert_eq!(batch.skipped, Vec::new());
+        assert!(took < BOUND, "a wide frontier took {took:?}");
+    }
+
+    #[test]
+    fn a_fan_of_5000_nodes_ranks_within_the_bound() {
+        // o/r#1 blocks every other node and o/r#2 blocks the rest too: the
+        // edges from o/r#1 to o/r#3.. are redundant (G5).
+        let mut edges: Vec<(u32, u32)> = (2..=LARGE).map(|n| (1, n)).collect();
+        edges.extend((3..=LARGE).map(|n| (2, n)));
+        let mut g = graph(edges, LARGE);
+        g.redundant = (3..=LARGE)
+            .map(|n| Edge {
+                from: r(1),
+                to: r(n),
+            })
+            .collect();
+        let start = Instant::now();
+        let ranking = rank(&g).expect("acyclic");
+        let took = start.elapsed();
+        println!("took {took:?}");
+        assert_eq!(
+            ranking.scores[&r(1)],
+            100 * u64::from(LARGE - 1) + 10 * 3 + 1
+        );
+        // Every node from o/r#3 has level 2; the greatest identifier as text
+        // (K8) is o/r#999, not o/r#5000.
+        assert_eq!(ranking.critical_path, vec![r(1), r(2), r(999)]);
+        assert!(took < BOUND, "a fan took {took:?}");
+    }
+}
