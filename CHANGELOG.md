@@ -29,15 +29,19 @@ schema version under `Unreleased` is a draft and may change in place.
   S2), readiness (Q1, Q2) and the outcome classes (F1 to F5) with findings labelled as F5 states.
   An unavailable observation makes the run incomplete, never empty; a slot that was never recorded
   is an error, not an outcome. A new crate, `issue-dag-bundle`, reads an
-  `issue-dag-observations/1` bundle into the core and rejects one that breaks OB1 to OB13. All 179
+  `issue-dag-observations/1` bundle into the core and rejects one that breaks OB1 to OB13, or that
+  gives a JSON member twice. Cycles (G4) use Kahn's algorithm and the reduction (G5) descendant
+  bit sets, so a 5,000-task chain or wide graph plans in under a second in a debug build. All 179
   graph cases of the vendored corpus pass; for each `--python` twin the crate matches the
   normative case. Ranking and batch selection are not yet ported (flyingrobots/taskalisk#29), so
-  the corpus test compares the ready set as a set and leaves scores, waves, the critical path and
-  the batch uncompared. Choices the specification leaves open: an admitted pull request's draft
-  flag is required whether or not the issue it closes becomes a node; an invalid run reports its
-  graph unless a prerequisite is unknown (X3) or the edges form a cycle (G4); an invalid
-  document's fields are read where they have one value of the right form; a bundle with an
-  `observations` member the bundle rules do not define is rejected.
+  the corpus test compares the ready set as a set, checks only that each expected batch member is
+  dispatchable (Q2), and leaves scores, waves, the critical path and the batch order uncompared.
+  Choices the specification leaves open: an admitted pull request's draft flag is read only where
+  S2 needs it, for an open node of the home repository the pull request closes (I5); an invalid
+  run reports its graph unless a prerequisite is unknown (X3) or the edges form a cycle (G4); a
+  key repeated in an invalid document contributes nothing to its reading; a bot's `app/` prefix
+  and `[bot]` suffix are matched without regard to case; a bundle with an `observations` member
+  the bundle rules do not define is rejected.
 
 - **A provenance check for the vendored Parley writer** (flyingrobots/taskalisk#77).
   `scripts/check_vendored_writer.py` fetches the writer from flyingrobots/parley at the pinned
