@@ -9,6 +9,12 @@ schema version under `Unreleased` is a draft and may change in place.
 
 ### Fixed
 
+- **An abbreviated or contradicting mode flag is a usage error** (flyingrobots/taskalisk#73).
+  Every flag must be spelled in full: a prefix such as `--from` or `--verify` used to run
+  `inventory` and exit 0. Under an explicit command, a mode flag naming another command
+  (`inventory --from-github`, `verify … --from-github`) is refused. Both are startup failures,
+  exit 3. Every documented spelling selects the same command as before.
+
 - **A secret in a URL query string or fragment is redacted** (flyingrobots/taskalisk#78). The
   value of a query or fragment parameter named `token`, `access_token`, `key`, `secret`,
   `password`, `sig`, `signature`, `auth` or `code`, in any case, is replaced by `[redacted]` in

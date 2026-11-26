@@ -2225,7 +2225,7 @@ class Parser(argparse.ArgumentParser):
 
 
 def build_parser() -> Parser:
-    parser = Parser(prog="taskalisk.py", add_help=False, description="Taskalisk: zero-local-state issue DAG compiler, frontier ranker, and inventory.")
+    parser = Parser(prog="taskalisk.py", add_help=False, allow_abbrev=False, description="Taskalisk: zero-local-state issue DAG compiler, frontier ranker, and inventory.")
     parser.add_argument("--repo", default=".", help="Path inside the git repository (gh resolves the GitHub repo from it)")
     parser.add_argument("--milestone", default=None, help="Inventory mode only: optional GitHub milestone title filter")
     parser.add_argument("--root", action="append", default=[], help="With --from-github: start discovery at this issue, as owner/repo#N (repeatable)")
@@ -2286,6 +2286,12 @@ def resolve(args: list[str], command: str) -> dict[str, Any]:
     `question` is what --since-last matches on; it holds no clock, path outside --repo, or secret."""
     ns = build_parser().parse_args(args)
     github = command in ("plan", "edit")
+    # A mode flag that names another command contradicts an explicit one: never run one and ignore
+    # the other (flyingrobots/taskalisk#73).
+    if ns.from_github and command not in ("plan", "edit"):
+        raise UsageError(f"--from-github selects plan or edit, not {command}")
+    if ns.verify_dag is not None and command != "verify":
+        raise UsageError(f"--verify-dag selects verify, not {command}")
     if command == "edit" and not (ns.add_edge or ns.remove_edge):
         raise UsageError("edit needs --add-edge or --remove-edge")
     if command != "edit" and (ns.add_edge or ns.remove_edge):
