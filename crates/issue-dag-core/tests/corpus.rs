@@ -15,7 +15,7 @@ use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use issue_dag_core::{IssueRef, Judgement, Record, admit};
+use issue_dag_core::{IssueRef, Judgement, Record, Status, TaskType, admit};
 use serde_json::{Map, Value, json};
 
 fn corpus_dir() -> PathBuf {
@@ -38,13 +38,13 @@ fn record_json(record: &Record) -> Value {
         "version": record.version(),
         "id": record.id.to_string(),
         "kind": record.kind.as_str(),
-        "type": record.task_type.map(|t| t.as_str()),
+        "type": record.task_type.map(TaskType::as_str),
         "blocked_by": refs(&record.blocked_by),
         "children": refs(&record.children),
         "size_hours": record.size_hours,
         "holds": record.holds.iter().collect::<Vec<_>>(),
         "meters": record.meters.iter().map(|m| json!([m.name, m.slots])).collect::<Vec<_>>(),
-        "status": record.status.map(|s| s.as_str()),
+        "status": record.status.map(Status::as_str),
     })
 }
 

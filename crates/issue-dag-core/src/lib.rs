@@ -4,8 +4,6 @@
 //! ([`parse`]), validity ([`validate`]), the decoded record ([`admit`]), and
 //! the `.blocked_by` rewrite of the edge-edit contract ([`rewrite_blocked_by`]).
 //! The crate performs no I/O and has no dependencies.
-#![forbid(unsafe_code)]
-#![deny(warnings, clippy::all, clippy::pedantic, clippy::nursery)]
 mod carrier;
 mod label;
 mod record;
