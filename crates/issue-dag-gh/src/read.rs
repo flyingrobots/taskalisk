@@ -21,7 +21,8 @@ pub const EDIT_HISTORY_QUERY: &str = "query($owner:String!,$name:String!,$number
 pub const CODEOWNERS_PATHS: [&str; 3] = [".github/CODEOWNERS", "CODEOWNERS", "docs/CODEOWNERS"];
 
 /// The fields `gh pr list` is asked for.
-const PULL_REQUEST_FIELDS: &str = "number,isDraft,closingIssuesReferences,author,isCrossRepository";
+const PULL_REQUEST_FIELDS: &str =
+    "number,isDraft,closingIssuesReferences,author,isCrossRepository,url";
 
 fn args(items: &[&str]) -> Vec<String> {
     items.iter().map(|item| (*item).to_owned()).collect()
@@ -70,6 +71,47 @@ fn reference(source: &str, repo: &Repo, item: &Map<String, Value>) -> Result<Iss
         .ok_or_else(|| GhError::invalid(source, format!("{repo}#{number} is not a reference")))
 }
 
+/// What a REST issue object carries only to be shown: its title and its
+/// web URL, each `None` when absent or not a string. Never an input to a
+/// plan, so a wrong shape here is not an error.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Label {
+    /// `title`.
+    pub title: Option<String>,
+    /// `html_url`.
+    pub url: Option<String>,
+}
+
+fn label(item: &Map<String, Value>) -> Label {
+    let shown = |key: &str| item.get(key).and_then(Value::as_str).map(str::to_owned);
+    Label {
+        title: shown("title"),
+        url: shown("html_url"),
+    }
+}
+
+/// The repository `gh` resolves from its working directory
+/// (`gh repo view --json nameWithOwner`), as the Python compiler finds the
+/// home repository of `--repo`.
+pub fn repository(runner: &Runner) -> Result<Repo, GhError> {
+    let source = "gh repo view";
+    let out = runner.run_strict(
+        source,
+        &args(&[
+            "repo",
+            "view",
+            "--json",
+            "nameWithOwner",
+            "--jq",
+            ".nameWithOwner",
+        ]),
+    )?;
+    let text = String::from_utf8_lossy(&out);
+    // The server's text is left out of the reason.
+    Repo::parse(text.trim())
+        .ok_or_else(|| GhError::invalid(source, "the answer is not a repository owner/name"))
+}
+
 /// The open issues of `home` that are not pull requests (bundle rule OB6),
 /// each with the issue its listed object reads to, as the Python compiler
 /// fills a seed from the listing: a listed issue needs no query of its own
@@ -78,7 +120,7 @@ pub fn home_open_issues(
     runner: &Runner,
     home: &Repo,
     limits: Limits,
-) -> Result<Vec<(IssueRef, Issue)>, GhError> {
+) -> Result<Vec<(IssueRef, Issue, Label)>, GhError> {
     let path = format!(
         "repos/{}/{}/issues?state=open&per_page=100",
         home.owner(),
@@ -112,7 +154,7 @@ pub fn home_open_issues(
                 ));
             }
             let issue = rest_issue(&source, item)?;
-            issues.push((listed, issue));
+            issues.push((listed, issue, label(item)));
         }
     }
     if pages == 0 {
@@ -127,12 +169,14 @@ pub fn home_open_issues(
     Ok(issues)
 }
 
-/// The open pull requests of `home` (bundle rule OB7).
+/// The open pull requests of `home` (bundle rule OB7), each with its URL
+/// when `gh` gave one as text: shown only, never observed, so it is not
+/// part of [`PullRequest`] or of a bundle.
 pub fn home_open_pull_requests(
     runner: &Runner,
     home: &Repo,
     limits: Limits,
-) -> Result<Vec<PullRequest>, GhError> {
+) -> Result<Vec<(PullRequest, Option<String>)>, GhError> {
     let source = "gh pr list";
     let limit = limits.pull_requests.to_string();
     let out = runner.run_strict(
@@ -162,7 +206,11 @@ pub fn home_open_pull_requests(
     }
     items
         .iter()
-        .map(|item| pull_request(source, home, object(source, item, "a pull request")?))
+        .map(|item| {
+            let item = object(source, item, "a pull request")?;
+            let url = item.get("url").and_then(Value::as_str).map(str::to_owned);
+            Ok((pull_request(source, home, item)?, url))
+        })
         .collect()
 }
 
@@ -271,7 +319,7 @@ fn repository_of(url: &str) -> Option<Repo> {
 /// What a reference resolves to (bundle rule OB8), without its body: the
 /// REST issue alone, so that an issue a stranger wrote costs no further
 /// query (threat model C15).
-pub fn issue(runner: &Runner, reference: &IssueRef) -> Result<Observed<Issue>, GhError> {
+pub fn issue(runner: &Runner, reference: &IssueRef) -> Result<Observed<(Issue, Label)>, GhError> {
     let path = format!(
         "repos/{}/{}/issues/{}",
         reference.owner(),
@@ -291,7 +339,7 @@ pub fn issue(runner: &Runner, reference: &IssueRef) -> Result<Observed<Issue>, G
     };
     let value = json(&source, &out)?;
     let item = object(&source, &value, "the issue")?;
-    rest_issue(&source, item).map(Observed::Value)
+    rest_issue(&source, item).map(|issue| Observed::Value((issue, label(item))))
 }
 
 /// A REST issue object, as `GET .../issues/N` and the issue listing both

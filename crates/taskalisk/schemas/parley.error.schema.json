@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://flyingrobots.dev/parley/schemas/parley.error/2.0.0",
+  "title": "parley error",
+  "description": "Errors are data. measured, limit and remedy are what make an error actionable in one step rather than several.",
+  "type": "object",
+  "required": [
+    "event",
+    "t",
+    "seq",
+    "run",
+    "code",
+    "problem",
+    "_schema"
+  ],
+  "properties": {
+    "event": {
+      "const": "error"
+    },
+    "t": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "POSIX time in milliseconds (spec \u00a71.3)."
+    },
+    "seq": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "The run's single counter; 0 is the bootstrap line (spec \u00a71.3)."
+    },
+    "run": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The execution this line belongs to. Required on every line so a detached line can still be attributed (spec \u00a71.3)."
+    },
+    "code": {
+      "type": "string",
+      "pattern": "^[a-z0-9_]+(\\.[a-z0-9_]+)+$",
+      "description": "Stable identifier: two or more dot-separated segments of lowercase letters, digits and underscores (spec \u00a76). Never a prose message."
+    },
+    "problem": {
+      "type": "string",
+      "minLength": 1,
+      "description": "What is wrong, in one sentence."
+    },
+    "measured": {
+      "description": "The value observed, when the failure is a threshold."
+    },
+    "limit": {
+      "description": "The threshold that was not met."
+    },
+    "remedy": {
+      "type": "string",
+      "description": "The lever to pull. Omit rather than invent one."
+    },
+    "remedy_target": {
+      "type": "string",
+      "description": "What the remedy applies to."
+    },
+    "retryable": {
+      "type": "boolean"
+    },
+    "_schema": {
+      "type": "object",
+      "required": [
+        "id",
+        "version"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "const": "parley.error"
+        },
+        "version": {
+          "const": "2.0.0",
+          "description": "Full validation is against the schema for this exact id and version (spec \u00a74.5, \u00a74.6)."
+        }
+      }
+    }
+  }
+}

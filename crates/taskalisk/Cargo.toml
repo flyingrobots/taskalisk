@@ -1,19 +1,23 @@
 [package]
 name = "taskalisk"
 version = "0.1.0"
-description = "Taskalisk: renders a plan computed by issue-dag-core to the JSON lines the Taskalisk skill reads. No I/O."
+description = "Taskalisk: the command line that plans a live backlog through the gh and git adapters, and the renderer of a plan computed by issue-dag-core to the JSON lines the Taskalisk skill reads."
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 publish = false
 
+[[bin]]
+name = "taskalisk"
+path = "src/main.rs"
+
 [dependencies]
+issue-dag-bundle = { path = "../issue-dag-bundle" }
 issue-dag-core = { path = "../issue-dag-core" }
+issue-dag-gh = { path = "../issue-dag-gh" }
+issue-dag-git = { path = "../issue-dag-git" }
 serde_json = "1"
 sha2 = { version = "0.11", default-features = false }
-
-[dev-dependencies]
-issue-dag-bundle = { path = "../issue-dag-bundle" }
 
 [lints]
 workspace = true

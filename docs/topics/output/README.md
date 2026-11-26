@@ -149,6 +149,7 @@ a `frontmatter.violation` (the plan is not `ok`), and its line carries null; the
 | `edge.out_of_scope`, `edge.child_not_issue`, `edge.child_untrusted`, `edge.child_frontmatter_missing`, `edge.child_frontmatter_invalid`, `edge.rewrite_impossible` | an edit refused before any write | false |
 | `edge.rollback_failed` | an added edge could not be removed after the run failed | true |
 | `frontmatter.invalid` | an issue in the closure has invalid frontmatter | false |
+| `issue.not_found` | Rust binary only: a reference resolves to nothing, for the cause the core recorded; `detail.rule` is `D11`, `D12` or `D13` | false |
 | `graph.cycle`, `graph.unresolved_prerequisites` | the graph could not be ranked | false |
 | `dag_spec.unreadable`, `dag_spec.invalid` | the `--verify-dag` file cannot be read or has the wrong shape | false |
 | `uncaught.exception` | a defect: the traceback is in the receipt only, never on stderr | (writer) |
@@ -306,6 +307,67 @@ it.
   the writer needs the declaration to start.
 - `gh` is run with its output captured, so nothing it prints reaches the streams directly; its
   stderr text reaches a line only inside an error's `detail`, after the sanitising above.
+
+## The Rust binary
+
+`crates/taskalisk` builds a binary, `taskalisk`, whose `plan` command writes this contract
+(flyingrobots/taskalisk#31). It is named as the tool is named: the receipts of both
+implementations say `tool: taskalisk`, because they are one tool under one contract and the binary
+replaces the script at the cutover (#32); `v` is the crate's version, so a receipt says which one
+ran. The envelope is a port of the vendored writer's, not a call to it, and keeps its rules:
+the bootstrap line, one sequence across the streams and the receipt, the receipt under
+`.parley/receipts/` of the working directory, `inv` over the declared input `github:issues`, the
+`gh` token variables redacted, sidecars past 65,536 bytes, retention of 50 receipts, `--human`.
+Every line is written with its keys in sorted order, the envelope's included.
+
+It differs from the Python in these ways, each tested in `crates/taskalisk/tests/cli.rs`:
+
+- **Commands and flags.** Only `plan`. `--repo`, `--root`, `--sem-capacity`, `--trust`,
+  `--trust-owner`, `--trust-repo`, `--trust-codeowners`, `--from-github`, `--human` and `--help`
+  are accepted; every other flag and command is `startup.arguments_invalid`, exit 3, never
+  ignored. A flag's value may follow `=`. `--help` describes `plan` with the schemas of the lines
+  it writes and of `parley.error` and `parley.startup.failed` (copies of the writer's, held equal
+  by `tests/test_binary_schemas.py`).
+- **Gaps in the lines.** An
+  `issue.untrusted` or `pull_request.untrusted` finding lacks its message and the trust gate's
+  reasons, which the core does not keep yet (#46); those lines do not validate until it does. A
+  frontmatter finding's message is the core's fixed text (see `artifact_hash` above).
+- **The receipt.** The steps are fewer: the home repository, the branches, the pull requests,
+  `observed N issue(s)`, the evaluation record and retention, and no step per trust decision. In
+  the observed list a body that was not read (an untrusted author's, a pull request's) has a null
+  `body_sha256`, so `inv` differs from the Python's for the same backlog.
+- **The evaluation record.** Every plan the core answers (a plan, an invalid graph, an incomplete
+  read, a rejected root) records its `taskalisk-evaluation/1` record, from
+  `issue-dag-bundle::unretained`, as the receipt step `recorded the evaluation
+  (taskalisk-evaluation/1)`, in `detail.record`. A live run's observation bundle is not retained,
+  so the record's `observations` and `not_observed` are unavailable and its replay is
+  unavailable, until #59 captures the bundle. The record holds no issue body or title.
+- **Refused where the Python relocates.** The binary has no state-directory fallback; each case is
+  a startup failure, exit 3, with no receipt. A `.parley` that cannot be written is
+  `startup.receipt_unwritable`. A receipt path that would carry a declared secret's value (the
+  working directory's path holds it) is `startup.secret_in_path`. A `.parley/.gitignore` that
+  would let `git add` stage a receipt is `startup.receipt_stageable`: one with no line `*`, or a
+  line the writer's rule cannot rule out, a negation that can match `receipts` or a line holding
+  a NUL byte (the Python writer's `_negation_reaches_receipts`, ported rule for rule, so
+  `!.gitignore` is accepted). The file is the user's and is left alone; the binary creates it,
+  holding `*`, only when it is absent, written to a temporary name and linked into place so a
+  concurrent first run never reads it empty. A run id that carries a declared secret is drawn
+  again up to 16 times, then the run is `startup.secret_in_path`.
+- **Redaction.** A declared secret's value is replaced by `[redacted]` in every string of every
+  line, `resolved` included: the head records the argument indexes, the JSON Pointers into
+  `resolved` and the variable names in `redacted`, and `inv` is computed over the redacted
+  `resolved`, as the Python writer does. A secret inside an object key is not redacted.
+- **A reference that resolves to nothing.** When the core records why a read found nothing
+  (bundle rule OB17), the run's `parley.error` is `issue.not_found`, with `detail.rule` the
+  profile rule (`D11` no such owner, `D12` no such repository, `D13` no such number),
+  `detail.not_found` the cause (`owner`, `repository` or `number`) and `detail.reference` the
+  reference read, when the reason names one; exit 2. The core's catalogued codes (`profile.D11`
+  and the rest) are not used as error codes, because a `parley.error` code is lower case. Without
+  a recorded cause it is `gh.response_invalid`.
+- **Symlinks are followed**, as the Python writer follows them: `.parley`, `receipts/` and `--repo`
+  may be links. Every file the binary writes is created new (`O_EXCL`), so it never overwrites a
+  file a link points at.
+- **Not ported from the writer.** The capture of stray output, `--dry-run` and `--schema`.
 
 ## Conformance
 
