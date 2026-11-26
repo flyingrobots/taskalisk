@@ -698,8 +698,11 @@ class Trust(Harness):
                          "`src\\cache`, `a\\|b`, `x[1]<y>`, `gpu*2`")
         self.assertEqual(tk._resources_cell(["src\\cache", "a|b"], [], "-", in_table=False), "`src\\cache`, `a|b`")
         self.assertEqual(tk._resources_cell(["a`b", "``c"], [], "-", in_table=False), "``a`b``, ``` ``c ```")
-        self.assertEqual(tk._resources_cell(["a\rb c\x1bd‮e"], [], "-", in_table=False), "`a b cde`")
+        self.assertEqual(tk._resources_cell(["a\rb\u2028c\x1bd\u202ee"], [], "-", in_table=False), "`a b cde`")
         self.assertEqual(tk._resources_cell([], [], "none", in_table=False), "none")
+        # GFM strips one space from each end of a code span when both are spaces, so such a key is padded
+        self.assertEqual(tk._resources_cell([" a ", "b "], [], "-", in_table=False), "`  a  `, ` b  `")
+        self.assertEqual(tk._resources_cell(["\x1b\x07"], [], "-", in_table=False), "\u2014")  # nothing left to show
 
     def test_a_plain_title_renders_byte_for_byte_as_before(self):
         import importlib.util
