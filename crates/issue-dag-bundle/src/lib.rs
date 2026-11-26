@@ -20,8 +20,8 @@ use core::fmt;
 use std::collections::{BTreeMap, BTreeSet};
 
 use issue_dag_core::{
-    Actor, Body, Bundle, CodeownersFile, Issue, IssueRef, IssueState, Observations, Observed,
-    Parameters, PullRequest, ReadScope, Repo, TrustParameters, is_name,
+    Actor, Body, Bundle, CodeownersFile, Issue, IssueRef, IssueState, NotFound, Observations,
+    Observed, Parameters, PullRequest, ReadScope, Repo, TrustParameters, is_name,
 };
 use serde_json::{Map, Value};
 
@@ -319,8 +319,8 @@ fn observations(value: &Value, parameters: &Parameters) -> Read<Observations> {
         })
         .transpose()?;
 
-    let (issues, bodies) = o.get("issues").map_or_else(
-        || Ok((BTreeMap::new(), BTreeMap::new())),
+    let (issues, bodies, not_found) = o.get("issues").map_or_else(
+        || Ok((BTreeMap::new(), BTreeMap::new(), BTreeMap::new())),
         |v| issues(v, parameters),
     )?;
     let permissions = o
@@ -340,6 +340,7 @@ fn observations(value: &Value, parameters: &Parameters) -> Read<Observations> {
         home_open_issues,
         home_open_pull_requests,
         issues,
+        not_found,
         bodies,
         permissions,
         codeowners,
@@ -349,24 +350,55 @@ fn observations(value: &Value, parameters: &Parameters) -> Read<Observations> {
 type Issues = (
     BTreeMap<IssueRef, Observed<Issue>>,
     BTreeMap<IssueRef, Observed<Body>>,
+    BTreeMap<IssueRef, NotFound>,
 );
+
+/// OB17: an issue slot without its cause, and the cause, when the slot
+/// records one beside `unavailable`. A cause beside anything else, or a value
+/// other than the three, is refused rather than ignored.
+fn cause(s: &Value, at: &str) -> Read<(Value, Option<NotFound>)> {
+    let Some(given) = s.as_object().and_then(|o| o.get("not_found")) else {
+        return Ok((s.clone(), None));
+    };
+    let mut rest = s.as_object().cloned().unwrap_or_default();
+    rest.remove("not_found");
+    if rest.len() != 1 || !rest.contains_key("unavailable") {
+        return fail(
+            at,
+            "only an unavailable issue slot records which part was not found (OB17)",
+        );
+    }
+    let Some(cause) = given.as_str().and_then(NotFound::parse) else {
+        return fail(
+            &format!("{at}.not_found"),
+            "one of owner, repository and number (OB17)",
+        );
+    };
+    Ok((Value::Object(rest), Some(cause)))
+}
 
 /// OB8: issues keyed by a reference in canonical form, in the read scope,
 /// and the body slot each one holds, kept apart so that the body is read
-/// only through `Forge::body`.
+/// only through `Forge::body`; and the cause each unavailable one records
+/// (OB17).
 fn issues(value: &Value, parameters: &Parameters) -> Read<Issues> {
     let Some(map) = value.as_object() else {
         return fail("observations.issues", "not an object");
     };
     let mut issues = BTreeMap::new();
     let mut bodies = BTreeMap::new();
+    let mut not_found = BTreeMap::new();
     for (key, s) in map {
         let at = format!("observations.issues[{key:?}]");
         let r = reference(key, &at)?;
         if !parameters.read_scope.contains(&Repo::of(&r)) {
             return fail(&at, "is outside the read scope and is never read (OB8)");
         }
-        match slot(s, &at, issue)? {
+        let (s, found) = cause(s, &at)?;
+        if let Some(found) = found {
+            not_found.insert(r.clone(), found);
+        }
+        match slot(&s, &at, issue)? {
             Observed::Value((read, body)) => {
                 if let Some(body) = body {
                     bodies.insert(r.clone(), body);
@@ -378,7 +410,7 @@ fn issues(value: &Value, parameters: &Parameters) -> Read<Issues> {
             }
         }
     }
-    Ok((issues, bodies))
+    Ok((issues, bodies, not_found))
 }
 
 type Permissions = BTreeMap<Repo, BTreeMap<String, Observed<Option<String>>>>;

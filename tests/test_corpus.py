@@ -24,7 +24,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
 from corpus import bundle as ob  # noqa: E402
-from corpus import check, digest, forge, generate, spec  # noqa: E402
+from corpus import cases, check, digest, forge, generate, spec  # noqa: E402
 
 SPEC_COPY = pathlib.Path(__file__).resolve().parent / "fixtures" / "issue-dag"
 
@@ -126,6 +126,37 @@ class BundleFormat(unittest.TestCase):
         del b["observations"]["issues"][f"{ECHO}#5"]["value"]["body"]
         self.assertEqual(ob.validate(b), [])
 
+    def not_found(self, slot, where=f"{ECHO}#5"):
+        """The problems of the bundle whose issue `where` is recorded as `slot`."""
+        b = self.bundle()
+        b["observations"]["issues"][where] = slot
+        return ob.validate(b)
+
+    def test_an_issue_not_found_may_record_which_part_was_not_found(self):
+        # OB17: owner, repository or number, beside the free-text reason.
+        for cause in ("owner", "repository", "number"):
+            self.assertEqual(self.not_found({"unavailable": "HTTP 404", "not_found": cause}), [], cause)
+        # A slot without a cause reads as it did before OB17.
+        self.assertEqual(self.not_found({"unavailable": "HTTP 404"}), [])
+
+    def test_a_cause_the_rule_does_not_name_is_refused(self):
+        for cause in ("team", "Owner", "", None, 1, ["owner"]):
+            self.assertTrue(any("OB17" in p for p in self.not_found({"unavailable": "HTTP 404", "not_found": cause})), cause)
+
+    def test_a_cause_is_recorded_only_beside_an_unavailable_issue(self):
+        b = self.bundle()
+        found = copy.deepcopy(b["observations"]["issues"][f"{ECHO}#5"])
+        found["not_found"] = "number"
+        self.assertTrue(any("OB17" in p for p in self.not_found(found)))
+        body = copy.deepcopy(b["observations"]["issues"][f"{ECHO}#5"])
+        body["value"]["body"] = {"unavailable": "HTTP 404", "not_found": "number"}
+        self.assertTrue(any("OB17" in p for p in self.not_found(body)))
+        b["observations"]["home_open_pull_requests"] = {"unavailable": "HTTP 404", "not_found": "repository"}
+        self.assertTrue(any("OB17" in p for p in ob.validate(b)))
+        b = self.bundle()
+        b["observations"]["permissions"] = {HOME: {"carol": {"unavailable": "HTTP 404", "not_found": "owner"}}}
+        self.assertTrue(any("OB17" in p for p in ob.validate(b)))
+
     def test_a_draft_flag_that_is_not_a_boolean_is_unavailable(self):
         state = plan_state()
         state["prs"] = [{"number": 8, "isDraft": "false", "url": "u", "author": {"login": "owner"}, "isCrossRepository": False,
@@ -161,6 +192,20 @@ class Forge(unittest.TestCase):
         issue.update(author={"login": "Carol", "type": "User"}, author_association="COLLABORATOR")
         b["observations"]["permissions"].pop(ECHO, None)
         self.assertEqual(forge.replay(b), {"outcome": "unusable", "missing": ["permissions", ECHO, "carol"]})
+
+    def test_a_recorded_cause_leaves_the_python_run_incomplete(self):
+        # D10 to D13: the cause changes no outcome; the Python reports none
+        # (difference 26).
+        b = ob.from_fake_state(plan_state(), roots=[f"{HOME}#9"])
+        b["observations"]["issues"][f"{ECHO}#5"] = {"unavailable": "HTTP 404", "not_found": "repository"}
+        self.assertEqual(forge.run_graph(b), {"outcome": "incomplete"})
+
+    def test_an_unknown_prerequisite_is_projected_once_per_occurrence(self):
+        # Difference 27: the compiler reports X3 once per occurrence in
+        # `.blocked_by`, and the projection keeps what it reports (CC6).
+        b = cases.bundle({cases.R1: cases.i(cases.d(cases.R1, ("x/y#1", "x/y#1")))}, roots=(cases.R1,))
+        x3 = [f for f in forge.run_graph(b)["findings"] if f["rule"] == "X3"]
+        self.assertEqual(x3, [{"subject": cases.R1, "rule": "X3", "concerns": "x/y#1"}] * 2)
 
     def test_replay_of_a_complete_bundle_is_the_run(self):
         b = ob.from_fake_state(plan_state(), roots=[f"{HOME}#9"])
@@ -301,7 +346,7 @@ class ForgeFidelity(unittest.TestCase):
 
 # The digest of the corpus this suite checks: the issue-dag repository's corpus/DIGEST and the
 # version table name the same value. A change to the corpus changes this constant in the same commit.
-CORPUS_DIGEST = "sha256:5d8d5e863206acbbf6cf1e3aab5afaf4d9131cca85554c3e56e554a3d955598e"
+CORPUS_DIGEST = "sha256:4f008167c292e543961fbdd3604bfc96267323e86ce52fa37c5ccccb22674ab3"
 
 
 class CorpusPin(unittest.TestCase):
@@ -465,6 +510,30 @@ class Checker(unittest.TestCase):
         expected["findings"].reverse()
         self.rewrite(where / "expected.json", expected)
         self.assertEqual([p for p in self.problems() if where.name in p], [])
+
+    def test_a_finding_listed_twice_differs_from_one_listed_once(self):
+        # CC8: findings compare as lists in any order, each as often as listed.
+        where = self.corpus / "cases" / "graph" / "d3-outside-the-scope"
+        expected = json.loads((where / "expected.json").read_text())
+        expected["findings"].append(expected["findings"][0])
+        self.rewrite(where / "expected.json", expected)
+        self.assertTrue(any("unclassified disagreement" in p and where.name in p for p in self.problems()))
+
+    def test_only_a_normative_case_expects_the_cause_reported(self):
+        # CC6: `cause`, like `unavailable`, only in a normative case.
+        where, _ = self.case("characterisation")
+        self.rewrite(where / "expected.json", {"outcome": "incomplete", "cause": "D12"})
+        self.assertTrue(any("the cause reported" in p and where.name in p for p in self.problems()))
+
+    def test_a_cause_is_a_label_the_specification_states(self):
+        # CC3, CC6: the cause is the label of D11, D12 or D13, or null.
+        where = self.corpus / "cases" / "graph" / "d12-repository-not-found"
+        expected = json.loads((where / "expected.json").read_text())
+        self.assertEqual(expected["cause"], "D12")
+        for cause in ("D99", "X3", "repository"):
+            expected["cause"] = cause
+            self.rewrite(where / "expected.json", expected)
+            self.assertTrue(any("cause" in p and where.name in p for p in self.problems()), cause)
 
     def test_a_stale_digest_fails(self):
         (self.corpus / "README.md").write_text((self.corpus / "README.md").read_text() + "\nmore\n")

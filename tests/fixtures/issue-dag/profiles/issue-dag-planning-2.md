@@ -115,7 +115,11 @@ the reference itself when it is a root that no document names. A reference
 to a pull request (D4) gives its finding to the reference. An unknown
 prerequisite gives a finding labelled X3 to the task that names it, and each
 node G4 reports receives a finding labelled G4. A document's warnings are
-findings labelled V10.
+findings labelled V10. Two findings with the same identity are one finding:
+a task whose `.blocked_by` names the same unknown prerequisite more than once
+receives one X3 finding concerning it, as G3 makes one edge, and lists one
+not-planned pair for review, however often a prerequisite is named. A cause
+of D11 to D13 is no finding.
 
 > *Commentary.* The reference implementation exits with status 1 for an
 > invalid run, 2 for an incomplete one, and 0 for a plan. It reports a bad
@@ -170,7 +174,39 @@ its children whatever its state.
 
 **D10. No issue.** A reference in the read scope that resolves to neither an
 issue nor a pull request, because no such issue exists or the planner cannot
-see it, is an unavailable observation (I5): the run is incomplete.
+see it, is an unavailable observation (I5): the run is incomplete. Its
+observation may record which part of the reference was not found (bundle rule
+OB17); rules D11 to D13 name each cause. The run is incomplete whatever the
+cause, and with no cause. A cause is not a finding: the run reports the cause
+of the unavailable observation it reports beside its reason (bundle rule
+OB16), and no issue receives a finding for it, however many documents name
+the reference (F2).
+
+**D11. Owner not found.** When the observation of a reference that D10 makes
+unavailable records that its owner was not found, the cause of that
+observation is *owner not found*.
+
+**D12. Repository not found.** When it records that the owner was found and
+the repository was not, the cause is *repository not found*.
+
+**D13. Issue number not found.** When it records that the repository was
+found and no issue or pull request has the reference's number, the cause is
+*issue number not found*.
+
+> *Commentary.* D10 could have made a reference that resolves to no issue a
+> finding, as D3 to D5 do, and the run invalid. It does not, for three
+> reasons. First, the planner cannot tell a missing repository or issue from
+> one it is not allowed to see: GitHub answers both alike. D3 to D5 rest on
+> what the planner observed; a finding here would rest on what it could not
+> observe, and would blame a document for the reader's access. Second, F1
+> ranks *incomplete* above *invalid*, and F2 forbids a partial plan for an
+> observation that could not be made; an invalid run may report its graph
+> (F3), and that graph would treat the unseen issue as absent, which is the
+> empty answer F2 forbids. Third, every bundle recorded before bundle rule
+> OB17 keeps the outcome it had: the causes add to what an incomplete run
+> reports, and change no outcome. The cause is reported as a stable label
+> because a person diagnosing a failed run needs to know which part of the
+> reference to check, and a planner must not read that out of free text.
 
 > *Commentary.* Discovery follows only what a document says about itself, so
 > it reaches the prerequisites and the container members of the seeds and

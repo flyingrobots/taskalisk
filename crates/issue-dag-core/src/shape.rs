@@ -58,6 +58,9 @@ macro_rules! shape_warnings {
 }
 
 shape_warnings! {
+    /// An open task without `.size_hours`.
+    EstimateMissing => "taskalisk.estimate-missing",
+        "the open task has no .size_hours: the plan cannot be reported at its true size",
     /// An open node with no edge in or out, in a plan of two or more.
     IsolatedTask => "taskalisk.isolated-task",
         "the open task has no .blocked_by edge in or out: its prerequisites may not be recorded yet",
@@ -91,6 +94,9 @@ pub struct ShapeFinding {
 
 /// The shape warnings of a plan's graph, sorted by their findings.
 ///
+/// - `taskalisk.estimate-missing`, for each open task without `.size_hours`
+///   ([`crate::Node::size_hours`]): an opaque node has no document to hold
+///   the key, and a closed node or a container draws none. It has no detail.
 /// - `taskalisk.isolated-task`, for each open node that no edge of the graph
 ///   enters or leaves, when the graph has at least two open nodes: a plan of
 ///   a single task draws none. Edges are those between open nodes (G3), so a
@@ -113,10 +119,24 @@ pub fn shape_warnings(graph: &Graph) -> Vec<ShapeFinding> {
             detail: Some(Detail::ImpliedVia(via.of_edge(edge))),
         });
     }
+    estimates_missing(graph, &mut found);
     isolated(graph, &mut found);
     small_containers(graph, &mut found);
     found.sort_by(|a, b| a.finding.cmp(&b.finding));
     found
+}
+
+/// `taskalisk.estimate-missing`: each open task with a document and no
+/// `.size_hours`.
+fn estimates_missing(graph: &Graph, found: &mut Vec<ShapeFinding>) {
+    for (id, node) in &graph.nodes {
+        if !node.complete && !node.opaque && node.size_hours.is_none() {
+            found.push(ShapeFinding {
+                finding: finding(ShapeWarning::EstimateMissing, id, None),
+                detail: None,
+            });
+        }
+    }
 }
 
 /// `taskalisk.isolated-task`: each open node no edge joins, in a graph of

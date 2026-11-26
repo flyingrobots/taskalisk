@@ -1,0 +1,19 @@
+{
+  "cites": [
+    "D12",
+    "D10",
+    "F2",
+    "F5",
+    "OB16"
+  ],
+  "disagreement": {
+    "classification": "compatibility-exception",
+    "difference": 26,
+    "note": "the compiler reports an incomplete run without the reason recorded in any slot, and no cause (OB17)"
+  },
+  "id": "graph/d12-not-found-named-by-two-documents",
+  "kind": "normative",
+  "level": "graph",
+  "source": "constructed from the rule text",
+  "title": "A reference not found that two documents name: the run is incomplete, with the cause once and no finding for either document"
+}

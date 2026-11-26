@@ -1,0 +1,18 @@
+{
+  "cites": [
+    "OB17",
+    "D13",
+    "D11"
+  ],
+  "disagreement": {
+    "classification": "compatibility-exception",
+    "difference": 26,
+    "note": "the compiler reports an incomplete run without the reason recorded in any slot, and no cause (OB17)"
+  },
+  "id": "graph/d13-cause-is-not-read-from-the-reason--python",
+  "kind": "characterisation",
+  "level": "graph",
+  "normative_case": "graph/d13-cause-is-not-read-from-the-reason",
+  "source": "the Python compiler, on the bundle of graph/d13-cause-is-not-read-from-the-reason",
+  "title": "Where graph/d13-cause-is-not-read-from-the-reason differs: the compiler reports an incomplete run without the reason recorded in any slot, and no cause (OB17)"
+}

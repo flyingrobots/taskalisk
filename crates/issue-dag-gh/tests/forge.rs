@@ -193,6 +193,8 @@ fn recorded() -> Observations {
             pull(12, None, None, Observed::Value(true), &["o/r#2"]),
         ])),
         issues,
+        // The adapter records no cause yet (flyingrobots/taskalisk#51).
+        not_found: BTreeMap::new(),
         bodies,
         permissions,
         codeowners: Some(BTreeMap::from([
