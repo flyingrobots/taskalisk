@@ -154,6 +154,7 @@ pub fn body_warnings(body: &str, address: &IssueRef, title: Option<&str>) -> Vec
         .map(|warning| Finding {
             subject: address.clone(),
             code: warning.code(),
+            concerns: None,
             severity: Severity::Warning,
             message: warning.message(),
         })

@@ -1,0 +1,18 @@
+{
+  "cites": [
+    "C7",
+    "V5",
+    "V12"
+  ],
+  "disagreement": {
+    "classification": "compatibility-exception",
+    "difference": 20,
+    "note": "the compiler judges the first `.type` and also reports V5"
+  },
+  "id": "document/c7-repeated-type-values-not-judged--python",
+  "kind": "characterisation",
+  "level": "document",
+  "normative_case": "document/c7-repeated-type-values-not-judged",
+  "source": "the Python compiler, on the input of document/c7-repeated-type-values-not-judged",
+  "title": "What the compiler does: The values of a repeated `.type` are not judged under V5"
+}

@@ -36,6 +36,16 @@ MUST be admitted under the trust policy that plans its repository. Its body
 MUST hold a valid task document, judged under the format and under the
 profile's rule X1.
 
+**E3a. Order of refusals.** The checks on the child's body are made in this
+order, and an edit is refused for the first that fails, which its outcome
+(E10) names: the body MUST hold a valid document (E3); the document MUST be a
+task (E3); the parent MUST differ from the child (E1). A self edge on an
+invalid document is therefore refused as invalid, and on a container as not
+a task. A valid task document has exactly one line whose key is
+`.blocked_by` (format rules V5 and C7), so after these checks E4's refusal of
+a block without exactly one such line cannot occur; a program MAY keep that
+check as a defence.
+
 **E4. Rewrite.** The new body is the old body with exactly one line changed:
 the single line of the frontmatter block whose key is `.blocked_by`. That line
 becomes

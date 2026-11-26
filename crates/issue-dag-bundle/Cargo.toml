@@ -1,0 +1,16 @@
+[package]
+name = "issue-dag-bundle"
+version = "0.1.0"
+description = "Reads an issue-dag-observations/1 bundle (JSON) into the issue-dag-core domain, checking the bundle rules OB1 to OB13."
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+issue-dag-core = { path = "../issue-dag-core" }
+serde = "1"
+serde_json = "1"
+
+[lints]
+workspace = true
