@@ -9,6 +9,7 @@
 //! are tabled on [`code`].
 //! The crate performs no I/O and has no dependencies.
 mod admission;
+mod batch;
 mod carrier;
 mod finding;
 mod forge;
@@ -24,6 +25,7 @@ mod validate;
 use std::collections::BTreeSet;
 
 pub use admission::{Admission, Identity, Undecided, codeowners_persons};
+pub use batch::{Batch, Skip, keys_conflict, select};
 pub use carrier::{Block, Entry, Integer, Parse, Slot, Value, parse, trim};
 pub use finding::{Finding, LABELS, PROFILE_RULES, Rule, Severity, code, findings};
 pub use forge::{Bundle, Forge, LocalRepository, NoLocalRepository, Observations, RecordedForge};
