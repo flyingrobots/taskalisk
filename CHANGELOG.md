@@ -5,6 +5,15 @@ The Taskalisk skill's releases. The skill version (the release tag, and `__versi
 under `skills/taskalisk/schemas/` has its own version and moves only when that message changes. A
 schema version under `Unreleased` is a draft and may change in place.
 
+## Unreleased
+
+### Fixed
+
+- **A bad edge object in a `--verify-dag` spec is `dag_spec.invalid`** (flyingrobots/taskalisk#74).
+  A `confidence` that is not a finite number (a string, a bool, null, NaN, an infinity), or an
+  `isHard` that is not a boolean, is refused before any plan line. Before, it ended in
+  `uncaught.exception`, sometimes after a `plan` line with `ok: true`, or compiled as if valid.
+
 ## 2.1.2 - 2026-11-24
 
 ### Changed

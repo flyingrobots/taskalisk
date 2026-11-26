@@ -63,6 +63,7 @@ import argparse
 from collections import defaultdict, deque
 import hashlib
 import json
+import math
 import os
 from pathlib import Path
 import re
@@ -2076,6 +2077,14 @@ def check_spec(data: Any) -> str | None:
         deps = meta.get("depends_on", meta.get("prerequisites", []))
         if not isinstance(deps, list) or not all(isinstance(d, (str, dict)) for d in deps):
             return f"DAG spec node {nid!r}: depends_on must be a list of ids or edge objects"
+        for dep in deps:
+            if not isinstance(dep, dict):
+                continue
+            if "isHard" in dep and not isinstance(dep["isHard"], bool):
+                return f"DAG spec node {nid!r}: an edge's isHard must be true or false"
+            confidence = dep.get("confidence", 1.0)
+            if isinstance(confidence, bool) or not isinstance(confidence, (int, float)) or not math.isfinite(confidence):
+                return f"DAG spec node {nid!r}: an edge's confidence must be a finite number"
         branches = meta.get("recoverable_branches", [])
         if not isinstance(branches, list) or not all(isinstance(b, str) for b in branches):
             return f"DAG spec node {nid!r}: recoverable_branches must be a list of strings"
