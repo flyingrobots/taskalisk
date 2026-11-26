@@ -14,11 +14,11 @@ schema version under `Unreleased` is a draft and may change in place.
   I/O and no dependencies: a hand-written `issue-dag/2` carrier parser and validator, the typed
   record a valid document decodes to, and the `.blocked_by` rewrite of edge-edit rule E4, which
   changes that one line and keeps every other byte, CRLF line ends included. All 165 document cases
-  of the vendored corpus pass; for each `--python` twin the crate matches the normative case. Pending
-  their specification text: a key repeated under C7 is present but judged by no other rule, while the
-  rest of the document is judged; a repeated `.dag` leaves the version unknown, so C7 is the
-  document's only violation, as C4 and P3 stop judging; an invalid document reports no warnings. CI
-  runs the job "Rust workspace": `cargo fmt`, `clippy -D warnings` and `cargo test`, all locked.
+  of the vendored corpus pass; for each `--python` twin the crate matches the normative case.
+  Pending their specification text: a key repeated under C7 is present but judged by no other rule,
+  while the rest of the document is judged; a repeated `.dag` leaves the version unknown, so C7 is
+  the document's only violation, as C4 and P3 stop judging; an invalid document reports no warnings.
+  CI runs the job "Rust workspace": `cargo fmt`, `clippy -D warnings` and `cargo test`, all locked.
 
 - **The Rust graph core** (flyingrobots/taskalisk#28). `issue-dag-core` now plans over recorded
   observations, still with no I/O: the run parameters and observation slots as domain values, the
@@ -42,9 +42,10 @@ schema version under `Unreleased` is a draft and may change in place.
   Choices the specification leaves open: an admitted pull request's draft flag is read only where
   S2 needs it, for an open node of the home repository the pull request closes (I5); an invalid
   run reports its graph unless a prerequisite is unknown (X3) or the edges form a cycle (G4); a
-  key repeated in an invalid document contributes nothing to its reading; a bot's `app/` prefix
-  and `[bot]` suffix are matched without regard to case; a bundle with an `observations` member
-  the bundle rules do not define is rejected.
+  bot's `app/` prefix and `[bot]` suffix are matched without regard to case; a bundle with an
+  `observations` member the bundle rules do not define is rejected. A key repeated in an invalid
+  document contributes nothing to its reading, as format rule C7 now rules
+  (flyingrobots/taskalisk#104).
 
 - **The gh adapter** (flyingrobots/taskalisk#56). A new crate, `crates/issue-dag-gh`, implements
   the core's `Forge` port by running `gh` (an argument vector, never a shell string; `gh` on `PATH`
@@ -196,6 +197,24 @@ schema version under `Unreleased` is a draft and may change in place.
   `format.V10`, `version.P3` and `profile.X1`, tabled on `code` in the crate docs.
   Findings sort by subject, then code text. A message is fixed text that names keys and rules only,
   never a value or a line of the body; a body without a document has no findings.
+
+- **Body warnings for a task** (flyingrobots/taskalisk#48). `issue-dag-core`'s `body_warnings`
+  checks a valid task document's body against Taskalisk's writing convention
+  (`skills/taskalisk/WRITING-TASKS.md`), not the format, so its codes carry the prefix `taskalisk.`:
+  `taskalisk.outcome-missing`, `taskalisk.scope-missing` and `taskalisk.acceptance-missing` for a
+  missing level-2 heading, matched exactly and case-sensitively outside code blocks and comments;
+  `taskalisk.outcome-sentences` and `taskalisk.outcome-items` for an Outcome of more than one
+  sentence or list item; `taskalisk.title-joins` for a title that joins two things with "and" or a
+  semicolon. The title is an optional input, since the observation bundle records none; without
+  it that check is skipped. Each is a warning with fixed text, tabled with the document codes and
+  sorted the same way; a body filled minimally from each canonical template has none. A missing
+  section's message names the exact heading it requires. `CODES` is the one public catalogue of
+  every finding code with its severity, document codes, then profile codes, then body warnings;
+  every family of findings registers there. The body is read as CommonMark renders it, parsed by
+  `pulldown-cmark` (no default features, no extensions): headings may be ATX or setext, and
+  code spans, code blocks and HTML, and real paragraph boundaries, are the parser's.
+  `issue-dag-core` thus gains its first dependency: it still does no I/O, and depends only on
+  `pulldown-cmark`, which supersedes "no dependencies" in the #27 entry above.
 
 - **A provenance check for the vendored Parley writer** (flyingrobots/taskalisk#77).
   `scripts/check_vendored_writer.py` fetches the writer from flyingrobots/parley at the pinned
