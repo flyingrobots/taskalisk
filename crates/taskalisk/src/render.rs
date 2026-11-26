@@ -936,17 +936,14 @@ impl Discovery {
             .iter()
             .map(|n| json!({"number": n}))
             .collect();
-        let mut referencing: BTreeMap<&IssueRef, Vec<&IssueRef>> = BTreeMap::new();
-        for e in graph.edges.iter().chain(&graph.satisfied) {
-            referencing.entry(&e.from).or_default().push(&e.to);
-        }
         let opaque = graph
             .nodes
             .iter()
             .filter(|(_, n)| n.opaque && !n.untrusted)
             .map(|(id, node)| {
-                let referenced_by =
-                    sorted_texts(referencing.get(id).into_iter().flatten().copied());
+                // Every document that names it, containers included, in the
+                // order discovery read them, as 1.x lists them.
+                let referenced_by = texts(&node.named_by);
                 let mut o = object(json!({
                     "id": id.to_string(),
                     "state": if node.complete { "closed" } else { "open" },

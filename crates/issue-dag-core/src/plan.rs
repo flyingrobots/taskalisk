@@ -71,6 +71,10 @@ pub struct Node {
     /// where rule S2 reads them: an open home node that is trusted. Empty
     /// otherwise.
     pub pull_requests: Vec<LinkedPullRequest>,
+    /// For an opaque node, the documents that name it (in `.blocked_by` or
+    /// `.children`), in the order the closure read them, once per name.
+    /// Empty for any other node.
+    pub named_by: Vec<IssueRef>,
 }
 
 /// An admitted open pull request that closes a node (rules S1, S2).
@@ -331,6 +335,9 @@ struct Closure {
     seeds: BTreeSet<IssueRef>,
     visits: BTreeMap<IssueRef, Visit>,
     named_by: BTreeMap<IssueRef, BTreeSet<IssueRef>>,
+    /// The documents that name each reference, in the order read, once per
+    /// name.
+    naming: BTreeMap<IssueRef, Vec<IssueRef>>,
 }
 
 impl Closure {
@@ -437,6 +444,7 @@ impl<'a, F: Forge + ?Sized> Run<'a, F> {
             seeds: seeds.iter().cloned().collect(),
             visits: BTreeMap::new(),
             named_by: BTreeMap::new(),
+            naming: BTreeMap::new(),
         };
         let mut undecided = BTreeSet::new();
         let mut queue: VecDeque<IssueRef> = seeds.into_iter().collect();
@@ -455,6 +463,11 @@ impl<'a, F: Forge + ?Sized> Run<'a, F> {
                         .entry(name.clone())
                         .or_default()
                         .insert(reference.clone());
+                    closure
+                        .naming
+                        .entry(name.clone())
+                        .or_default()
+                        .push(reference.clone());
                     queue.push_back(name.clone());
                 }
             }
@@ -533,14 +546,14 @@ impl<'c> Assembly<'c> {
                 Visit::Untrusted(issue) => {
                     a.graph.untrusted.insert(reference.clone());
                     if !closure.unnamed_seed(reference) {
-                        a.opaque(reference, issue, true);
+                        a.opaque(closure, reference, issue, true);
                     }
                 }
                 Visit::NoDocument(issue) => {
                     if !closure.has_roots && closure.unnamed_seed(reference) {
                         a.graph.unmodeled.insert(reference.clone());
                     } else {
-                        a.opaque(reference, issue, false);
+                        a.opaque(closure, reference, issue, false);
                     }
                 }
                 Visit::Document(document) => a.document(reference, document),
@@ -561,13 +574,20 @@ impl<'c> Assembly<'c> {
         }
     }
 
-    fn opaque(&mut self, reference: &IssueRef, issue: &'c Issue, untrusted: bool) {
+    fn opaque(
+        &mut self,
+        closure: &Closure,
+        reference: &IssueRef,
+        issue: &'c Issue,
+        untrusted: bool,
+    ) {
         self.graph.nodes.insert(
             reference.clone(),
             Node {
                 complete: issue.state == IssueState::Closed,
                 opaque: true,
                 untrusted,
+                named_by: closure.naming.get(reference).cloned().unwrap_or_default(),
                 ..Node::default()
             },
         );
@@ -602,6 +622,7 @@ impl<'c> Assembly<'c> {
                 task_type: reading.task_type,
                 size_hours: reading.size_hours,
                 pull_requests: Vec::new(),
+                named_by: Vec::new(),
             },
         );
         self.readings.insert(reference.clone(), reading);

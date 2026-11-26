@@ -137,9 +137,11 @@ schema version under `Unreleased` is a draft and may change in place.
   DEL, controls and astral characters included. It equals the Python's hash only where that
   document holds no intended difference and no gap; elsewhere it is a different, deterministic
   hash, a permanent exception recorded in `docs/topics/output/README.md`. On the 157 graph cases of
-  the corpus where the Python and the specification agree, and on one planned again with titles
-  that hold control, Latin-1, astral and line-separator characters, every line equals the Python's
-  (`tests/capture_render_parity.py`), `artifact_hash` in 77 of the 158, once these gaps are
+  the corpus where the Python and the specification agree, on one planned again with titles that
+  hold control, Latin-1, astral and line-separator characters, and on a variant in which a
+  container and a task name an opaque issue (its `referenced_by` lists both, in the order read,
+  from the core's new `Node.named_by`), every line equals the Python's
+  (`tests/capture_render_parity.py`), `artifact_hash` in 78 of the 159, once these gaps are
   removed, and the suite checks the list is exact: the trust gate's reasons in `issue.untrusted`
   and `pull_request.untrusted` (#46), and the discovery findings of a run whose graph is not
   reported, a cycle or an unknown prerequisite (#44). Every rendered line validates against its
