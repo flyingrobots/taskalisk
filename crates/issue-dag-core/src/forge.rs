@@ -165,40 +165,55 @@ impl<'a> RecordedForge<'a> {
     }
 }
 
-fn recorded<T: Clone>(slot: Option<&Observed<T>>, what: impl FnOnce() -> String) -> Lookup<T> {
-    slot.cloned().ok_or_else(|| Missing { what: what() })
+fn recorded<T: Clone>(slot: Option<&Observed<T>>, missing: impl FnOnce() -> Missing) -> Lookup<T> {
+    slot.cloned().ok_or_else(missing)
+}
+
+/// The body slot of `reference`, at its path in the bundle (OB8, OB16).
+fn missing_body(reference: &IssueRef) -> Missing {
+    let key = reference.to_string();
+    Missing::at(
+        &["issues", &key, "value", "body"],
+        format!("the body of {reference}"),
+    )
 }
 
 impl Forge for RecordedForge<'_> {
     fn home_open_issues(&self) -> Lookup<Vec<IssueRef>> {
         recorded(self.observations.home_open_issues.as_ref(), || {
-            "the listing of the open home issues".to_owned()
+            Missing::at(
+                &["home_open_issues"],
+                "the listing of the open home issues".to_owned(),
+            )
         })
     }
 
     fn home_open_pull_requests(&self) -> Lookup<Vec<PullRequest>> {
         recorded(self.observations.home_open_pull_requests.as_ref(), || {
-            "the open home pull requests".to_owned()
+            Missing::at(
+                &["home_open_pull_requests"],
+                "the open home pull requests".to_owned(),
+            )
         })
     }
 
     fn issue(&self, reference: &IssueRef) -> Lookup<Issue> {
         recorded(self.observations.issues.get(reference), || {
-            format!("the issue {reference}")
+            Missing::at(
+                &["issues", &reference.to_string()],
+                format!("the issue {reference}"),
+            )
         })
     }
 
     fn body(&self, reference: &IssueRef) -> Lookup<Body> {
-        let missing = || Missing {
-            what: format!("the body of {reference}"),
-        };
         match self.observations.issues.get(reference) {
             Some(Observed::Value(_)) => recorded(self.observations.bodies.get(reference), || {
-                format!("the body of {reference}")
+                missing_body(reference)
             }),
             // An issue that could not be read has no body to read.
             Some(Observed::Unavailable(why)) => Ok(Observed::Unavailable(why.clone())),
-            None => Err(missing()),
+            None => Err(missing_body(reference)),
         }
     }
 
@@ -208,7 +223,12 @@ impl Forge for RecordedForge<'_> {
                 .permissions
                 .get(repo)
                 .and_then(|table| table.get(login)),
-            || format!("the permission of {login} on {repo}"),
+            || {
+                Missing::at(
+                    &["permissions", &repo.to_string(), login],
+                    format!("the permission of {login} on {repo}"),
+                )
+            },
         )
     }
 
@@ -218,7 +238,12 @@ impl Forge for RecordedForge<'_> {
                 .codeowners
                 .as_ref()
                 .and_then(|files| files.get(repo)),
-            || format!("the CODEOWNERS of {repo}"),
+            || {
+                Missing::at(
+                    &["codeowners", &repo.to_string()],
+                    format!("the CODEOWNERS of {repo}"),
+                )
+            },
         )
     }
 }

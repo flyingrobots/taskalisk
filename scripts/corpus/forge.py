@@ -45,7 +45,14 @@ def compiler() -> Any:
 
 
 class BundleIncomplete(Exception):
-    """The run read an observation that the bundle does not record (OB5)."""
+    """The run read an observation that the bundle does not record (OB5).
+
+    `path` is the list of member names that lead to the slot from `observations` (corpus rule CC6),
+    or None when the compiler asked for something that is no slot of a bundle."""
+
+    def __init__(self, message: str, path: list[str] | None = None):
+        super().__init__(message)
+        self.path = path
 
 
 class UnlabelledMessage(Exception):
@@ -56,9 +63,9 @@ class _Unavailable(Exception):
     pass
 
 
-def _slot(slot: Any, what: str) -> Any:
+def _slot(slot: Any, what: str, path: list[str]) -> Any:
     if slot is None:
-        raise BundleIncomplete(f"the bundle does not record {what}")
+        raise BundleIncomplete(f"the bundle does not record {what}", path)
     if "unavailable" in slot:
         raise _Unavailable(slot["unavailable"])
     return slot["value"]
@@ -81,12 +88,13 @@ class BundleForge:
             return False, "", NOT_FOUND
 
     def issue(self, ref: str) -> dict[str, Any]:
-        return _slot(self.obs["issues"].get(ref), f"the issue {ref}")
+        return _slot(self.obs["issues"].get(ref), f"the issue {ref}", ["issues", ref])
 
     def rest_issue(self, ref: str) -> dict[str, Any]:
         it = self.issue(ref)
         slug, num = it["address"].rsplit("#", 1)
-        body = it["body"].get("value", {}).get("text", "") if isinstance(it["body"], dict) else ""
+        # OB14: a body the run never reads may be left out; the REST answer then carries none.
+        body = it["body"].get("value", {}).get("text", "") if isinstance(it.get("body"), dict) else ""
         obj = {"number": int(num), "id": 0, "title": "(title not recorded)", "state": it["state"], "state_reason": it["state_reason"],
                "body": body, "html_url": f"https://github.com/{slug}/issues/{num}", "repository_url": API + slug,
                "user": {"login": it["author"]["login"], "type": it["author"]["type"]} if it["author"] else None,
@@ -102,7 +110,7 @@ class BundleForge:
         if args[:2] == ["repo", "view"]:
             return self.params["home"]
         if args[:2] == ["pr", "list"]:
-            prs = _slot(self.obs.get("home_open_pull_requests"), "the home pull requests")
+            prs = _slot(self.obs.get("home_open_pull_requests"), "the home pull requests", ["home_open_pull_requests"])
             out = []
             for pr in prs:
                 item: dict[str, Any] = {"number": pr["number"], "title": "", "headRefName": "", "url": f"https://github.com/{pr['repository']}/pull/{pr['number']}",
@@ -123,7 +131,7 @@ class BundleForge:
                     k, _, val = args[i + 1].partition("=")
                     v[k] = val
             ref = f"{v['owner']}/{v['name']}#{v['number']}".lower()
-            body = _slot(self.issue(ref)["body"], f"the body and edit history of {ref}")
+            body = _slot(self.issue(ref).get("body"), f"the body and edit history of {ref}", ["issues", ref, "value", "body"])
             nodes = [{"editor": {"login": e["login"], "__typename": e["type"]} if e else None} for e in body["editors"]]
             return json.dumps({"data": {"repository": {"issue": {"body": body["text"], "userContentEdits": {
                 "pageInfo": {"hasNextPage": False, "endCursor": None}, "nodes": nodes}}}}})
@@ -133,18 +141,20 @@ class BundleForge:
         path = rest[0]
         m = re.fullmatch(r"repos/([^/]+/[^/]+)/issues\?state=open&per_page=\d+", path)
         if m:
-            listing = _slot(self.obs.get("home_open_issues"), "the listing of open home issues")
+            listing = _slot(self.obs.get("home_open_issues"), "the listing of open home issues", ["home_open_issues"])
             return json.dumps([self.rest_issue(ref) for ref in listing])
         m = re.fullmatch(r"repos/([^/]+/[^/]+)/collaborators/([^/]+)/permission", path)
         if m:
-            table = self.obs["permissions"].get(m.group(1).lower())
-            level = _slot((table or {}).get(m.group(2).lower()), f"the permission of {m.group(2)} on {m.group(1)}")
+            repo, login = m.group(1).lower(), m.group(2).lower()
+            table = self.obs["permissions"].get(repo)
+            level = _slot((table or {}).get(login), f"the permission of {m.group(2)} on {m.group(1)}", ["permissions", repo, login])
             if level is None:
                 raise _NotFound()
             return level
         m = re.fullmatch(r"repos/([^/]+/[^/]+)/contents/(.+)", path)
         if m:
-            found = _slot((self.obs.get("codeowners") or {}).get(m.group(1).lower()), f"the CODEOWNERS of {m.group(1)}")
+            found = _slot((self.obs.get("codeowners") or {}).get(m.group(1).lower()), f"the CODEOWNERS of {m.group(1)}",
+                          ["codeowners", m.group(1).lower()])
             if found is None or found["path"] != m.group(2):
                 raise _NotFound()
             return found["text"]
@@ -385,3 +395,16 @@ def run_graph(bundle: dict[str, Any]) -> dict[str, Any]:
     except Exception as exc:
         return {"outcome": "error", "error": type(exc).__name__}
     return project_outcome(out)
+
+
+def replay(bundle: dict[str, Any]) -> dict[str, Any]:
+    """`run_graph`, with a bundle that lacks a slot the compiler reads projected as unusable (bundle
+    rule OB5, corpus rule CC6): `missing` names the slot the compiler read, the first it read, since
+    it stops there. Only a normative case and its twin may expect this; for any other case a lacking
+    slot is a broken case, which `run_graph` reports by raising."""
+    try:
+        return run_graph(bundle)
+    except BundleIncomplete as exc:
+        if exc.path is None:
+            raise
+        return {"outcome": "unusable", "missing": exc.path}

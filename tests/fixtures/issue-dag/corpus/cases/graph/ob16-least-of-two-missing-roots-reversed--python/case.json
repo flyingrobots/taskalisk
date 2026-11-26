@@ -1,0 +1,17 @@
+{
+  "cites": [
+    "OB16",
+    "OB5"
+  ],
+  "disagreement": {
+    "classification": "compatibility-exception",
+    "difference": 25,
+    "note": "the compiler stops at the first lookup it cannot make: it reads o/r#2 first and reports it"
+  },
+  "id": "graph/ob16-least-of-two-missing-roots-reversed--python",
+  "kind": "characterisation",
+  "level": "graph",
+  "normative_case": "graph/ob16-least-of-two-missing-roots-reversed",
+  "source": "the Python compiler, on the bundle of graph/ob16-least-of-two-missing-roots-reversed",
+  "title": "Where graph/ob16-least-of-two-missing-roots-reversed differs: the compiler stops at the first lookup it cannot make: it reads o/r#2 first and reports it"
+}

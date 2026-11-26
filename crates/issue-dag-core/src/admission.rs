@@ -115,9 +115,10 @@ impl From<Missing> for Undecided {
 /// The lookups that could not be made, gathered so that none hides another.
 /// A caller notes each one and goes on reading whatever the rules still
 /// reach. A missing slot (bundle rule OB5) takes precedence over an
-/// unavailable one (AD10, profile rule F1), and the one reported is the
-/// least of its kind, so the order of reading never changes the result
-/// (profile rule D2).
+/// unavailable one (AD10, profile rule F1). The one reported is the least
+/// of its kind (bundle rule OB16): of missing slots, the least path from
+/// `observations`; of unavailable ones, the least reason. So the order of
+/// reading never changes the result (profile rule D2).
 #[derive(Debug, Default)]
 pub struct Gaps {
     unavailable: BTreeSet<String>,
@@ -292,9 +293,87 @@ mod tests {
 
     use std::collections::BTreeMap;
 
-    use super::{Admission, Identity, Undecided, codeowners_persons};
+    use super::{Admission, Gaps, Identity, Undecided, codeowners_persons};
     use crate::forge::{Observations, RecordedForge};
-    use crate::observation::{Actor, Body, Observed, ReadScope, Repo};
+    use crate::observation::{Actor, Body, Missing, Observed, ReadScope, Repo};
+
+    /// What `Gaps` reports after noting `gaps` in this order and then in
+    /// the reverse order; the two must agree (OB16).
+    fn reported(gaps: &[Undecided]) -> Result<(), Undecided> {
+        let run = |order: &mut dyn Iterator<Item = &Undecided>| {
+            let mut noted = Gaps::default();
+            for gap in order {
+                assert_eq!(noted.note::<()>(Err(gap.clone())), None);
+            }
+            noted.check()
+        };
+        let forward = run(&mut gaps.iter());
+        assert_eq!(forward, run(&mut gaps.iter().rev()));
+        forward
+    }
+
+    fn missing(path: &[&str], what: &str) -> Undecided {
+        Undecided::Missing(Missing::at(path, what.to_owned()))
+    }
+
+    fn missing_path(result: Result<(), Undecided>) -> Vec<String> {
+        match result {
+            Err(Undecided::Missing(m)) => m.path,
+            other => panic!("expected a missing slot, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn ob16_a_missing_slot_is_reported_before_an_unavailable_one() {
+        let gaps = [
+            Undecided::Unavailable("A".to_owned()),
+            missing(
+                &["permissions", "o/r", "zed"],
+                "the permission of zed on o/r",
+            ),
+        ];
+        assert_eq!(missing_path(reported(&gaps)), ["permissions", "o/r", "zed"]);
+    }
+
+    #[test]
+    fn ob16_the_least_missing_path_is_reported() {
+        // Member name by member name, each by its bytes: the home pull
+        // requests before an issue, the repository of a permission before
+        // its login, `o/r#10` before `o/r#2`, and a body by its issue's
+        // reference. The words of the least sort last, so that ordering by
+        // them, not by path, fails. The home listing against an issue is
+        // tested only here: the listing is read only in a run without
+        // roots, where it is the only source of seeds, so a run that lacks
+        // it reads no issue and no corpus case can hold both.
+        let cases: [(&[&str], &[&str]); 5] = [
+            (&["home_open_issues"], &["issues", "o/r#2"]),
+            (&["home_open_pull_requests"], &["issues", "o/r#2"]),
+            (
+                &["permissions", "o/r", "dave"],
+                &["permissions", "o/s", "carol"],
+            ),
+            (&["issues", "o/r#10"], &["issues", "o/r#2"]),
+            (&["issues", "o/r#2", "value", "body"], &["issues", "o/r#3"]),
+        ];
+        for (least, other) in cases {
+            assert_eq!(
+                missing_path(reported(&[missing(other, "a"), missing(least, "z")])),
+                least
+            );
+        }
+    }
+
+    #[test]
+    fn ob16_the_least_unavailable_reason_is_reported() {
+        let gaps = [
+            Undecided::Unavailable("timeout".to_owned()),
+            Undecided::Unavailable("HTTP 502".to_owned()),
+        ];
+        assert_eq!(
+            reported(&gaps),
+            Err(Undecided::Unavailable("HTTP 502".to_owned()))
+        );
+    }
 
     #[test]
     fn ad2_an_allowlisted_actor_is_not_trusted_outside_the_scope() {

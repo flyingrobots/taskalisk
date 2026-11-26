@@ -85,8 +85,17 @@ table. A reference is written in canonical form; an absent value is null;
 
 **CC6. Graph cases.** The expected result of a graph case is an object whose
 `outcome` is one of `planned`, `invalid`, `incomplete` and `rejected`
-(profile rule F1), or `error` in characterisation cases only. It may also
-hold:
+(profile rule F1), `unusable` when the bundle lacks a slot the run reads
+(bundle rule OB5), or `error` in characterisation cases only. Only a
+normative case and its twin may expect `unusable`; every other case's bundle
+holds every slot its run reads (OB14). It may also hold:
+
+- `missing`, for an unusable run: the slot the run reports (OB16), written
+  as the list of member names that lead to it from `observations`, such as
+  `["issues", "o/r#2"]`, `["issues", "o/r#2", "value", "body"]` or
+  `["permissions", "o/r", "carol"]`;
+- `unavailable`, for an incomplete run, in normative cases only: the reason
+  recorded in the slot the run reports (OB16);
 
 - `findings`: the violations, unknown prerequisites, cyclic nodes and
   warnings of the run, each `{"subject", "rule"}` with `concerns` when the
@@ -109,7 +118,9 @@ hold:
   in ascending order of their UTF-8 bytes, as labels are in CC5, so `Tpu`
   sorts before `gpu`.
 
-An incomplete or rejected run has only `outcome` (rule F2).
+A rejected run has only `outcome`, and an incomplete run no member but
+`outcome` and `unavailable` (rule F2). An unusable run has no member but
+`outcome` and `missing` (bundle rules OB5 and OB16).
 
 **CC7. Labels.** The labels in `violations`, `warnings` and `findings` are
 the ones format rule V12 gives a document's violations and warnings, and the

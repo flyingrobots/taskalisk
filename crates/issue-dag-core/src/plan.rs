@@ -689,26 +689,25 @@ impl<'c> Assembly<'c> {
     /// S1 and S2: the status of each open node, from the draft flags of the
     /// admitted pull requests that close it. Those flags are read here, and
     /// only here: an unavailable one makes the run incomplete (I5).
+    /// Every draft flag S2 reaches is read: of those unavailable, the least
+    /// reason is reported, whatever the order of the nodes (OB16).
     fn statuses(&mut self, linked: &Linked, home: &Repo) -> Result<(), Undecided> {
+        let mut gaps = Gaps::default();
         for (id, node) in &mut self.graph.nodes {
             if node.complete {
                 continue;
             }
-            let pulls: Vec<LinkedPullRequest> = if Repo::of(id) == *home && !node.untrusted {
-                linked
-                    .get(id)
-                    .into_iter()
-                    .flatten()
-                    .map(|(number, slot)| {
-                        value(slot.clone()).map(|draft| LinkedPullRequest {
+            let mut pulls = Vec::new();
+            if Repo::of(id) == *home && !node.untrusted {
+                for (number, slot) in linked.get(id).into_iter().flatten() {
+                    if let Some(draft) = gaps.note(value(slot.clone())) {
+                        pulls.push(LinkedPullRequest {
                             number: *number,
                             draft,
-                        })
-                    })
-                    .collect::<Result<_, _>>()?
-            } else {
-                Vec::new()
-            };
+                        });
+                    }
+                }
+            }
             let drafts: Vec<bool> = pulls.iter().map(|p| p.draft).collect();
             node.pull_requests = pulls;
             node.status = Some(if drafts.iter().any(|draft| !draft) {
@@ -726,7 +725,7 @@ impl<'c> Assembly<'c> {
                 }
             });
         }
-        Ok(())
+        gaps.check()
     }
 
     /// G4, G5, Q1 and F1.

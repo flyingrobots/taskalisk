@@ -1,0 +1,43 @@
+{
+  "bundle": "issue-dag-observations/1",
+  "format": "issue-dag/2",
+  "observations": {
+    "home_open_pull_requests": {
+      "value": []
+    },
+    "issues": {
+      "o/r#2": {
+        "unavailable": "HTTP 502"
+      }
+    },
+    "permissions": {
+      "o/r": {
+        "o": {
+          "value": null
+        }
+      }
+    }
+  },
+  "parameters": {
+    "capacities": {},
+    "home": "o/r",
+    "read_scope": {
+      "owners": [
+        "o"
+      ],
+      "repositories": []
+    },
+    "roots": [
+      "o/r#3",
+      "o/r#2"
+    ],
+    "trust": {
+      "codeowners": false,
+      "logins": [
+        "dev"
+      ],
+      "policy": "taskalisk/threat-model"
+    }
+  },
+  "profile": "issue-dag-planning/2"
+}
