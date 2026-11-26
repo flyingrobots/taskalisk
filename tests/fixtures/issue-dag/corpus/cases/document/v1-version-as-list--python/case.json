@@ -12,5 +12,5 @@
   "level": "document",
   "normative_case": "document/v1-version-as-list",
   "source": "the Python compiler, on the input of document/v1-version-as-list",
-  "title": "What the compiler does: A list `.dag` is invalid"
+  "title": "Where document/v1-version-as-list differs: the validator raises TypeError and the run ends without an outcome"
 }

@@ -12,5 +12,5 @@
   "level": "document",
   "normative_case": "document/c4-line-separator",
   "source": "the Python compiler, on the input of document/c4-line-separator",
-  "title": "What the compiler does: U+2028 inside the block makes the document invalid"
+  "title": "Where document/c4-line-separator differs: the compiler splits the line at U+2028 and reads `b` as a line of another form"
 }

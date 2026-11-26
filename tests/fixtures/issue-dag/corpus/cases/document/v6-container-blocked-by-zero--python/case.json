@@ -12,5 +12,5 @@
   "level": "document",
   "normative_case": "document/v6-container-blocked-by-zero",
   "source": "the Python compiler, on the input of document/v6-container-blocked-by-zero",
-  "title": "What the compiler does: A container must not have `.blocked_by`, even `0`"
+  "title": "Where document/v6-container-blocked-by-zero differs: the compiler tests whether the value is falsy, not whether the key is present"
 }

@@ -1,0 +1,9 @@
+{
+  "findings": [
+    {
+      "rule": "C7",
+      "subject": "o/r#1"
+    }
+  ],
+  "outcome": "invalid"
+}

@@ -54,7 +54,10 @@ unavailable.
 UTF-8: an object with exactly the members `bundle`, `format`, `profile`,
 `parameters` and `observations`. The value of `bundle` is the string
 `issue-dag-observations/1`. A reader MUST reject a bundle with another value
-or with another set of members.
+or with another set of members. No object of a bundle, at any depth, gives a
+member twice: RFC 8259 leaves the meaning of such an object to the reader,
+so a reader MUST reject a bundle that holds one rather than keep either
+value.
 
 **OB2. Versions in use.** `format` and `profile` name the format and the
 planning profile of the run, as the [version table](../versions.md) names
@@ -116,7 +119,9 @@ exactly these members:
   null when it was not observed;
 - `author`: an actor (OB9), or null for a deleted account;
 - `draft`: a boolean, or an unavailable slot when the draft flag that was
-  observed is not a boolean;
+  observed is not a boolean. The member is recorded for every item, even
+  when no rule of the run reads it; profile rule I5 makes only its value
+  unavailable without consequence, never the member absent;
 - `closes`: the references, in canonical form, of the issues it closes.
 
 **OB8. Issues.** `observations.issues` is an object whose members are keyed
@@ -173,7 +178,17 @@ lower case. Logins are compared without regard to ASCII case.
 under the profile, and under the trust policy for the issues and pull
 requests the run reads. It MAY hold slots that the run does not read.
 
-> *Commentary.* OB5 is what keeps a bundle honest. A recorder that forgets to
+**OB15. Observation members.** `observations` is an object whose members are
+among `home_open_issues`, `home_open_pull_requests`, `issues`, `permissions`
+and `codeowners`, the members OB6 to OB11 define. A reader MUST reject a
+bundle whose `observations` holds any other member, rather than ignore it:
+a misspelt slot would otherwise be read as a slot that was not recorded.
+
+> *Commentary.* A bundle that OB1 or OB15 rejects is not a bundle, so no
+> graph case of the corpus can hold one: a case's input is a bundle (corpus
+> rule CC2) and its expected result is the outcome of a run (CC6).
+>
+> OB5 is what keeps a bundle honest. A recorder that forgets to
 > record a lookup produces a bundle that a replay rejects, rather than one
 > that silently answers *no pull requests* or *no editors*. A slot the run
 > does not read, such as the body of an issue whose author is not trusted, can

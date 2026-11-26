@@ -1,4 +1,4 @@
-//! The bundle reader against bundle rules OB1 to OB13.
+//! The bundle reader against bundle rules OB1 to OB15.
 
 use std::fs;
 use std::path::Path;
@@ -258,6 +258,16 @@ fn a_member_given_twice_is_rejected_at_its_path() {
         error.at,
         "observations.issues[\"o/r#1\"].value.body.value.editors[0]"
     );
+}
+
+#[test]
+fn ob15_an_unknown_observation_member_is_rejected() {
+    // A misspelt slot must not pass as a slot that was not recorded.
+    let mut bundle = example();
+    bundle["observations"]["home_open_pulls"] = json!({"value": []});
+    let error = reject(&bundle);
+    assert_eq!(error.at, "observations");
+    assert!(error.problem.contains("home_open_pulls"), "{error}");
 }
 
 #[test]

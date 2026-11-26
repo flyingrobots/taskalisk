@@ -14,5 +14,5 @@
   "level": "document",
   "normative_case": "document/v10-x1-document-has-no-warnings",
   "source": "the Python compiler, on the input of document/v10-x1-document-has-no-warnings",
-  "title": "What the compiler does: A document whose only violation is X1 has no warnings either"
+  "title": "Where document/v10-x1-document-has-no-warnings differs: the compiler reports the V10 warning beside the X1 violation"
 }

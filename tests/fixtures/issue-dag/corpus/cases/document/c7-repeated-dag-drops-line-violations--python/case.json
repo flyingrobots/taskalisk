@@ -15,5 +15,5 @@
   "level": "document",
   "normative_case": "document/c7-repeated-dag-drops-line-violations",
   "source": "the Python compiler, on the input of document/c7-repeated-dag-drops-line-violations",
-  "title": "What the compiler does: A repeated `.dag` drops C6 and C8 on the other lines"
+  "title": "Where document/c7-repeated-dag-drops-line-violations differs: the compiler also reports C6 and C8"
 }

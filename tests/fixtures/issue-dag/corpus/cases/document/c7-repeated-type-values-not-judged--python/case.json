@@ -14,5 +14,5 @@
   "level": "document",
   "normative_case": "document/c7-repeated-type-values-not-judged",
   "source": "the Python compiler, on the input of document/c7-repeated-type-values-not-judged",
-  "title": "What the compiler does: The values of a repeated `.type` are not judged under V5"
+  "title": "Where document/c7-repeated-type-values-not-judged differs: the compiler judges the first `.type` and also reports V5"
 }

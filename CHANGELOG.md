@@ -131,6 +131,18 @@ schema version under `Unreleased` is a draft and may change in place.
   result hold `"warnings": []`. The corpus gains 17 normative cases and 12 `--python` twins
   (differences 4, 19, 20, 21 and 22), digest `sha256:7204de0f…`.
 
+- **Profile and bundle gaps in the specification** (flyingrobots/taskalisk#110). The vendored
+  issue-dag specification (flyingrobots/issue-dag#7) now states the rulings the Rust graph core
+  follows: a pull request's draft flag is required only when S2 reads it (I4, I5); a key repeated
+  under C7 contributes no reference to discovery (D8); the bot prefix `app/` and suffix `[bot]`
+  match without regard to case (AD3, AD4); a bundle with a repeated JSON member or an unknown
+  `observations` member is not a bundle (OB1, new OB15); `unknown_capacity` and `semaphores` are
+  in ascending byte order (CC6). The corpus gains 8 normative graph cases and 2 `--python` twins
+  (differences 23 and 24, both defects of the Python), digest `sha256:aed5aeaa…`. The Rust core
+  passed every new case unchanged; `issue-dag-bundle` gains a test for OB15. The title of each
+  `--python` twin is now its disagreement note, what the compiler does, rather than the normative
+  claim it disagrees with.
+
 - **Document findings with stable codes** (flyingrobots/taskalisk#43). `issue-dag-core`
   judges a body with its issue's address, so rule X1 always applies, and returns findings: a stable
   code, a severity (error, or warning for the V10 advisory), the address as subject, and a message.

@@ -15,5 +15,5 @@
   "level": "document",
   "normative_case": "document/c8-repeated-unterminated-key-is-present",
   "source": "the Python compiler, on the input of document/c8-repeated-unterminated-key-is-present",
-  "title": "What the compiler does: A key repeated on two unterminated lines is present: C7 and C8, no V5"
+  "title": "Where document/c8-repeated-unterminated-key-is-present differs: the compiler counts neither unterminated line as an entry, so it reports V5 and no duplicate"
 }

@@ -14,5 +14,5 @@
   "level": "document",
   "normative_case": "document/c7-repeated-unknown-format-key",
   "source": "the Python compiler, on the input of document/c7-repeated-unknown-format-key",
-  "title": "What the compiler does: A repeated format key outside M2 is labelled C7, not V2"
+  "title": "Where document/c7-repeated-unknown-format-key differs: the compiler judges the first line and also reports V2"
 }

@@ -1,0 +1,42 @@
+{
+  "batch": [
+    "o/r#1"
+  ],
+  "edges": [],
+  "findings": [],
+  "nodes": [
+    {
+      "complete": false,
+      "id": "o/r#1",
+      "opaque": false,
+      "status": "open",
+      "untrusted": false
+    },
+    {
+      "complete": false,
+      "id": "o/r#2",
+      "opaque": false,
+      "status": "open",
+      "untrusted": false
+    }
+  ],
+  "outcome": "planned",
+  "ready": [
+    "o/r#1",
+    "o/r#2"
+  ],
+  "skipped": [
+    {
+      "id": "o/r#2",
+      "reason": "semaphore full",
+      "semaphores": [
+        "Tpu",
+        "gpu"
+      ]
+    }
+  ],
+  "unknown_capacity": [
+    "Tpu",
+    "gpu"
+  ]
+}

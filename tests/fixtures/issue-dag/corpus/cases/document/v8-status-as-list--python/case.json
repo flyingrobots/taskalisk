@@ -12,5 +12,5 @@
   "level": "document",
   "normative_case": "document/v8-status-as-list",
   "source": "the Python compiler, on the input of document/v8-status-as-list",
-  "title": "What the compiler does: A list `.status` is invalid"
+  "title": "Where document/v8-status-as-list differs: the validator raises TypeError and the run ends without an outcome"
 }
