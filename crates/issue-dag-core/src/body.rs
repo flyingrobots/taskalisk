@@ -199,7 +199,10 @@ fn fence_run(line: &str) -> Option<(char, usize, &str)> {
     let text = unindent(line)?;
     let mark = text.chars().next().filter(|c| matches!(c, '`' | '~'))?;
     let n = text.chars().take_while(|&c| c == mark).count();
-    (n >= 3).then(|| (mark, n, &text[n..]))
+    let rest = &text[n..];
+    // A backtick fence's info string holds no backtick (CommonMark 4.5):
+    // such a line is a paragraph with a code span, not a fence.
+    (n >= 3 && !(mark == '`' && rest.contains('`'))).then_some((mark, n, rest))
 }
 
 /// The line without up to three spaces of indent, or `None` when it is

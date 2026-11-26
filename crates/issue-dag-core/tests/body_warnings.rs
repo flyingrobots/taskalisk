@@ -514,3 +514,22 @@ fn a_comment_opener_inside_a_code_span_opens_no_comment() {
     );
     assert_eq!(warning_codes(&body, None), Vec::<&str>::new());
 }
+
+#[test]
+fn a_backtick_run_with_a_backtick_after_it_opens_no_fence() {
+    // CommonMark 4.5: a backtick fence's info string has no backtick, so the
+    // line is a paragraph holding a code span, and the sections after it count.
+    let body = task(
+        Some("```literal``` is recognized by ZQXMARK."),
+        Some(SCOPE),
+        Some(ACCEPTANCE),
+    );
+    assert_eq!(warning_codes(&body, None), Vec::<&str>::new());
+    // A tilde fence may hold backticks in its info string, and still opens.
+    let body = task(
+        Some("~~~ a`b\nHidden. Text.\n~~~\nThe ZQXMARK reads."),
+        Some(SCOPE),
+        Some(ACCEPTANCE),
+    );
+    assert_eq!(warning_codes(&body, None), Vec::<&str>::new());
+}
