@@ -2,7 +2,8 @@
   "cites": [
     "D3",
     "X3",
-    "F1"
+    "F1",
+    "AD2"
   ],
   "id": "graph/d3-outside-the-scope",
   "kind": "normative",

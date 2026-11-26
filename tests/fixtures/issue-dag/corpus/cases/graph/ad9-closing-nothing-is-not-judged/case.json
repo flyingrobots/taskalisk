@@ -1,0 +1,11 @@
+{
+  "cites": [
+    "AD9",
+    "AD10"
+  ],
+  "id": "graph/ad9-closing-nothing-is-not-judged",
+  "kind": "normative",
+  "level": "graph",
+  "source": "constructed from the rule text",
+  "title": "A pull request that closes no issue reads nothing"
+}

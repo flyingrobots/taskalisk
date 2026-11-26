@@ -1,0 +1,12 @@
+{
+  "cites": [
+    "AD4",
+    "AD5",
+    "AD10"
+  ],
+  "id": "graph/ad10-allowlisted-permission-not-reached",
+  "kind": "normative",
+  "level": "graph",
+  "source": "constructed from the rule text",
+  "title": "The permission of an allowlisted login is not required"
+}

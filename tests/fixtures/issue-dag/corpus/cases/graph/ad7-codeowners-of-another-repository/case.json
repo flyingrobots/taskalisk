@@ -1,0 +1,11 @@
+{
+  "cites": [
+    "AD7",
+    "AD2"
+  ],
+  "id": "graph/ad7-codeowners-of-another-repository",
+  "kind": "normative",
+  "level": "graph",
+  "source": "constructed from the rule text",
+  "title": "CODEOWNERS of one repository trusts nobody in another"
+}

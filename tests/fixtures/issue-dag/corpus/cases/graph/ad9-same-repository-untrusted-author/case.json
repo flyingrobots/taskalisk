@@ -1,0 +1,12 @@
+{
+  "cites": [
+    "AD9",
+    "S1",
+    "W1"
+  ],
+  "id": "graph/ad9-same-repository-untrusted-author",
+  "kind": "normative",
+  "level": "graph",
+  "source": "constructed from the rule text",
+  "title": "A same-repository pull request by an author without write permission is not admitted"
+}

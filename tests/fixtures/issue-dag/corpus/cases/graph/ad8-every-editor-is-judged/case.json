@@ -1,0 +1,12 @@
+{
+  "cites": [
+    "AD8",
+    "AD10",
+    "I5"
+  ],
+  "id": "graph/ad8-every-editor-is-judged",
+  "kind": "normative",
+  "level": "graph",
+  "source": "constructed from the rule text",
+  "title": "An unavailable lookup of a later editor makes the run incomplete, even after an untrusted one"
+}

@@ -1,7 +1,8 @@
 {
   "cites": [
     "S1",
-    "W1"
+    "W1",
+    "AD9"
   ],
   "id": "graph/s1-pull-request-not-admitted",
   "kind": "normative",

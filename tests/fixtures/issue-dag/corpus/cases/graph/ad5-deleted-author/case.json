@@ -1,0 +1,11 @@
+{
+  "cites": [
+    "AD5",
+    "AD8"
+  ],
+  "id": "graph/ad5-deleted-author",
+  "kind": "normative",
+  "level": "graph",
+  "source": "constructed from the rule text",
+  "title": "A deleted author is not trusted"
+}

@@ -1,0 +1,10 @@
+{
+  "cites": [
+    "AD7"
+  ],
+  "id": "graph/ad7-codeowners-email",
+  "kind": "normative",
+  "level": "graph",
+  "source": "constructed from the rule text",
+  "title": "An e-mail address in CODEOWNERS names nobody"
+}

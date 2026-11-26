@@ -1,0 +1,12 @@
+{
+  "cites": [
+    "AD7",
+    "AD10",
+    "I5"
+  ],
+  "id": "graph/ad10-codeowners-unavailable",
+  "kind": "normative",
+  "level": "graph",
+  "source": "constructed from the rule text",
+  "title": "An unavailable CODEOWNERS that a judgement reads makes the run incomplete"
+}

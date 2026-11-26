@@ -1,0 +1,10 @@
+{
+  "cites": [
+    "AD8"
+  ],
+  "id": "graph/ad8-trusted-editors",
+  "kind": "normative",
+  "level": "graph",
+  "source": "constructed from the rule text",
+  "title": "An issue whose author and every editor are trusted is admitted"
+}

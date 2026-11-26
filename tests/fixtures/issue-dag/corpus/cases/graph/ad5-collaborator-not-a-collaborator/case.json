@@ -1,0 +1,11 @@
+{
+  "cites": [
+    "AD5",
+    "AD6"
+  ],
+  "id": "graph/ad5-collaborator-not-a-collaborator",
+  "kind": "normative",
+  "level": "graph",
+  "source": "constructed from the rule text",
+  "title": "A COLLABORATOR association with no permission is not trusted"
+}

@@ -1,0 +1,10 @@
+{
+  "cites": [
+    "AD5"
+  ],
+  "id": "graph/ad5-bot-not-allowlisted",
+  "kind": "normative",
+  "level": "graph",
+  "source": "constructed from the rule text",
+  "title": "A bot that is not allowlisted is not trusted"
+}

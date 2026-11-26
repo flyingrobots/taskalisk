@@ -1,0 +1,11 @@
+{
+  "cites": [
+    "AD9",
+    "AD10"
+  ],
+  "id": "graph/ad9-permission-unavailable",
+  "kind": "normative",
+  "level": "graph",
+  "source": "constructed from the rule text",
+  "title": "An unavailable permission of a pull request's author makes the run incomplete"
+}

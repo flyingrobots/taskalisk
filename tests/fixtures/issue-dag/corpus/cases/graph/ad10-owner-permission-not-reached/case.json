@@ -1,0 +1,11 @@
+{
+  "cites": [
+    "AD5",
+    "AD10"
+  ],
+  "id": "graph/ad10-owner-permission-not-reached",
+  "kind": "normative",
+  "level": "graph",
+  "source": "constructed from the rule text",
+  "title": "The permission of an author trusted as OWNER is not required"
+}

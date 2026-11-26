@@ -1,0 +1,11 @@
+{
+  "cites": [
+    "AD3",
+    "AD8"
+  ],
+  "id": "graph/ad3-editor-is-the-author-in-another-case",
+  "kind": "normative",
+  "level": "graph",
+  "source": "constructed from the rule text",
+  "title": "An editor who is the author, spelled in another case, is not judged again"
+}

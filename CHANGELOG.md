@@ -27,6 +27,12 @@ schema version under `Unreleased` is a draft and may change in place.
 
 ### Fixed
 
+- **The threat model no longer calls a failed trust check "untrusted"** (flyingrobots/taskalisk#101).
+  Control C1 said a check that cannot be made is untrusted, and also that any trust lookup that
+  cannot run exits 2. The second governs, as the compiler already does: a failed check fails the
+  run and is never read as untrusted or trusted. The issue-dag admission policy (rule AD10) states
+  the same. No behaviour changes.
+
 - **An abbreviated or contradicting mode flag is a usage error** (flyingrobots/taskalisk#73).
   Every flag must be spelled in full: a prefix such as `--from` or `--verify` used to run
   `inventory` and exit 0. Under an explicit command, a mode flag naming another command

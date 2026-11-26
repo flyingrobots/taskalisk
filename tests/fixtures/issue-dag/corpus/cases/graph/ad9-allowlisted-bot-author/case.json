@@ -1,0 +1,11 @@
+{
+  "cites": [
+    "AD9",
+    "AD4"
+  ],
+  "id": "graph/ad9-allowlisted-bot-author",
+  "kind": "normative",
+  "level": "graph",
+  "source": "constructed from the rule text",
+  "title": "A pull request by an allowlisted bot is admitted"
+}
