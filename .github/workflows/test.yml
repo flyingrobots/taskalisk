@@ -92,4 +92,4 @@ jobs:
           cargo test --workspace --locked --release -- --ignored perf_ 2>&1 | tee perf.log
           ran="$(grep -c '^test .*perf_.* \.\.\. ok$' perf.log)"
           echo "perf_ tests passed: $ran"
-          test "$ran" -ge 7
+          test "$ran" -ge 8
