@@ -133,7 +133,7 @@ a `frontmatter.violation` (the plan is not `ok`), and its line carries null; the
 | `gh.response_invalid` | a `gh` answer had the wrong shape (no `isDraft`, no edit-history connection, unparseable JSON) | false |
 | `gh.mutation_failed` | the `PATCH` of a child's body failed | true |
 | `git.command_failed` | a `git` call failed (inventory, branches) | true |
-| `root.invalid_reference` | a `--root` that is not `owner/repo#N` | false |
+| `root.invalid_reference` | never from the command line: there a `--root` that is not `owner/repo#N` is a startup failure (`startup.arguments_invalid`, exit 3, no `retryable`, no receipt). The code remains for discovery called without that check | false |
 | `root.out_of_scope` | a `--root` outside the trusted scope | false |
 | `edge.out_of_scope`, `edge.child_not_issue`, `edge.child_untrusted`, `edge.child_frontmatter_missing`, `edge.child_frontmatter_invalid`, `edge.rewrite_impossible` | an edit refused before any write | false |
 | `edge.rollback_failed` | an added edge could not be removed after the run failed | true |
