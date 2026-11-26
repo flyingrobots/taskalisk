@@ -3,8 +3,10 @@
 //! A [`Finding`] states one violation or warning of a document judgement
 //! ([`crate::admit`]) as a stable code, a severity, a subject and a message.
 //!
-//! The codes are tabled on [`code`].
+//! The codes are tabled on [`code`] and listed, with every other family of
+//! findings, in the catalogue [`CODES`].
 
+use crate::body::BODY_WARNINGS;
 use crate::label::{self, Label};
 use crate::reference::IssueRef;
 use crate::{Judgement, admit};
@@ -13,8 +15,38 @@ use crate::{Judgement, admit};
 /// its text. Declared with [`Label`] itself, so no label can be missing.
 pub const LABELS: [Label; label::VARIANTS] = label::ALL;
 
-/// The catalogue of every finding code with its severity. Not yet filled.
-pub const CODES: &[(&str, Severity)] = &[];
+/// The catalogue of every finding code the crate can report, with its
+/// severity: the document codes in [`LABELS`] order, then Taskalisk's body
+/// warnings in [`BODY_WARNINGS`] order. Each code appears once.
+///
+/// This is the one public source of the codes; the table on [`code`] and
+/// any reference page are checked against it. Every family of findings must
+/// register its codes here, so a new family is appended to this list.
+pub const CODES: &[(&str, Severity)] = &CATALOGUE;
+
+/// The number of codes in [`CODES`].
+const CODE_COUNT: usize = LABELS.len() + BODY_WARNINGS.len();
+
+/// [`CODES`] as an array, built from the families' own lists.
+const CATALOGUE: [(&str, Severity); CODE_COUNT] = {
+    let mut out = [("", Severity::Error); CODE_COUNT];
+    let mut i = 0;
+    while i < LABELS.len() {
+        let severity = if matches!(LABELS[i], Label::V10) {
+            Severity::Warning
+        } else {
+            Severity::Error
+        };
+        out[i] = (code(LABELS[i]), severity);
+        i += 1;
+    }
+    let mut j = 0;
+    while j < BODY_WARNINGS.len() {
+        out[LABELS.len() + j] = (BODY_WARNINGS[j].code(), Severity::Warning);
+        j += 1;
+    }
+    out
+};
 
 /// How much a finding matters.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]

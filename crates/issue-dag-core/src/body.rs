@@ -85,19 +85,19 @@ macro_rules! body_warnings {
 body_warnings! {
     /// No `## Acceptance` heading.
     AcceptanceMissing => "taskalisk.acceptance-missing",
-        "the body has no ## Acceptance section",
+        "the body has no `## Acceptance` heading (exact text, level 2)",
     /// The Outcome section has more than one list item.
     OutcomeItems => "taskalisk.outcome-items",
         "the Outcome section has more than one list item: the task may carry more than one outcome",
     /// No `## Outcome` heading.
     OutcomeMissing => "taskalisk.outcome-missing",
-        "the body has no ## Outcome section",
+        "the body has no `## Outcome` heading (exact text, level 2)",
     /// The Outcome section has more than one sentence.
     OutcomeSentences => "taskalisk.outcome-sentences",
         "the Outcome section has more than one sentence: the task may carry more than one outcome",
     /// No `## Scope` heading.
     ScopeMissing => "taskalisk.scope-missing",
-        "the body has no ## Scope section",
+        "the body has no `## Scope` heading (exact text, level 2)",
     /// The title joins two things with `and` or a semicolon.
     TitleJoins => "taskalisk.title-joins",
         "the title joins two things with \"and\" or a semicolon: the task may carry more than one \

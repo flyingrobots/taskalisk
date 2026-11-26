@@ -37,7 +37,10 @@ schema version under `Unreleased` is a draft and may change in place.
   sentence or list item; `taskalisk.title-joins` for a title that joins two things with "and" or a
   semicolon. The title is an optional input, since the observation bundle records none; without
   it that check is skipped. Each is a warning with fixed text, tabled with the document codes and
-  sorted the same way; a body filled minimally from each canonical template has none.
+  sorted the same way; a body filled minimally from each canonical template has none. A missing
+  section's message names the exact heading it requires. `CODES` is the one public catalogue of
+  every finding code with its severity, document codes then body warnings; every family of
+  findings registers there.
 
 - **A provenance check for the vendored Parley writer** (flyingrobots/taskalisk#77).
   `scripts/check_vendored_writer.py` fetches the writer from flyingrobots/parley at the pinned
