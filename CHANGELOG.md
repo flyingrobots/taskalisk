@@ -12,7 +12,8 @@ schema version under `Unreleased` is a draft and may change in place.
 - **One `retryable` for every `gh.` and `git.` code** (flyingrobots/taskalisk#79). The
   `gh.response_invalid` remedy no longer says to rerun, since the code is not retryable;
   `SKILL.md` names both exceptions (`gh.list_limit_reached`, `gh.response_invalid`); the output
-  reference gains the missing `root.invalid_reference` row. No flag, message or schema changes.
+  reference gains the missing `root.invalid_reference` row. No flag, code or schema changes; the
+  `gh.response_invalid` remedy text changed.
 
 ## 2.1.2 - 2026-11-24
 

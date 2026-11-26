@@ -579,8 +579,26 @@ class RetryableTable(unittest.TestCase):
         for code, remedy in self.tk.REMEDIES.items():
             with self.subTest(code):
                 self.assertIn(code, self.documented, "a code with a remedy has no row in the Errors table")
-                if remedy.startswith("rerun") or "then rerun" in remedy:
+                if re.search(r"(?i)\b(re-?run|retry|run (it )?again)\b", remedy):
                     self.assertTrue(self.documented[code], f"{code} is not retryable, yet its remedy says rerun: {remedy!r}")
+
+    def test_every_code_error_code_returns_has_a_flag(self):
+        """A code `error_code` can return without a RETRYABLE entry would end the run in uncaught.exception."""
+        import ast
+        import inspect
+        def results(node):
+            """The strings an expression can evaluate to: a constant, or either arm of `a if c else b`."""
+            if isinstance(node, ast.Constant) and isinstance(node.value, str):
+                return {node.value}
+            if isinstance(node, ast.IfExp):
+                return results(node.body) | results(node.orelse)
+            self.fail(f"error_code returns an expression this test cannot read: {ast.dump(node)}")
+
+        tree = ast.parse(inspect.getsource(self.tk.error_code))
+        returned = set().union(*(results(r.value) for r in ast.walk(tree) if isinstance(r, ast.Return)))
+        self.assertTrue(returned)
+        self.assertEqual(returned - set(self.tk.RETRYABLE), set())
+        self.assertEqual(set(self.tk.REMEDIES), set(self.tk.RETRYABLE))
 
     def test_the_code_and_the_reference_agree(self):
         self.assertEqual({c: r for c, r in self.tk.RETRYABLE.items() if c.startswith(("gh.", "git."))}, self.calls)
