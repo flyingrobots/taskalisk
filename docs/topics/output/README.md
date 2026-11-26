@@ -142,12 +142,15 @@ a `frontmatter.violation` (the plan is not `ok`), and its line carries null; the
 | `gh.command_failed` | a `gh` call failed, a trust lookup included | true |
 | `gh.list_limit_reached` | a list filled its limit and may be truncated | false |
 | `gh.response_invalid` | a `gh` answer had the wrong shape (no `isDraft`, no edit-history connection, unparseable JSON), or an edit history repeated a cursor or ran past 1,000 pages | false |
-| `gh.mutation_failed` | the `PATCH` of a child's body failed | true |
+| `gh.mutation_failed` | the `PATCH` of a child's body failed. The Rust binary reports it with `retryable` false: the write may have been applied (`detail.write_outcome` is `unknown`), and it is never retried or undone (E9) | true |
 | `git.command_failed` | a `git` call failed (inventory, branches) | true |
 | `root.invalid_reference` | never from the command line: there a `--root` that is not `owner/repo#N` is a startup failure (`startup.arguments_invalid`, exit 3, no `retryable`, no receipt). The code remains for discovery called without that check | false |
 | `root.out_of_scope` | a `--root` outside the trusted scope | false |
 | `edge.out_of_scope`, `edge.child_not_issue`, `edge.child_untrusted`, `edge.child_frontmatter_missing`, `edge.child_frontmatter_invalid`, `edge.rewrite_impossible` | an edit refused before any write | false |
-| `edge.rollback_failed` | an added edge could not be removed after the run failed | true |
+| `edge.rollback_failed` | an added edge could not be removed after the run failed (Python only: the Rust binary never restores) | true |
+| `edge.cycle`, `edge.graph_invalid` | Rust binary only: the plan with the edit, compiled in memory before any write, has a cycle, or a violation, out-of-scope reference or unknown prerequisite, that the plan without it lacks (edge-edit rules E6, E6a) | false |
+| `edge.writer_untrusted` | Rust binary only: the account `gh` writes as (`gh api user`) is not admitted in the child's repository under the trust policy (E7) | false |
+| `edge.conflict` | Rust binary only: the final reread of the child, just before the write, observed a changed address, body or editor admission (E7); `detail.conflict` is `address`, `body` or `trust`, `detail.child` names the issue; nothing was written | false |
 | `frontmatter.invalid` | an issue in the closure has invalid frontmatter | false |
 | `issue.not_found` | Rust binary only: a reference resolves to nothing, for the cause the core recorded; `detail.rule` is `D11`, `D12` or `D13` | false |
 | `bundle.capture_failed` | Rust binary only: `--capture-bundle` could not write the bundle or its record | false |
@@ -328,11 +331,13 @@ Every line is written with its keys in sorted order, the envelope's included.
 
 It differs from the Python in these ways, each tested in `crates/taskalisk/tests/cli.rs`:
 
-- **Commands and flags.** Only `plan`. `--repo`, `--root`, `--sem-capacity`, `--trust`,
+- **Commands and flags.** `plan` and `edit`. `--repo`, `--root`, `--sem-capacity`, `--trust`,
   `--trust-owner`, `--trust-repo`, `--trust-codeowners`, `--from-github`, `--human` and `--help`
   are accepted, with the binary's own `--capture-bundle`, `--from-bundle`, `--from-record` and
-  `--offline` (see *Capture and replay*); every other flag and command is
-  `startup.arguments_invalid`, exit 3, never ignored. A flag's value may follow `=`. `--help` describes `plan` with the schemas of the lines
+  `--offline` for `plan` (see *Capture and replay*), and for `edit` only `--add-edge`,
+  `--remove-edge` and `--reason`; every other flag and command (`--dry-run` and
+  `--compare-relationships` included) is `startup.arguments_invalid`, exit 3, never ignored. A
+  flag's value may follow `=`. `--help` describes `plan` with the schemas of the lines
   it writes and of `parley.error` and `parley.startup.failed` (copies of the writer's, held equal
   by `tests/test_binary_schemas.py`).
 - **Frontmatter messages.** A frontmatter finding's message is the core's fixed text (see
@@ -412,6 +417,26 @@ It differs from the Python in these ways, each tested in `crates/taskalisk/tests
   may be links. Every file the binary writes is created new (`O_EXCL`), so it never overwrites a
   file a link points at.
 - **Not ported from the writer.** The capture of stray output, `--dry-run` and `--schema`.
+- **The edge edit** (flyingrobots/taskalisk#1; the edge-edit contract,
+  `tests/fixtures/issue-dag/contracts/edge-edit.md`). Tested in `crates/taskalisk/tests/edit.rs`.
+  The binary never writes first. In order: the scope, the child's admission and its task
+  document, the rewrite of its `.blocked_by` line; when the body changes, the plan with the edit
+  compiled in memory against the plan without it, the child among the seeds even when `--root`
+  does not reach it; the writer (`gh api user`) admitted under the same trust policy; a final
+  reread of the child through a fresh read, refused on a changed address, body or editor
+  admission; then one `PATCH`. A failed lookup at any step is reported before any write (phase
+  `edge_edit`). A no-op writes nothing and asks for no writer. Removing a reference outside the
+  scope is allowed, and that parent is never read. A failed `PATCH` is `gh.mutation_failed` with
+  `detail.write_outcome: unknown`: never retried, never undone. `edge_edit` has no `rolled_back`.
+  The plan that follows is the run's plan over the validated proposal, not a new read of GitHub.
+  **The check is optimistic** (E8): GitHub documents no conditional update of an issue, so an
+  edit to the child made between the final reread and the `PATCH` can be lost, and an edit to
+  another issue after the checks can make the graph cyclic or invalid; the next plan reports it.
+- **Exit status of a refused edit.** flyingrobots/taskalisk#1 asks for exit 1 on an observed
+  conflict and 2 on a lookup failure. This contract reserves 1 (see the status table) and gives 2
+  to every reported error, the distinction carried by the code instead, so a conflict exits 2
+  with `edge.conflict`, which names the issue in `problem` and `detail.child`; a lookup failure
+  exits 2 with a `gh.` code or `issue.not_found`.
 
 ## Conformance
 

@@ -64,7 +64,15 @@ impl Fake {
     }
 }
 
+// Each test binary that includes this module uses only some of these.
+#[allow(dead_code)]
 impl Fake {
+    /// The fake's state now, as its writes left it.
+    pub fn state(&self) -> Value {
+        serde_json::from_str(&fs::read_to_string(self.dir.join("state.json")).expect("the state"))
+            .expect("a JSON state")
+    }
+
     /// For each run, the variables the state's `record_env` names, as `gh`
     /// saw them (`null` when unset).
     pub fn environments(&self) -> Vec<Value> {

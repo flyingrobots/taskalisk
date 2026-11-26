@@ -24,6 +24,14 @@ State shape:
    "edits_page_size": int,
    "patch_fail": bool,                                # every PATCH of an issue body fails (HTTP 502)
    "patch_fail_after": int,                           # that many PATCHes succeed, then every later one fails
+   "patch_lost": bool,                                # a PATCH applies, then gh fails as if the answer was lost
+   "writer": {"login": str, "type": str},             # the authenticated account (`gh api user`); default the default author
+   "writer_fail": bool,                               # `gh api user` fails (HTTP 403, as for an app token)
+   "edit_on_read": {"issue": "owner/repo#N", "read": int, "body": str, "editors": [...]},
+                                                      # another person's edit, made just before that edit-history read of the issue;
+                                                      # with "fail": true that read fails instead
+   "edit_on_get": {"issue": "owner/repo#N", "read": int, "set": {...}},
+                                                      # sets these issue fields (such as "is_pr") just before that REST read of it
    "issues_list_fail_message": str,                   # the REST issue list fails with this text; {GH_TOKEN}, {$NAME} (any variable) and {HOME} expand
    "issues_list_drop_number": bool,                   # the REST issue list omits "number" (a malformed response)
    "issues_list_pages": [["owner/repo#N", ...], ...], # the REST issue list as these pages; --paginate writes every one
@@ -43,6 +51,9 @@ def save(state):
 
 def author_of(state, it):
     return it.get("author", state.get("default_author", "owner"))
+
+def writer_of(state):
+    return state.get("writer", {"login": state.get("default_author", "owner"), "type": "User"})
 
 def issue_obj(state, key):
     slug, num = key.split("#")
@@ -90,6 +101,17 @@ def graphql(state, args):
     if it is None:
         print(json.dumps({"data": {"repository": {"issue": None}}, "errors": [{"message": "Could not resolve to an Issue"}]}))
         sys.exit(1)
+    change = state.get("edit_on_read") or {}
+    if change.get("issue") == key:
+        reads = state.setdefault("edit_history_reads", {})
+        reads[key] = reads.get(key, 0) + 1
+        if reads[key] == change["read"]:
+            for field in ("body", "editors"):
+                if field in change:
+                    it[field] = change[field]
+        save(state)
+        if reads[key] == change["read"] and change.get("fail"):
+            fail(f"gh: GraphQL unavailable for {key} on read {reads[key]} (fake)")
     author = author_of(state, it)
     # The creation edit is by the author actor, with the author's own type.
     editors = it.get("editors", [{"login": author, "type": it.get("author_type", "User")}])
@@ -149,6 +171,11 @@ def main(argv):
     if args[:1] == ["-X"]:
         method, args = args[1], args[2:]
     path = args[0]
+    if path == "user":
+        # The authenticated account; an app installation token cannot read it.
+        if state.get("writer_fail"):
+            fail("gh: Resource not accessible by integration (HTTP 403)")
+        print(json.dumps(writer_of(state))); return
     m = re.fullmatch(r"repos/([^/]+/[^/]+)/issues\?state=open&per_page=\d+", path)
     if m:
         # The REST list: open issues of that repository, pull requests included, like GitHub.
@@ -203,6 +230,13 @@ def main(argv):
     if not m.group(3):
         if method == "GET" and state.get("issue_get_returns_list"):
             print("[]"); return
+        change = state.get("edit_on_get") or {}
+        if method == "GET" and change.get("issue") == key:
+            gets = state.setdefault("issue_gets", {})
+            gets[key] = gets.get(key, 0) + 1
+            if gets[key] == change["read"]:
+                state["issues"][key].update(change.get("set", {}))
+            save(state)
         if method == "PATCH":
             if state.get("patch_fail"):
                 fail("gh: Bad Gateway (HTTP 502)")
@@ -211,8 +245,17 @@ def main(argv):
                     fail("gh: Bad Gateway (HTTP 502)")
                 state["patch_fail_after"] -= 1
             payload = json.loads(sys.stdin.read())
-            state["issues"][key]["body"] = payload["body"]
-            save(state); print("{}"); return
+            it = state["issues"][key]
+            it["body"] = payload["body"]
+            it.pop("graphql_body", None)
+            # GitHub records the edit under the authenticated account: the body's edit history gains it.
+            writer = writer_of(state)
+            it.setdefault("editors", [{"login": author_of(state, it), "type": it.get("author_type", "User")}])
+            it["editors"].append({"login": writer["login"], "type": writer.get("type", "User")})
+            save(state)
+            if state.get("patch_lost"):
+                fail("gh: connection reset after the request was sent (fake)")
+            print("{}"); return
         if "--jq" in args and args[args.index("--jq") + 1] == ".id":
             print(state["issues"][key]["id"]); return
         print(json.dumps(issue_obj(state, key))); return

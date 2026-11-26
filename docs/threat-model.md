@@ -102,7 +102,7 @@ control and whether it exists.
 | T10 | The agent runs with the operator's primary token and no branch protection. | A manipulated agent can push to `main`, edit any issue, or act across every repository the token sees. | High | C14 policy |
 | T11 | Checkout of a branch the executor did not create. | Hook and script execution; attacker agent instructions. | Critical | C10, C11 planned (#15, #10) |
 | T12 | A `pr-review:<login>=APPROVED` predicate matched against any review; a `skill:` verdict produced by an agent that read attacker text. | Forged gate pass. | High | C12, C13 planned (#14) |
-| T13 | `--add-edge` writes before checking for a cycle and never compares the body it read with the body it overwrites. | Lost concurrent edits; a cycle visible on GitHub for a window. | Medium | #1 |
+| T13 | An edge edit publishes an invalid graph, writes as an untrusted account, or overwrites a concurrent edit of the child's body. (The Python `--add-edge` writes before checking for a cycle and restores the old body blindly.) | Lost concurrent edits; a cycle visible on GitHub for a window. | Medium | Rust `edit`: checks before the write, writer admission, final reread, no restore, tested (#1); the reread-to-`PATCH` race remains (section 9). Python: unchanged until the cutover (#32) |
 | T14 | A flood of issues fills the list limit. | The compiler fails closed: planning stops. | Medium | C15 documented, not implemented |
 | T15 | The prompt file in a predictable temporary path. | Local symlink or read by another user. | Low | C16 planned (#13) |
 | T16 | TLS interception. | Forged issue data; also forged code. | Out of scope beyond fail-closed | `gh` refuses plain HTTP; never add a downgrade |
@@ -451,6 +451,24 @@ the file. It never widens the scope (C2).
 
 ## 9. Residual risks and open decisions
 
+- **Edge-write concurrency (T13).** The Rust binary's `edit` follows the
+  edge-edit contract (`tests/fixtures/issue-dag/contracts/edge-edit.md`,
+  E1 to E10), and each check has a test in `crates/taskalisk/tests/edit.rs`
+  and `crates/issue-dag-core/src/edit.rs`: the plan with the edit is
+  compiled in memory before any write, the edited child included when
+  `--root` does not reach it, and a new cycle, violation, out-of-scope
+  reference or unknown prerequisite refuses it; the account `gh` writes as
+  (`gh api user`) must pass the same trust policy, so a token that cannot
+  name its account is refused, and a bot needs an explicit `--trust`; the
+  child is reread just before the one `PATCH`, and a changed address, body
+  or editor admission refuses the write. A failed `PATCH` is reported with
+  its outcome unknown and is never retried or undone. This is the
+  optimistic contract the operator chose on 2026-11-08 (E8): GitHub
+  documents no conditional update of an issue, so an edit made between the
+  final reread and the `PATCH` can be lost, and an edit to another issue
+  after the checks can make the graph cyclic or invalid. The next plan
+  reports that; nothing prevents it. The Python script still writes first
+  and restores on failure until the cutover (#32).
 - **C15** needs a decision: which write-gated signal seeds discovery once a
   flood reaches the list limit.
 - **Repositories the operator cannot administer.** The permission endpoint

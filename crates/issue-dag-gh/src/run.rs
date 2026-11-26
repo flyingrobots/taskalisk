@@ -1,6 +1,7 @@
 //! Running `gh`: an argument vector, never a shell string.
 
 use std::ffi::OsString;
+use std::io::Write;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
@@ -43,6 +44,17 @@ pub enum Refusal {
 impl Runner {
     /// Runs `gh` with `argv` and returns its standard output.
     pub fn run(&self, source: &str, argv: &[String]) -> Result<Vec<u8>, Refusal> {
+        self.run_with(source, argv, None)
+    }
+
+    /// Runs `gh` with `argv` and `input` on its standard input, and returns
+    /// its standard output.
+    pub fn run_with(
+        &self,
+        source: &str,
+        argv: &[String],
+        input: Option<&[u8]>,
+    ) -> Result<Vec<u8>, Refusal> {
         let secrets = secrets(&self.env);
         let failed = |detail: String| {
             Refusal::Failed(GhError::CommandFailed {
@@ -58,16 +70,32 @@ impl Runner {
         for name in UNSET {
             command.env_remove(name);
         }
-        command.envs(FORCED).stdin(Stdio::null());
+        command.envs(FORCED).stdin(if input.is_some() {
+            Stdio::piped()
+        } else {
+            Stdio::null()
+        });
         if let Some(dir) = &self.dir {
             command.current_dir(dir);
         }
-        let output = command.output().map_err(|error| {
+        let not_run = |error: std::io::Error| {
             failed(format!(
                 "{} could not be run: {error}",
                 self.program.to_string_lossy()
             ))
-        })?;
+        };
+        let output = match input {
+            None => command.output().map_err(not_run)?,
+            Some(bytes) => {
+                command.stdout(Stdio::piped()).stderr(Stdio::piped());
+                let mut child = command.spawn().map_err(not_run)?;
+                if let Some(mut stdin) = child.stdin.take() {
+                    // A gh that exits before reading all of it fails below.
+                    let _ = stdin.write_all(bytes);
+                }
+                child.wait_with_output().map_err(not_run)?
+            }
+        };
         if output.status.success() {
             return Ok(output.stdout);
         }

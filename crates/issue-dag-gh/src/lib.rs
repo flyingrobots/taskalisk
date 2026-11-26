@@ -22,10 +22,18 @@
 //! Each slot is read once: a second lookup answers what the first observed,
 //! and [`GhForge::observations`] is the recording of every slot read, which
 //! the core's [`issue_dag_core::RecordedForge`] replays.
+//!
+//! It is also the forge write port ([`issue_dag_core::ForgeWrite`],
+//! flyingrobots/taskalisk#1): the account it writes as (`gh api user`) and
+//! one `gh api -X PATCH` that replaces an issue body, the JSON body on
+//! standard input. A write that fails is a [`WriteFailure`], never retried.
+//! A write is never cached: a second forge reads the issue afresh, which is
+//! how the final reread before a write is made.
 
 mod error;
 mod read;
 mod run;
+mod write;
 
 use std::cell::RefCell;
 use std::collections::BTreeMap;
@@ -40,6 +48,7 @@ pub use error::GhError;
 use read::Label;
 pub use read::{CODEOWNERS_PATHS, EDIT_HISTORY_QUERY};
 use run::Runner;
+pub use write::WriteFailure;
 
 /// What the reads returned only to be shown, never to plan from.
 ///
