@@ -758,3 +758,41 @@ fn the_committed_bundle_of_this_repository_replays_offline() {
     assert_eq!(schema(plan), "taskalisk.plan");
     assert_eq!(plan["source"]["repository"], "flyingrobots/taskalisk");
 }
+
+/// #51: a captured bundle carries the cause of a reference gh could not
+/// find (OB17), and a replay with reads disabled reports it as the live run
+/// did.
+#[test]
+fn a_captured_cause_replays_as_the_live_run_reported_it() {
+    let fixture = Fixture::new("plan_state()");
+    let captured = fixture.live(
+        "live",
+        &["--root", "flyingrobots/nothere#1", "--capture-bundle"],
+    );
+    assert_eq!(captured.status(), 2, "{}", captured.explain());
+    let bundle_path = captured.captured("bundle");
+    let bundle: Value =
+        serde_json::from_str(&fs::read_to_string(&bundle_path).expect("the bundle")).expect("JSON");
+    let slot = &bundle["observations"]["issues"]["flyingrobots/nothere#1"];
+    assert_eq!(slot["not_found"], "repository", "{slot}");
+    assert!(slot["unavailable"].is_string(), "{slot}");
+    let live = captured.errors();
+    assert_eq!(live.len(), 1, "{}", captured.explain());
+    assert_eq!(live[0]["code"], "issue.not_found");
+    let replay = fixture.replay(
+        "replay",
+        &["--from-bundle", bundle_path.to_str().expect("UTF-8")],
+    );
+    assert_eq!(replay.status(), 2, "{}", replay.explain());
+    assert_eq!(fixture.reads(), "");
+    validate(&replay.stdout());
+    validate(&replay.stderr());
+    let replayed = replay.errors();
+    assert_eq!(replayed.len(), 1, "{}", replay.explain());
+    assert_eq!(replayed[0]["code"], "issue.not_found");
+    assert_eq!(replayed[0]["detail"]["source"], "bundle");
+    for key in ["reference", "not_found", "rule", "error"] {
+        assert_eq!(replayed[0]["detail"][key], live[0]["detail"][key], "{key}");
+    }
+    assert_eq!(replayed[0]["problem"], live[0]["problem"]);
+}

@@ -29,6 +29,10 @@ State shape:
    "issues_list_pages": [["owner/repo#N", ...], ...], # the REST issue list as these pages; --paginate writes every one
    "issues_list_silent": bool,                        # the REST issue list prints nothing and exits 0
    "graphql_page_info": {...},                        # replaces the edit history's pageInfo as given
+   "accounts": [str, ...],                            # logins users/<login> finds, beside every owner the state names
+   "repositories": ["owner/repo", ...],               # repositories repos/<owner>/<repo> finds, beside every one the state names
+   "private_repositories": ["owner/repo", ...],       # exist, but the token cannot see them: every lookup in them answers 404
+   "fail_paths": {"users/owner": str, ...},           # these API paths fail with this text
    "record_env": [str, ...]}                          # appends these variables' values, JSON, to $FAKE_GH_LOG.env
 """
 import json, os, re, sys
@@ -58,6 +62,21 @@ def issue_obj(state, key):
     if it.get("is_pr"):
         obj["pull_request"] = {"url": f"https://api.github.com/repos/{slug}/pulls/{num}"}
     return obj
+
+def repositories(state):
+    """Every repository the state names: the home, those of its issues, collaborators and CODEOWNERS
+    files, and those it lists in "repositories" or "private_repositories"."""
+    names = [state.get("home", "")] + [k.split("#")[0] for k in state.get("issues", {})]
+    names += list(state.get("collaborators", {})) + list(state.get("codeowners", {}))
+    names += state.get("repositories", []) + state.get("private_repositories", [])
+    return [n for n in names if "/" in n]
+
+def owners(state):
+    """Every account the state names: the owner of every repository it names, and its "accounts"."""
+    return [r.split("/")[0] for r in repositories(state)] + state.get("accounts", [])
+
+def is_private(state, name):
+    return name.lower() in (r.lower() for r in state.get("private_repositories", []))
 
 def strip(state, obj):
     if state.get("strip_repository_url"):
@@ -149,6 +168,25 @@ def main(argv):
     if args[:1] == ["-X"]:
         method, args = args[1], args[2:]
     path = args[0]
+    if path in state.get("fail_paths", {}):
+        fail(state["fail_paths"][path])
+    m = re.fullmatch(r"users/([^/]+)", path)
+    if m:
+        # An account: any owner the state names, or one it lists in "accounts".
+        login = next((o for o in owners(state) if o.lower() == m.group(1).lower()), None)
+        if login is None:
+            fail("gh: Not Found (HTTP 404)")
+        print(login if "--jq" in args else json.dumps({"login": login, "type": "User"})); return
+    m = re.fullmatch(r"repos/([^/]+/[^/]+)", path)
+    if m:
+        # A repository: any the state names, unless the token cannot see it.
+        name = next((r for r in repositories(state) if r.lower() == m.group(1).lower()), None)
+        if name is None or is_private(state, name):
+            fail("gh: Not Found (HTTP 404)")
+        print(name if "--jq" in args else json.dumps({"full_name": name})); return
+    m = re.fullmatch(r"repos/([^/]+/[^/]+)/issues/\d+.*", path)
+    if m and is_private(state, m.group(1)):
+        fail("gh: Not Found (HTTP 404)")
     m = re.fullmatch(r"repos/([^/]+/[^/]+)/issues\?state=open&per_page=\d+", path)
     if m:
         # The REST list: open issues of that repository, pull requests included, like GitHub.

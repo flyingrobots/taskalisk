@@ -1120,7 +1120,8 @@ mod tests {
     use crate::parley::{Run, Start};
     use crate::render::Display;
     use issue_dag_core::{
-        Graph, NotFound, Outcome, Parameters, ReadScope, Repo, TRUST_POLICY, TrustParameters,
+        Cause, Graph, IssueRef, NotFound, Outcome, Parameters, ReadScope, Repo, TRUST_POLICY,
+        TrustParameters,
     };
     use issue_dag_gh::GhError;
     use serde_json::json;
@@ -1228,9 +1229,14 @@ mod tests {
             (NotFound::Repository, "D12"),
             (NotFound::Number, "D13"),
         ] {
+            // The reason names another reference: the one reported is the
+            // cause's, never one parsed out of the reason (#51).
             let incomplete = Outcome::Incomplete {
-                unavailable: "o/r#9 resolves to no issue gh can see (HTTP 404)".to_owned(),
-                cause: Some(cause),
+                unavailable: "o/r#1 resolves to no issue gh can see (HTTP 404)".to_owned(),
+                cause: Some(Cause {
+                    not_found: cause,
+                    reference: IssueRef::parse("o/r#9").expect("a reference"),
+                }),
             };
             let (status, _, err) = concluded(&incomplete, &[]);
             assert_eq!(status, 2, "{err}");
@@ -1241,6 +1247,15 @@ mod tests {
             assert_eq!(errors[0]["detail"]["rule"], rule, "{err}");
             assert_eq!(errors[0]["detail"]["not_found"], cause.as_str(), "{err}");
             assert_eq!(errors[0]["detail"]["reference"], "o/r#9", "{err}");
+            let message = errors[0]["problem"].as_str().expect("a problem");
+            assert!(message.contains("o/r#9"), "{message}");
+            // D12: a private repository the token cannot see answers as one
+            // that does not exist, and the message says so.
+            assert_eq!(
+                message.contains("private repository"),
+                cause == NotFound::Repository,
+                "{message}"
+            );
         }
         // Without a cause, an unavailable read the adapter did not record is
         // a malformed answer.
