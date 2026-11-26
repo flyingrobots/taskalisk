@@ -138,6 +138,13 @@ class Forge(unittest.TestCase):
         self.assertEqual(r["outcome"], "planned")
         self.assertEqual(r["containers"], [{"id": f"{HOME}#9", "children": [f"{HOME}#1", f"{HOME}#2", f"{ECHO}#5", f"{ECHO}#6", f"{HOME}#110"]}])
         self.assertIn({"from": f"{BUNNY}#7", "to": f"{ECHO}#5", "status": "satisfied"}, r["edges"])
+
+    def test_a_bundle_naming_another_trust_policy_is_a_valid_bundle_whose_run_is_rejected(self):
+        """Profile rule I2: the only trust policy the specification defines is taskalisk/threat-model."""
+        b = ob.from_fake_state(plan_state(), roots=[f"{HOME}#9"])
+        b["parameters"]["trust"]["policy"] = "someone/else"
+        self.assertEqual(ob.validate(b), [])
+        self.assertEqual(forge.run_graph(b), {"outcome": "rejected"})
         self.assertIn({"from": f"{ECHO}#5", "to": f"{HOME}#1", "status": "open"}, r["edges"])
         self.assertEqual(r["ready"][0], f"{ECHO}#5")
         self.assertIn({"id": f"{BUNNY}#7", "complete": True, "opaque": False, "untrusted": False}, r["nodes"])
