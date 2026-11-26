@@ -3,6 +3,8 @@
 //! A hand-written reader for the `issue-dag/2` format: the carrier
 //! ([`parse`]), validity ([`validate`]), the decoded record ([`admit`]), and
 //! the `.blocked_by` rewrite of the edge-edit contract ([`rewrite_blocked_by`]).
+//! A judgement becomes findings with stable codes ([`findings`]); the codes
+//! are tabled on [`code`].
 //! The crate performs no I/O and has no dependencies.
 mod carrier;
 mod finding;

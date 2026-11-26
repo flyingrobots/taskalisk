@@ -45,7 +45,7 @@ fn task(edit: &[(&str, Option<&str>)]) -> String {
     for (key, line) in edit {
         let at = lines.iter().position(|l| l.split(':').next() == Some(key));
         match (at, line) {
-            (Some(i), Some(l)) => lines[i] = (*l).to_owned(),
+            (Some(i), Some(l)) => (*l).clone_into(&mut lines[i]),
             (Some(i), None) => {
                 lines.remove(i);
             }
@@ -247,7 +247,7 @@ fn the_documented_table_matches_the_codes() {
         .expect("src/finding.rs is readable");
     let rows: Vec<(String, String)> = source
         .lines()
-        .filter_map(|l| l.trim_start().strip_prefix("//! | `"))
+        .filter_map(|l| l.trim_start().strip_prefix("/// | `"))
         .map(|row| {
             let cells: Vec<&str> = row.split('|').map(str::trim).collect();
             (
@@ -304,7 +304,11 @@ fn findings_of_several_documents_sort_by_subject_then_code() {
     let two = IssueRef::parse("o/r#2").expect("a reference");
     let mut all = findings(
         &admit(
-            &task(&[(".status", Some(".status: x")), (".kind", None)]),
+            &task(&[
+                (".id", Some(".id: o/r#2")),
+                (".status", Some(".status: x")),
+                (".kind", None),
+            ]),
             Some(&two),
         ),
         &two,
