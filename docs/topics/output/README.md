@@ -210,10 +210,11 @@ means live context outside the declared inputs changed.
 it emits: the result document in the 1.x shape, built from its own lines, written as Python's
 `json.dumps` writes it (every character outside U+0020 to U+007E escaped, astral characters as
 surrogate pairs). The schema requires the field, so it is always present. It equals the Python's
-hash only when that document holds no intended difference and no gap: no frontmatter finding (whose
-message is prose the core writes as fixed text, one per rule), no untrusted issue or pull request
-(whose trust reasons the core does not keep), and a display input that supplies the titles, URLs and branches
-(flyingrobots/taskalisk#31 fills it from the adapters). Otherwise it is a different, equally
+hash only when that document holds no intended difference: no frontmatter finding (whose
+message is prose the core writes as fixed text, one per rule), and a display input that supplies
+the titles, URLs and branches (flyingrobots/taskalisk#31 fills it from the adapters). An untrusted
+issue or pull request is no exception: the core keeps the trust gate's reasons, and the renderer
+words them as the Python does (#46). Otherwise it is a different, equally
 deterministic hash of a different document. Compare `artifact_hash` values from one implementation
 only. The parity tests (`crates/taskalisk/tests/parity.rs`) assert equality where it holds and,
 elsewhere, that the hash is 64 hexadecimal digits and the same on every run.
@@ -327,10 +328,10 @@ It differs from the Python in these ways, each tested in `crates/taskalisk/tests
   ignored. A flag's value may follow `=`. `--help` describes `plan` with the schemas of the lines
   it writes and of `parley.error` and `parley.startup.failed` (copies of the writer's, held equal
   by `tests/test_binary_schemas.py`).
-- **Gaps in the lines.** An
-  `issue.untrusted` or `pull_request.untrusted` finding lacks its message and the trust gate's
-  reasons, which the core does not keep yet (#46); those lines do not validate until it does. A
-  frontmatter finding's message is the core's fixed text (see `artifact_hash` above).
+- **Frontmatter messages.** A frontmatter finding's message is the core's fixed text (see
+  `artifact_hash` above). Every line validates against its schema; an `issue.untrusted` or
+  `pull_request.untrusted` finding carries the trust gate's reasons and message as the Python
+  words them (#46).
 - **The receipt.** The steps are fewer: the home repository, the branches, the pull requests,
   `observed N issue(s)`, the evaluation record and retention, and no step per trust decision. In
   the observed list a body that was not read (an untrusted author's, a pull request's) has a null

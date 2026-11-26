@@ -22,10 +22,11 @@
 //! are left out, never made up. The plan line's `artifact_hash` digests
 //! the document the renderer emits (see [`lines`]).
 //!
-//! The message and every detail but the id or number of an
-//! `issue.untrusted` or `pull_request.untrusted` finding are not rendered
-//! with or without a display input: they are the trust gate's reasons
-//! (flyingrobots/taskalisk#46).
+//! An `issue.untrusted` or `pull_request.untrusted` finding carries the
+//! trust gate's reasons as the admission policy gave them to the core
+//! ([`UntrustedIssue`], [`UntrustedPullRequest`], flyingrobots/taskalisk#46),
+//! worded as 1.x words them: the login and the step that failed, never a
+//! title or a line of a body (threat model C1, C3).
 //!
 //! The findings about what discovery read come from the core's
 //! [`Discovered`], so a run whose edges form a cycle or name an unknown
@@ -39,8 +40,9 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
 
 use issue_dag_core::{
-    Batch, DENSITY_BAND, Discovered, Edge, Finding, Graph, Identity, IssueRef, NodeStatus, Outcome,
-    Parameters, Ranking, Severity, Skip, Terms, edge_density, rank, select,
+    Batch, DENSITY_BAND, Discovered, Distrust, Distrusted, Edge, Finding, Graph, Identity,
+    IssueRef, NodeStatus, NotAdmitted, Outcome, Parameters, PullNotAdmitted, Ranking, Repo,
+    Severity, Skip, Terms, UntrustedIssue, UntrustedPullRequest, edge_density, rank, select,
 };
 use serde_json::{Map, Value, json};
 
@@ -947,14 +949,17 @@ impl Discovery {
                 Value::Object(u)
             })
             .collect();
-        let untrusted = in_order(found.untrusted.iter().collect())
+        let untrusted = in_order(found.untrusted_issue_reasons.keys().collect())
             .into_iter()
-            .map(|id| json!({"id": id.to_string()}))
+            .map(|id| {
+                let named_by = found.opaque.get(id).map_or(&[][..], |n| &n.named_by[..]);
+                untrusted_issue(id, &found.untrusted_issue_reasons[id], named_by, shown)
+            })
             .collect();
         let untrusted_pull_requests = found
-            .untrusted_pull_request_order
+            .untrusted_pull_request_reasons
             .iter()
-            .map(|n| json!({"number": n}))
+            .map(|p| untrusted_pull_request(p, shown))
             .collect();
         let opaque_ids = found
             .opaque
@@ -984,7 +989,7 @@ impl Discovery {
             .map(|e| {
                 let mut n =
                     object(json!({"parent": e.from.to_string(), "child": e.to.to_string()}));
-                let untrusted = found.untrusted.contains(&e.from);
+                let untrusted = found.untrusted_issue_reasons.contains_key(&e.from);
                 shown.title(&mut n, &e.from, untrusted);
                 Value::Object(n)
             })
@@ -998,6 +1003,76 @@ impl Discovery {
             not_planned,
         }
     }
+}
+
+/// Why an actor is not trusted in `repo`, worded as 1.x words it.
+fn distrust_text(why: &Distrust, repo: &Repo) -> String {
+    match why {
+        Distrust::Deleted => "no login (deleted user)".to_owned(),
+        Distrust::OutOfScope => format!("{repo} is outside the trusted repositories"),
+        Distrust::Bot => "bot actors are trusted only by --trust <login>[bot]".to_owned(),
+        Distrust::Association(association) => format!("association {association}"),
+        Distrust::Permission(Some(permission)) => {
+            let shown = if permission.is_empty() {
+                "none"
+            } else {
+                permission
+            };
+            format!("permission {shown} on {repo} is below write")
+        }
+        Distrust::Permission(None) => format!("not a collaborator of {repo}"),
+    }
+}
+
+/// One actor's reason, `<role> <login>: <why>`, as 1.x words it.
+fn actor_reason(role: &str, d: &Distrusted, repo: &Repo) -> String {
+    let login = d.login.as_deref().unwrap_or("(none)");
+    format!("{role} {login}: {}", distrust_text(&d.why, repo))
+}
+
+/// An untrusted issue as 1.x lists it: never its title (threat model C3).
+fn untrusted_issue(
+    id: &IssueRef,
+    issue: &UntrustedIssue,
+    named_by: &[IssueRef],
+    shown: &Shown,
+) -> Value {
+    let repo = Repo::of(id);
+    let reasons: Vec<String> = match &issue.reason {
+        NotAdmitted::Author(d) => vec![actor_reason("author", d, &repo)],
+        NotAdmitted::Editors(editors) => editors
+            .iter()
+            .map(|d| actor_reason("editor", d, &repo))
+            .collect(),
+    };
+    let mut u = object(json!({
+        "id": id.to_string(),
+        "state": if issue.closed { "closed" } else { "open" },
+        "author": issue.author,
+        "reasons": reasons,
+        "referenced_by": texts(named_by),
+    }));
+    shown.url(&mut u, id);
+    Value::Object(u)
+}
+
+/// An untrusted pull request as 1.x lists it.
+fn untrusted_pull_request(pull: &UntrustedPullRequest, shown: &Shown) -> Value {
+    let reason = match &pull.reason {
+        PullNotAdmitted::NotSameRepository => "head is not a branch of this repository".to_owned(),
+        PullNotAdmitted::Author(d) => distrust_text(&d.why, &pull.repository),
+    };
+    let mut p = object(json!({
+        "number": pull.number,
+        "author": pull.author,
+        "cross_repository": pull.cross_repository,
+        "closes": texts(&pull.closes),
+        "reason": reason,
+    }));
+    if let Some(url) = shown.get(|d| &d.pull_request_urls, &pull.number) {
+        p.insert("url".into(), json!(url));
+    }
+    Value::Object(p)
 }
 
 fn finding(
@@ -1104,18 +1179,39 @@ fn discovery_findings(d: &Discovery) -> Vec<Value> {
         ));
     }
     for u in &d.untrusted {
+        let id = field(u, "id");
+        let reasons: Vec<&str> = u["reasons"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(Value::as_str)
+            .collect();
         out.push(finding(
             "issue.untrusted",
-            Some(field(u, "id")),
-            None,
+            Some(id.clone()),
+            Some(format!(
+                "{id} failed the trust gate: {}",
+                reasons.join("; ")
+            )),
             Some(u.clone()),
         ));
     }
     for p in &d.untrusted_pull_requests {
+        let closes: Vec<&str> = p["closes"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(Value::as_str)
+            .collect();
         out.push(finding(
             "pull_request.untrusted",
             None,
-            None,
+            Some(format!(
+                "pull request {} closing {} has no effect: {}",
+                p["number"],
+                closes.join(", "),
+                field(p, "reason")
+            )),
             Some(p.clone()),
         ));
     }

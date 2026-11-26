@@ -14,10 +14,10 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use issue_dag_core::{
-    Actor, Body, CODES, Discovered, Distrust, Distrusted, Issue, IssueRef, IssueState,
-    NotAdmitted, Observations, Observed, Outcome, Parameters, PullNotAdmitted, PullRequest,
-    ReadScope, RecordedForge, Repo, Severity, TRUST_POLICY, TRUST_WARNINGS, TrustFinding,
-    TrustParameters, UntrustedIssue, UntrustedPullRequest, plan, trust_findings,
+    Actor, Body, CODES, Discovered, Distrust, Distrusted, Issue, IssueRef, IssueState, NotAdmitted,
+    Observations, Observed, Outcome, Parameters, PullNotAdmitted, PullRequest, ReadScope,
+    RecordedForge, Repo, Severity, TRUST_POLICY, TRUST_WARNINGS, TrustFinding, TrustParameters,
+    UntrustedIssue, UntrustedPullRequest, plan, trust_findings,
 };
 
 /// A marker that a hostile title or body carries; it must reach no finding.
@@ -56,8 +56,8 @@ fn actor(login: &str, actor_type: &str) -> Actor {
     }
 }
 
-fn person(login: &str) -> Option<Actor> {
-    Some(actor(login, "User"))
+fn person(login: &str) -> Actor {
+    actor(login, "User")
 }
 
 fn task(id: &str, blocked_by: &[&str]) -> String {
@@ -123,9 +123,9 @@ fn run(
     record(
         &mut o,
         "o/r#1",
-        person("o"),
+        Some(person("o")),
         Some("OWNER"),
-        vec![person("o")],
+        vec![Some(person("o"))],
         &task("o/r#1", &["o/r#2"]),
     );
     record(
@@ -198,9 +198,9 @@ fn row(
 #[test]
 fn ad8_an_author_with_an_outside_association_is_reported_with_step_6() {
     let found = run(
-        person("Mallory"),
+        Some(person("Mallory")),
         Some("NONE"),
-        vec![person("Mallory")],
+        vec![Some(person("Mallory"))],
         Vec::new(),
         &[],
     );
@@ -272,7 +272,7 @@ fn ad8_a_bot_author_is_reported_with_step_3() {
 fn ad8_an_author_below_write_or_no_collaborator_is_reported_with_step_7() {
     for (permission, rule_login) in [(Some("read"), "carol"), (None, "carol")] {
         let found = run(
-            person("carol"),
+            Some(person("carol")),
             Some("MEMBER"),
             Vec::new(),
             Vec::new(),
@@ -305,15 +305,15 @@ fn ad8_every_untrusted_editor_is_reported_once_in_the_order_edited() {
     // account, carol (triage) and mallory again edited the body. The
     // owner's later edit is the author's, and is not judged again.
     let found = run(
-        person("o"),
+        Some(person("o")),
         Some("OWNER"),
         vec![
-            person("o"),
-            person("mallory"),
+            Some(person("o")),
+            Some(person("mallory")),
             None,
-            person("carol"),
-            person("MALLORY"),
-            person("o"),
+            Some(person("carol")),
+            Some(person("MALLORY")),
+            Some(person("o")),
         ],
         Vec::new(),
         &[("mallory", None), ("carol", Some("triage"))],
@@ -326,7 +326,10 @@ fn ad8_every_untrusted_editor_is_reported_once_in_the_order_edited() {
             reason: NotAdmitted::Editors(vec![
                 distrusted(Some("mallory"), Distrust::Permission(None)),
                 distrusted(None, Distrust::Deleted),
-                distrusted(Some("carol"), Distrust::Permission(Some("triage".to_owned()))),
+                distrusted(
+                    Some("carol"),
+                    Distrust::Permission(Some("triage".to_owned()))
+                ),
             ]),
         }
     );
@@ -353,14 +356,14 @@ fn ad8_every_untrusted_editor_is_reported_once_in_the_order_edited() {
 #[test]
 fn ad8_an_admitted_issue_has_no_reason_and_no_finding() {
     let found = run(
-        person("o"),
+        Some(person("o")),
         Some("OWNER"),
-        vec![person("o")],
+        vec![Some(person("o"))],
         Vec::new(),
         &[],
     );
     assert!(found.untrusted_issue_reasons.is_empty());
-    assert!(trust_findings(&found).is_empty());
+    assert_eq!(trust_findings(&found), Vec::<TrustFinding>::new());
 }
 
 // AD9: an untrusted pull request that closes a task.
@@ -368,13 +371,13 @@ fn ad8_an_admitted_issue_has_no_reason_and_no_finding() {
 #[test]
 fn ad9_a_fork_pull_request_is_reported_without_judging_its_author() {
     let pulls = vec![
-        pull(8, person("dev"), Some(true), &["o/r#1"]),
-        pull(7, person("dev"), None, &["o/r#1", "o/r#2"]),
+        pull(8, Some(person("dev")), Some(true), &["o/r#1"]),
+        pull(7, Some(person("dev")), None, &["o/r#1", "o/r#2"]),
     ];
     let found = run(
-        person("o"),
+        Some(person("o")),
         Some("OWNER"),
-        vec![person("o")],
+        vec![Some(person("o"))],
         pulls,
         &[],
     );
@@ -421,15 +424,15 @@ fn ad9_a_fork_pull_request_is_reported_without_judging_its_author() {
 #[test]
 fn ad9_a_stranger_s_same_repository_pull_request_is_reported_with_the_author_s_step() {
     let pulls = vec![
-        pull(8, person("mallory"), Some(false), &["o/r#1"]),
+        pull(8, Some(person("mallory")), Some(false), &["o/r#1"]),
         pull(9, None, Some(false), &["o/r#1"]),
         // A pull request that closes nothing is not judged (AD9).
-        pull(10, person("mallory"), Some(true), &[]),
+        pull(10, Some(person("mallory")), Some(true), &[]),
     ];
     let found = run(
-        person("o"),
+        Some(person("o")),
         Some("OWNER"),
-        vec![person("o")],
+        vec![Some(person("o"))],
         pulls,
         &[("mallory", None)],
     );
@@ -474,10 +477,10 @@ fn trust_findings_are_catalogued_warnings() {
         assert_eq!(catalogued.get(code), Some(&Severity::Warning), "{code}");
     }
     let found = run(
-        person("o"),
+        Some(person("o")),
         Some("OWNER"),
-        vec![person("mallory")],
-        vec![pull(8, person("mallory"), Some(true), &["o/r#1"])],
+        vec![Some(person("mallory"))],
+        vec![pull(8, Some(person("mallory")), Some(true), &["o/r#1"])],
         &[("mallory", None)],
     );
     let all = trust_findings(&found);
@@ -485,7 +488,7 @@ fn trust_findings_are_catalogued_warnings() {
     for f in &all {
         assert_eq!(f.finding.severity(), Severity::Warning);
         assert!(TRUST_WARNINGS.contains(&f.finding.code().as_str()));
-        assert!(!f.finding.message.is_empty());
+        assert_ne!(f.finding.message, "");
     }
 }
 
@@ -495,10 +498,10 @@ fn no_title_or_body_text_enters_a_trust_finding() {
     // read (AD8 step 2), yet nothing of it reaches the finding. The core
     // never reads a title.
     let found = run(
-        person("o"),
+        Some(person("o")),
         Some("OWNER"),
-        vec![person("mallory")],
-        vec![pull(8, person("mallory"), Some(false), &["o/r#2"])],
+        vec![Some(person("mallory"))],
+        vec![pull(8, Some(person("mallory")), Some(false), &["o/r#2"])],
         &[("mallory", None)],
     );
     let all = trust_findings(&found);
@@ -507,7 +510,11 @@ fn no_title_or_body_text_enters_a_trust_finding() {
     assert!(!text.contains(HOSTILE), "{text}");
     assert!(!text.contains("rm -rf"), "{text}");
     for f in &all {
-        assert!(!f.finding.message.contains("mallory"), "{}", f.finding.message);
+        assert!(
+            !f.finding.message.contains("mallory"),
+            "{}",
+            f.finding.message
+        );
     }
 }
 
@@ -522,23 +529,23 @@ fn an_invalid_run_still_reports_its_trust_findings() {
     record(
         &mut o,
         "o/r#1",
-        person("o"),
+        Some(person("o")),
         Some("OWNER"),
-        vec![person("o")],
+        vec![Some(person("o"))],
         &task("o/r#1", &["o/r#2", "o/r#3"]),
     );
     record(
         &mut o,
         "o/r#3",
-        person("o"),
+        Some(person("o")),
         Some("OWNER"),
-        vec![person("o")],
+        vec![Some(person("o"))],
         &task("o/r#3", &["o/r#1"]),
     );
     record(
         &mut o,
         "o/r#2",
-        person("mallory"),
+        Some(person("mallory")),
         Some("NONE"),
         Vec::new(),
         &task("o/r#2", &[]),

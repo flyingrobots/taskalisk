@@ -9,6 +9,25 @@ schema version under `Unreleased` is a draft and may change in place.
 
 ### Added
 
+- **Trust findings** (flyingrobots/taskalisk#46). The admission policy now returns why it does not
+  trust an actor alongside the decision: the login as recorded and the rule that decided
+  (`Distrust`: `AD5.1` a deleted account, `AD2` outside the scope, `AD5.3` a bot, `AD5.6` an
+  association, `AD5.7` a permission below `write` or none; `AD9` for a pull request whose head is
+  not a branch of the home repository). A run keeps the reasons in `Graph` and `Discovered`
+  (`untrusted_issue_reasons`, `untrusted_pull_request_reasons`), so an invalid run reports them
+  too (decision D13), and `issue-dag-core`'s new `trust_findings` reports one warning per actor
+  that failed: `taskalisk.untrusted-author`, `taskalisk.untrusted-editor` and
+  `taskalisk.untrusted-pull-request`, catalogued in `CODES` and documented in
+  `docs/topics/findings/README.md`. A finding carries the subject, the login and the rule, and
+  never a title or a line of a body; tests check this with hostile body text and hostile titles.
+  The Rust renderer writes the trust gate's message and reasons in `issue.untrusted` and
+  `pull_request.untrusted` as the Python does, which closes the renderer's last gap: the parity
+  tests and the Python fixture check allow no missing field, the binary's CLI tests validate every
+  line with no exception (`tests/validate_lines.py` drops `--allow-render-gaps`), and the
+  `artifact_hash` equals the Python's in 143 of the 173 cases. Two capture variants reach several
+  untrusted editors of one body (with hostile text appended to it) and a stranger's pull request
+  closing two issues.
+
 - **An invalid run reports what discovery read** (flyingrobots/taskalisk#44). Under decision D13 a
   run whose edges form a cycle or name an unknown prerequisite, which reports no graph (profile
   rule F3), still reports its containers, unmodeled, untrusted and opaque issues, untrusted pull

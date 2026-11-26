@@ -6,7 +6,9 @@
 
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
-use crate::admission::{Admission, Gaps, Undecided, lookup};
+use crate::admission::{
+    Admission, Distrusted, Gaps, NotAdmitted, PullNotAdmitted, Undecided, lookup,
+};
 use crate::carrier::{Parse, Slot, Value, parse};
 use crate::finding::{Finding, Rule, Severity};
 use crate::forge::Forge;
@@ -80,6 +82,37 @@ pub struct Node {
     pub named_by: Vec<IssueRef>,
 }
 
+/// An issue the trust gate kept out of the graph (rules D6, AD8): what a
+/// report lists of it, and why. Never its title or any of its body.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct UntrustedIssue {
+    /// Whether its issue is closed.
+    pub closed: bool,
+    /// Its author's login as recorded; `None` for a deleted account.
+    pub author: Option<String>,
+    /// Why it is not admitted.
+    pub reason: NotAdmitted,
+}
+
+/// A pull request of the home repository that closes an issue and that the
+/// trust gate did not admit (rule AD9): what a report lists of it, and why.
+/// Never its title or any of its body.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct UntrustedPullRequest {
+    /// Its repository, the home repository.
+    pub repository: Repo,
+    /// Its number.
+    pub number: u64,
+    /// Its author's login as recorded; `None` for a deleted account.
+    pub author: Option<String>,
+    /// Whether its head branch is in another repository, when observed.
+    pub cross_repository: Option<bool>,
+    /// The issues it closes, as observed.
+    pub closes: Vec<IssueRef>,
+    /// Why it is not admitted.
+    pub reason: PullNotAdmitted,
+}
+
 /// An admitted open pull request that closes a node (rules S1, S2).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct LinkedPullRequest {
@@ -130,6 +163,12 @@ pub struct Graph {
     /// The numbers in `untrusted_pull_requests`, in the order the pull
     /// requests were observed.
     pub untrusted_pull_request_order: Vec<u64>,
+    /// Why each issue in `untrusted` is not admitted (AD8), with what a
+    /// report lists of it.
+    pub untrusted_issue_reasons: BTreeMap<IssueRef, UntrustedIssue>,
+    /// Each pull request in `untrusted_pull_request_order`, in that order,
+    /// with why it is not admitted (AD9).
+    pub untrusted_pull_request_reasons: Vec<UntrustedPullRequest>,
     /// The edges in `not_planned`, by the order the closure read their
     /// tasks, then in the order of each task's `.blocked_by`.
     pub not_planned_order: Vec<Edge>,
@@ -146,11 +185,11 @@ pub struct Discovered {
     pub containers: BTreeMap<IssueRef, Vec<IssueRef>>,
     /// The unmodeled issues (rule D7).
     pub unmodeled: BTreeSet<IssueRef>,
-    /// Every issue that is not admitted (rule D6).
-    pub untrusted: BTreeSet<IssueRef>,
-    /// The numbers of the pull requests that close an issue and are not
-    /// admitted, in the order observed (rule AD9).
-    pub untrusted_pull_request_order: Vec<u64>,
+    /// Every issue that is not admitted (rule D6), with why (AD8).
+    pub untrusted_issue_reasons: BTreeMap<IssueRef, UntrustedIssue>,
+    /// The pull requests that close an issue and are not admitted, each
+    /// once, in the order observed, with why (rule AD9).
+    pub untrusted_pull_request_reasons: Vec<UntrustedPullRequest>,
     /// The opaque nodes (rules D6, D7), untrusted ones included.
     pub opaque: BTreeMap<IssueRef, Node>,
     /// The satisfied edges whose prerequisite was closed as `not_planned`,
@@ -166,8 +205,8 @@ impl Graph {
             visit_order: self.visit_order.clone(),
             containers: self.containers.clone(),
             unmodeled: self.unmodeled.clone(),
-            untrusted: self.untrusted.clone(),
-            untrusted_pull_request_order: self.untrusted_pull_request_order.clone(),
+            untrusted_issue_reasons: self.untrusted_issue_reasons.clone(),
+            untrusted_pull_request_reasons: self.untrusted_pull_request_reasons.clone(),
             opaque: self
                 .nodes
                 .iter()
@@ -383,8 +422,8 @@ enum Visit {
     PullRequest,
     /// Transferred (D5).
     Transferred,
-    /// Not admitted (D6).
-    Untrusted(Box<Issue>),
+    /// Not admitted (D6), with why (AD8).
+    Untrusted(Box<Issue>, NotAdmitted),
     /// Admitted, with no frontmatter block (D7).
     NoDocument(Box<Issue>),
     /// Admitted, with a document (D8).
@@ -484,10 +523,11 @@ impl<'a, F: Forge + ?Sized> Run<'a, F> {
     }
 
     /// I4 and AD9: for each issue, the draft slots of the admitted pull
-    /// requests that close it; and the numbers of those not admitted.
-    fn pull_requests(&mut self, gaps: &mut Gaps) -> (Linked, Vec<u64>) {
+    /// requests that close it; and those not admitted, with why, each once,
+    /// in the order observed.
+    fn pull_requests(&mut self, gaps: &mut Gaps) -> (Linked, Vec<UntrustedPullRequest>) {
         let mut linked = Linked::new();
-        let mut untrusted = Vec::new();
+        let mut untrusted: Vec<UntrustedPullRequest> = Vec::new();
         let home = &self.parameters.home;
         let pulls = gaps
             .note(lookup(self.forge.home_open_pull_requests()))
@@ -496,8 +536,8 @@ impl<'a, F: Forge + ?Sized> Run<'a, F> {
             if pull.closes.is_empty() {
                 continue;
             }
-            match gaps.note(self.admission.pull_request_admitted(&pull, home)) {
-                Some(true) => {
+            match gaps.note(self.admission.pull_request_not_admitted(&pull, home)) {
+                Some(None) => {
                     for closed in pull.closes {
                         linked
                             .entry(closed)
@@ -505,10 +545,17 @@ impl<'a, F: Forge + ?Sized> Run<'a, F> {
                             .push((pull.number, pull.draft.clone()));
                     }
                 }
-                Some(false) if !untrusted.contains(&pull.number) => {
-                    untrusted.push(pull.number);
+                Some(Some(reason)) if !untrusted.iter().any(|u| u.number == pull.number) => {
+                    untrusted.push(UntrustedPullRequest {
+                        repository: pull.repository.clone(),
+                        number: pull.number,
+                        author: pull.author.as_ref().map(|a| a.login.clone()),
+                        cross_repository: pull.cross_repository,
+                        closes: pull.closes.clone(),
+                        reason,
+                    });
                 }
-                Some(false) | None => {}
+                Some(Some(_)) | None => {}
             }
         }
         (linked, untrusted)
@@ -575,16 +622,24 @@ impl<'a, F: Forge + ?Sized> Run<'a, F> {
             return Ok(Visit::Transferred);
         }
         let author = issue.author.as_ref();
-        if !self
-            .admission
-            .trusted(author, &repo, issue.author_association.as_deref())?
+        if let Some(why) =
+            self.admission
+                .distrust(author, &repo, issue.author_association.as_deref())?
         {
-            return Ok(Visit::Untrusted(Box::new(issue)));
+            let reason = NotAdmitted::Author(Distrusted {
+                login: author.map(|a| a.login.clone()),
+                why,
+            });
+            return Ok(Visit::Untrusted(Box::new(issue), reason));
         }
         // C15: the body is read only once the author is trusted.
         let body = value(self.forge.body(reference)?)?;
-        if !self.admission.editors_trusted(author, &body, &repo)? {
-            return Ok(Visit::Untrusted(Box::new(issue)));
+        let editors = self.admission.untrusted_editors(author, &body, &repo)?;
+        if !editors.is_empty() {
+            return Ok(Visit::Untrusted(
+                Box::new(issue),
+                NotAdmitted::Editors(editors),
+            ));
         }
         // One parse serves both the judgement and the reading.
         let parsed = parse(&body.text);
@@ -615,11 +670,15 @@ struct Assembly<'c> {
 impl<'c> Assembly<'c> {
     /// D3 to D9 and G1: the nodes, containers and lists, and the findings
     /// of discovery and of each document.
-    fn new(closure: &'c Closure, untrusted_pull_requests: Vec<u64>) -> Self {
+    fn new(closure: &'c Closure, untrusted_pull_requests: Vec<UntrustedPullRequest>) -> Self {
         let mut a = Self {
             graph: Graph {
-                untrusted_pull_requests: untrusted_pull_requests.iter().copied().collect(),
-                untrusted_pull_request_order: untrusted_pull_requests,
+                untrusted_pull_requests: untrusted_pull_requests.iter().map(|p| p.number).collect(),
+                untrusted_pull_request_order: untrusted_pull_requests
+                    .iter()
+                    .map(|p| p.number)
+                    .collect(),
+                untrusted_pull_request_reasons: untrusted_pull_requests,
                 visit_order: closure.order.clone(),
                 ..Graph::default()
             },
@@ -633,8 +692,16 @@ impl<'c> Assembly<'c> {
                 Visit::OutOfScope => a.about(closure, reference, Rule::D3),
                 Visit::Transferred => a.about(closure, reference, Rule::D5),
                 Visit::PullRequest => a.finding(reference, Rule::D4, None),
-                Visit::Untrusted(issue) => {
+                Visit::Untrusted(issue, reason) => {
                     a.graph.untrusted.insert(reference.clone());
+                    a.graph.untrusted_issue_reasons.insert(
+                        reference.clone(),
+                        UntrustedIssue {
+                            closed: issue.state == IssueState::Closed,
+                            author: issue.author.as_ref().map(|x| x.login.clone()),
+                            reason: reason.clone(),
+                        },
+                    );
                     if !closure.unnamed_seed(reference) {
                         a.opaque(closure, reference, issue, true);
                     }

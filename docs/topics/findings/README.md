@@ -4,7 +4,7 @@ Reference for every code that `issue-dag-core` gives a finding: every code of
 its public catalogue `CODES`. A finding is one violation or warning. It
 carries a code, a severity, the issue that receives it as its subject, for
 some codes the reference it concerns, and a fixed message that names keys and
-rules but never a value or a line of the body. Four families of findings
+rules but never a value or a line of the body. Five families of findings
 and the plan warnings share the catalogue:
 
 - **document findings** (function `findings`): the frontmatter document in an
@@ -20,6 +20,11 @@ and the plan warnings share the catalogue:
   a plan as a whole, from the skill's doctrine on graph health. A plan warning
   is not a finding: it concerns no single issue, so it has no subject, and it
   carries a detail of what it measured.
+- **trust warnings** (function `trust_findings`): each issue and pull request
+  that the trust gate kept out of a run's graph, with the login and the rule
+  of the [admission policy](../../../tests/fixtures/issue-dag/profiles/admission.md)
+  that did not trust it. They are read from what a run's discovery read, an
+  invalid run's included, and never carry a title or a line of a body.
 
 These are the Rust crate's codes. The Python compiler reports frontmatter
 problems as `frontmatter.violation` and `frontmatter.warning` lines; their
@@ -35,7 +40,7 @@ V12 assigns it; the prefix names the specification that states the rule:
 | `format.` | the format [`issue-dag/2`](../../../tests/fixtures/issue-dag/formats/issue-dag-2.md): carrier rules C, value rules L, validity rules V |
 | `version.` | the [version policy](../../../tests/fixtures/issue-dag/versions.md) |
 | `profile.` | the planning profile [`issue-dag-planning/2`](../../../tests/fixtures/issue-dag/profiles/issue-dag-planning-2.md) |
-| `taskalisk.` | Taskalisk's convention, [Writing a task](../../../skills/taskalisk/WRITING-TASKS.md) for a body warning, or its doctrine, [Core Doctrine](../../../skills/taskalisk/SKILL.md#core-doctrine), for a shape or plan warning; the suffix is a name, not a label |
+| `taskalisk.` | Taskalisk's convention, [Writing a task](../../../skills/taskalisk/WRITING-TASKS.md) for a body warning, its doctrine, [Core Doctrine](../../../skills/taskalisk/SKILL.md#core-doctrine), for a shape or plan warning, or the [admission policy](../../../tests/fixtures/issue-dag/profiles/admission.md) for a trust warning; the suffix is a name, not a label |
 
 The links go to the copy of the specification vendored in this repository
 under `tests/fixtures/issue-dag/`. A code never changes meaning; a rule that
@@ -44,8 +49,8 @@ once, in the catalogue:
 
 - **error**: a violation. The document is invalid, or for a run finding the
   run is.
-- **warning**: the V10 advisory, a body warning, a shape warning or a plan
-  warning. The document stays valid, and a shape or plan warning never makes a
+- **warning**: the V10 advisory, a body warning, a shape warning, a plan
+  warning or a trust warning. The document stays valid, and a shape or plan warning never makes a
   run invalid. A V10 warning is reported only for a document with no
   violations, body warnings only for a valid task document, and shape and plan
   warnings only for the graph of a run.
@@ -108,7 +113,7 @@ The entries are in the catalogue's order (`CODES`): the document codes in the
 order of the labels' text, so `V10` comes before `V2`; then the planning
 profile's codes; then the causes of a reference not found, which are not
 findings but the cause an incomplete run reports; then the body warnings; then the shape warnings; then the
-plan warnings. The test
+plan warnings; then the trust warnings. The test
 `crates/issue-dag-core/tests/finding_reference.rs` fails when a code has no
 entry here, an entry names no code, or a link or anchor here does not
 resolve.
@@ -853,3 +858,65 @@ unrecorded, and propose the edges; many isolated tasks mean the dependencies
 have not been recorded, not that the work is independent. Above it, the plan
 is close to a single chain: check whether some edges are not true
 prerequisites. A small plan can be outside the band for good reason.
+
+### `taskalisk.untrusted-author`
+
+**Severity:** warning. **Rule:** [AD8](../../../tests/fixtures/issue-dag/profiles/admission.md#4-decisions), step 1, of the admission policy `taskalisk/threat-model`.
+
+A trust warning: the issue's author is not trusted in its repository, so the
+trust gate did not admit the issue (threat model C1). The issue is no node: a
+trusted issue that names it waits on it as an opaque blocker, and nothing of
+its body is read. The finding names the issue, the author's login as recorded
+(none for a deleted account), and the step of
+[AD5](../../../tests/fixtures/issue-dag/profiles/admission.md#3-judging-one-actor)
+that did not trust it: `AD5.1` a deleted account, `AD5.3` a bot not on the
+allowlist, `AD5.6` an author association other than `OWNER`, `MEMBER` or
+`COLLABORATOR`, `AD5.7` a permission below `write` or none. Its message is
+fixed text; it never carries the title or the body.
+
+In case `d6-not-admitted-prerequisite`, `mallory` (association `NONE`) wrote
+`o/r#2`, which `o/r#1` waits on: `o/r#2` receives
+`taskalisk.untrusted-author`, login `mallory`, rule `AD5.6`.
+
+To fix: if the author should plan work here, give them `write` on the
+repository, or name them with `--trust <login>`; otherwise leave the issue
+out, and have a trusted person file the work.
+
+### `taskalisk.untrusted-editor`
+
+**Severity:** warning. **Rule:** [AD8](../../../tests/fixtures/issue-dag/profiles/admission.md#4-decisions), step 3, of the admission policy `taskalisk/threat-model`.
+
+A trust warning: the issue's author is trusted, but someone else who edited
+its body is not, so the trust gate did not admit the issue (threat model C1,
+T02). Each distinct editor who is not trusted gets one finding, in the order
+of the edit history, with the editor's login and the step of
+[AD5](../../../tests/fixtures/issue-dag/profiles/admission.md#3-judging-one-actor)
+that did not trust them. An editor who is the author, or who edited before,
+is not judged again. The issue is no node, as for an untrusted author.
+
+In case `trust-untrusted-editor`, `mallory`, no collaborator, edited the
+owner's `flyingrobots/geordi#1`: it receives `taskalisk.untrusted-editor`,
+login `mallory`, rule `AD5.7`.
+
+To fix: read the edit history, and if the edit is sound, have a trusted
+person write the body again (a fresh issue, or an edit after checking it);
+if the editor should be trusted, grant `write` or name them with `--trust`.
+
+### `taskalisk.untrusted-pull-request`
+
+**Severity:** warning. **Rule:** [AD9](../../../tests/fixtures/issue-dag/profiles/admission.md#4-decisions) of the admission policy `taskalisk/threat-model`.
+
+A trust warning: an open pull request of the home repository closes an issue
+but is not admitted, so it has no effect on the status of what it closes
+(threat model C4). Its subject is the pull request's own address. Its rule is
+`AD9` when its head is not a branch of the home repository (a fork, or not
+observed), in which case its author is not judged; otherwise the step of
+[AD5](../../../tests/fixtures/issue-dag/profiles/admission.md#3-judging-one-actor)
+that did not trust its author. The login is its author's either way.
+
+In case `trust-fork-pull-request`, `mallory`'s pull request 7 from a fork
+closes `flyingrobots/geordi#2`: `flyingrobots/geordi#7` receives
+`taskalisk.untrusted-pull-request`, login `mallory`, rule `AD9`.
+
+To fix: nothing, if the pull request is not ours to count. Otherwise have a
+trusted person open it from a branch of the home repository.

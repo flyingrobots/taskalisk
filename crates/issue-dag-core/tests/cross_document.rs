@@ -17,9 +17,10 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use issue_dag_core::{
-    Actor, Body, Discovered, Edge, Finding, Issue, IssueRef, IssueState, Observations, Observed,
-    Outcome, Parameters, PullRequest, ReadScope, RecordedForge, Repo, TRUST_POLICY,
-    TrustParameters, plan,
+    Actor, Body, Discovered, Distrust, Distrusted, Edge, Finding, Issue, IssueRef, IssueState,
+    NotAdmitted, Observations, Observed, Outcome, Parameters, PullNotAdmitted, PullRequest,
+    ReadScope, RecordedForge, Repo, TRUST_POLICY, TrustParameters, UntrustedIssue,
+    UntrustedPullRequest, plan,
 };
 
 fn reference(text: &str) -> IssueRef {
@@ -339,8 +340,28 @@ fn everything_discovered() -> Discovered {
             (reference("o/r#8"), refs(&["o/r#3"])),
         ]),
         unmodeled: BTreeSet::new(),
-        untrusted: BTreeSet::from([reference("o/r#6")]),
-        untrusted_pull_request_order: vec![20],
+        untrusted_issue_reasons: BTreeMap::from([(
+            reference("o/r#6"),
+            UntrustedIssue {
+                closed: false,
+                author: Some("stranger".to_owned()),
+                reason: NotAdmitted::Author(Distrusted {
+                    login: Some("stranger".to_owned()),
+                    why: Distrust::Association("NONE".to_owned()),
+                }),
+            },
+        )]),
+        untrusted_pull_request_reasons: vec![UntrustedPullRequest {
+            repository: Repo::parse("o/r").expect("a repository"),
+            number: 20,
+            author: Some("stranger".to_owned()),
+            cross_repository: Some(false),
+            closes: vec![reference("o/r#1")],
+            reason: PullNotAdmitted::Author(Distrusted {
+                login: Some("stranger".to_owned()),
+                why: Distrust::Permission(None),
+            }),
+        }],
         opaque: BTreeMap::new(),
         not_planned_order: vec![Edge {
             from: reference("o/r#4"),

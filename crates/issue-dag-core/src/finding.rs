@@ -18,6 +18,7 @@ use crate::observation::NotFound;
 use crate::plan_warning::PLAN_CODES;
 use crate::reference::IssueRef;
 use crate::shape::SHAPE_CODES;
+use crate::trust::TRUST_CODES;
 use crate::{Judgement, admit};
 
 /// Every label a document judgement can carry, once each, in the order of
@@ -30,7 +31,8 @@ pub const LABELS: [Label; label::VARIANTS] = label::ALL;
 /// profile's in [`PROFILE_RULES`] order, then the causes of a reference not found
 /// ([`NotFound::code`], in [`NotFound::ALL`] order), then Taskalisk's body warnings in
 /// [`crate::BODY_WARNINGS`] order, then its shape warnings in [`crate::SHAPE_WARNINGS`] order,
-/// then its plan warnings in [`crate::PLAN_WARNINGS`] order.
+/// then its plan warnings in [`crate::PLAN_WARNINGS`] order, then its trust warnings in
+/// [`crate::TRUST_WARNINGS`] order.
 /// Each code appears once.
 ///
 /// This is the one public source of the codes; the table on [`code`] and
@@ -48,6 +50,7 @@ const FAMILIES: &[&[(&str, Severity)]] = &[
     &BODY_CODES,
     &SHAPE_CODES,
     &PLAN_CODES,
+    &TRUST_CODES,
 ];
 
 /// The document codes in [`LABELS`] order, with [`Rule::severity`].
@@ -508,7 +511,7 @@ impl fmt::Display for Rule {
 /// the profile's in [`PROFILE_RULES`] order, then the causes of a reference
 /// not found ([`NotFound::code`]: D11, D12 and D13, which are no findings but
 /// the cause an incomplete run reports), then the body warnings, then the
-/// shape warnings, then the plan warnings.
+/// shape warnings, then the plan warnings, then the trust warnings.
 ///
 /// Rules C1 to C3 decide whether a body has a document at all (a body without
 /// one has no findings), and C5, C9, C10, V9, V11 and V12 never fail a
@@ -532,6 +535,10 @@ impl fmt::Display for Rule {
 /// skill's doctrine on graph health, `skills/taskalisk/SKILL.md`. They are
 /// [`crate::PlanWarning`]s, not findings, as they concern no single issue;
 /// their codes are listed in [`crate::PLAN_WARNINGS`].
+/// Last come its trust warnings ([`crate::trust_findings`],
+/// flyingrobots/taskalisk#46): each issue and pull request the trust gate
+/// kept out of a run's graph, with the login and the admission rule that
+/// failed, listed in [`crate::TRUST_WARNINGS`].
 ///
 /// | Code | Rule | Severity |
 /// | --- | --- | --- |
@@ -574,6 +581,9 @@ impl fmt::Display for Rule {
 /// | `taskalisk.redundant-edge` | an edge the reduction removes (G5) | warning |
 /// | `taskalisk.small-container` | a container with fewer than two children | warning |
 /// | `taskalisk.edge-density` | a plan whose edge density is outside its band | warning |
+/// | `taskalisk.untrusted-author` | an issue whose author is not trusted (AD8) | warning |
+/// | `taskalisk.untrusted-editor` | an issue an untrusted editor edited (AD8) | warning |
+/// | `taskalisk.untrusted-pull-request` | a pull request closing an issue, not admitted (AD9) | warning |
 #[must_use]
 pub const fn code(label: Label) -> &'static str {
     match label {

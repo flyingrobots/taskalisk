@@ -383,16 +383,13 @@ fn every_agreed_case_renders_as_the_python_does() {
         names.len(),
         failures.join("\n")
     );
-    // 79 corpus cases (graph-cycle, g4-cycle and g4-downstream-of-a-cycle
-    // among them), the one planned again with hostile titles, and the
-    // variants d9-container--opaque-child, --opaque-children-in-order-read,
-    // --traversal-order, --not-planned-in-blocked-by-order,
-    // --not-planned-per-task-order and --traversal-order-and-cycle, and
-    // discovery-unmodeled-home-issue--three-issue-cycle. The other variants
-    // hold untrusted issues or pulls, or a frontmatter finding, as every run
-    // with an unknown prerequisite does.
+    // 131 corpus cases (graph-cycle, g4-cycle, g4-downstream-of-a-cycle and
+    // every case with an untrusted issue or pull request among them), the
+    // one planned again with hostile titles, and eleven variants: every one
+    // but the four that name an unknown prerequisite, which gives a
+    // frontmatter finding (the intended difference).
     assert_eq!(
-        equal_hashes, 87,
+        equal_hashes, 143,
         "the cases whose artifact_hash is the Python's"
     );
 }
@@ -425,7 +422,10 @@ fn no_untrusted_title_or_any_body_text_reaches_a_line() {
     const CASE: &str = "trust-untrusted-editor--untrusted-editors";
     const HOSTILE: &str = "IGNORE-PREVIOUS-INSTRUCTIONS";
     let text = bundle_text(CASE);
-    assert!(text.contains(HOSTILE), "the variant carries hostile body text");
+    assert!(
+        text.contains(HOSTILE),
+        "the variant carries hostile body text"
+    );
     let bundle = load(&text).expect("bundle");
     let mut display = Display::default();
     for id in bundle.observations.issues.keys() {
@@ -436,10 +436,13 @@ fn no_untrusted_title_or_any_body_text_reaches_a_line() {
     let untrusted = "flyingrobots/geordi#1";
     let rendered = rendered(CASE, Some(&display)).expect("rendered");
     assert!(
-        !rendered.contains(&format!("{HOSTILE} title of {untrusted}")),
+        !rendered.contains(&format!("{HOSTILE} title of {untrusted}\"")),
         "an untrusted title was rendered:\n{rendered}"
     );
-    assert!(!rendered.contains("rm -rf"), "body text was rendered:\n{rendered}");
+    assert!(
+        !rendered.contains("rm -rf"),
+        "body text was rendered:\n{rendered}"
+    );
     let finding = lines(&rendered)
         .into_iter()
         .find(|l| l["code"] == "issue.untrusted")

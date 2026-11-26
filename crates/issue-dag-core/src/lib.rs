@@ -8,7 +8,8 @@
 //! ranking of its graph ([`rank`]) and its batch ([`select`]).
 //! A body becomes findings with stable codes ([`findings`]); the codes
 //! are tabled on [`code`]. A task body also gets Taskalisk's own body
-//! warnings ([`body_warnings`]).
+//! warnings ([`body_warnings`]). The issues and pull requests the trust gate
+//! kept out of a run's graph are reported with why ([`trust_findings`]).
 //! The crate performs no I/O and depends only on `pulldown-cmark`.
 mod admission;
 mod batch;
@@ -26,11 +27,15 @@ mod record;
 mod reference;
 mod rewrite;
 mod shape;
+mod trust;
 mod validate;
 
 use std::collections::BTreeSet;
 
-pub use admission::{Admission, Identity, Undecided, codeowners_persons};
+pub use admission::{
+    Admission, Distrust, Distrusted, Identity, NotAdmitted, PullNotAdmitted, Undecided,
+    codeowners_persons,
+};
 pub use batch::{Batch, Skip, keys_conflict, select};
 pub use body::{BODY_WARNINGS, BodyWarning, body_warnings};
 pub use carrier::{Block, Entry, Integer, Parse, Slot, Value, parse, trim};
@@ -43,7 +48,8 @@ pub use observation::{
     Parameters, PullRequest, ReadScope, Repo, TRUST_POLICY, TrustParameters,
 };
 pub use plan::{
-    Discovered, Edge, Graph, LinkedPullRequest, Node, NodeStatus, Outcome, Rejection, plan,
+    Discovered, Edge, Graph, LinkedPullRequest, Node, NodeStatus, Outcome, Rejection,
+    UntrustedIssue, UntrustedPullRequest, plan,
 };
 pub use plan_warning::{
     DENSITY_BAND, PLAN_WARNINGS, PlanDetail, PlanWarning, edge_density, plan_warnings,
@@ -53,6 +59,7 @@ pub use record::{Kind, MeterClaim, Record, Status, TaskType, VERSION};
 pub use reference::{IssueRef, MAX_NUMBER, is_name};
 pub use rewrite::{EdgeEdit, Refusal, Rewrite, rewrite_blocked_by};
 pub use shape::{Detail, SHAPE_WARNINGS, ShapeFinding, ShapeWarning, shape_warnings};
+pub use trust::{TRUST_WARNINGS, TrustFinding, trust_findings};
 pub use validate::{Validation, validate};
 
 /// The judgement of one body.

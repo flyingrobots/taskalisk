@@ -10,7 +10,7 @@ use std::path::Path;
 
 use issue_dag_core::{
     BODY_WARNINGS, CODES, Finding, IssueRef, LABELS, Label, NotFound, PLAN_WARNINGS, PROFILE_RULES,
-    SHAPE_WARNINGS, Severity, code, findings,
+    SHAPE_WARNINGS, Severity, TRUST_WARNINGS, code, findings,
 };
 
 /// Marker text placed in the values of every fixture.
@@ -246,7 +246,8 @@ fn codes_are_stable_strings_one_per_label() {
 /// then Taskalisk's body warnings in
 /// `BODY_WARNINGS` order (flyingrobots/taskalisk#48), then its shape warnings in
 /// `SHAPE_WARNINGS` order (flyingrobots/taskalisk#42), then its plan warnings in
-/// `PLAN_WARNINGS` order (flyingrobots/taskalisk#61), each code once.
+/// `PLAN_WARNINGS` order (flyingrobots/taskalisk#61), then its trust warnings
+/// in `TRUST_WARNINGS` order (flyingrobots/taskalisk#46), each code once.
 #[test]
 fn codes_catalogue_registers_every_finding_family() {
     let expected: Vec<(&str, Severity)> = LABELS
@@ -268,6 +269,7 @@ fn codes_catalogue_registers_every_finding_family() {
         .chain(BODY_WARNINGS.iter().map(|w| (w.code(), Severity::Warning)))
         .chain(SHAPE_WARNINGS.iter().map(|w| (w.code(), Severity::Warning)))
         .chain(PLAN_WARNINGS.iter().map(|c| (*c, Severity::Warning)))
+        .chain(TRUST_WARNINGS.iter().map(|c| (*c, Severity::Warning)))
         .collect();
     assert_eq!(CODES, expected.as_slice());
     let mut distinct: Vec<&str> = CODES.iter().map(|(c, _)| *c).collect();
