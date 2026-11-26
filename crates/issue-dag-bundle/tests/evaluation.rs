@@ -10,7 +10,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use issue_dag_bundle::{
-    EvaluationRecord, Evaluator, RECORD_VERSION, Replay, evaluate, load, replay, unretained,
+    EvaluationRecord, Evaluator, Evaluators, RECORD_VERSION, Replay, evaluate, load, replay,
+    unretained,
 };
 use issue_dag_core::{RecordedForge, plan};
 use serde_json::{Value, json};
@@ -60,7 +61,7 @@ fn record_of(bundle: &Value) -> Value {
 }
 
 fn replay_value(record: &Value) -> Replay {
-    replay(&record.to_string()).expect("a well-formed record")
+    replay(&record.to_string(), &evaluator()).expect("a well-formed record")
 }
 
 #[test]
@@ -84,8 +85,8 @@ fn every_graph_case_replays_byte_for_byte() {
         };
         let text = record.to_json();
         let recorded = serde_json::to_string(record.result()).expect("a result serialises");
-        match replay(&text) {
-            Ok(Replay::Reproduced { result }) if result == recorded => {}
+        match replay(&text, &evaluator()) {
+            Ok(Replay::Reproduced { result, .. }) if result == recorded => {}
             other => failures.push(format!("{name}: replay gave {other:?}")),
         }
         // The record reads back to the same bytes, and evaluating the same
@@ -236,6 +237,7 @@ fn a_changed_result_is_reported_as_differing_never_reproduced() {
         Replay::Differs {
             recorded,
             recomputed,
+            ..
         } => {
             assert_eq!(recomputed, original);
             assert_ne!(recorded, recomputed);
@@ -257,7 +259,8 @@ fn a_record_that_contradicts_its_bundle_is_refused() {
     ] {
         let mut record = record_of(&example());
         record[member] = value;
-        let error = replay(&record.to_string()).expect_err("the record contradicts its bundle");
+        let error = replay(&record.to_string(), &evaluator())
+            .expect_err("the record contradicts its bundle");
         assert!(error.at.starts_with(member), "{member}: {error}");
     }
 }
@@ -267,7 +270,10 @@ fn a_malformed_record_is_refused() {
     let record = record_of(&example());
     let mut extra = record.clone();
     extra["comment"] = json!("not a member");
-    assert!(replay(&extra.to_string()).is_err(), "an undefined member");
+    assert!(
+        replay(&extra.to_string(), &evaluator()).is_err(),
+        "an undefined member"
+    );
     for member in [
         "record",
         "formats",
@@ -280,15 +286,24 @@ fn a_malformed_record_is_refused() {
     ] {
         let mut lacking = record.clone();
         lacking.as_object_mut().expect("an object").remove(member);
-        assert!(replay(&lacking.to_string()).is_err(), "lacks {member}");
+        assert!(
+            replay(&lacking.to_string(), &evaluator()).is_err(),
+            "lacks {member}"
+        );
     }
     let mut version = record.clone();
     version["record"] = json!("taskalisk-evaluation/0");
-    assert!(replay(&version.to_string()).is_err(), "another version");
+    assert!(
+        replay(&version.to_string(), &evaluator()).is_err(),
+        "another version"
+    );
     let text = record.to_string();
     let repeated = format!("{},\"record\":\"x\"}}", &text[..text.len() - 1]);
-    assert!(replay(&repeated).is_err(), "a member given twice");
-    assert!(replay("not json").is_err());
+    assert!(
+        replay(&repeated, &evaluator()).is_err(),
+        "a member given twice"
+    );
+    assert!(replay("not json", &evaluator()).is_err());
 }
 
 #[test]
@@ -311,7 +326,54 @@ fn a_run_that_kept_no_bundle_records_that_replay_is_unavailable() {
     );
     assert_eq!(value["result"], record_of(&example())["result"]);
     assert!(matches!(
-        replay(&record.to_json()),
+        replay(&record.to_json(), &evaluator()),
         Ok(Replay::Unavailable(_))
     ));
+}
+
+#[test]
+fn replay_reports_the_recorded_and_the_replaying_evaluator() {
+    let mut record = record_of(&example());
+    let other = Evaluator {
+        name: "taskalisk".to_owned(),
+        version: "9.9.9".to_owned(),
+    };
+    match replay(&record.to_string(), &other).expect("a well-formed record") {
+        Replay::Reproduced { evaluators, .. } => {
+            assert_eq!(
+                evaluators,
+                Evaluators {
+                    recorded: evaluator(),
+                    replaying: other.clone(),
+                }
+            );
+            assert!(evaluators.changed());
+        }
+        unexpected => panic!("expected the result reproduced, got {unexpected:?}"),
+    }
+    match replay_value(&record) {
+        Replay::Reproduced { evaluators, .. } => assert!(!evaluators.changed()),
+        unexpected => panic!("expected the result reproduced, got {unexpected:?}"),
+    }
+    record["result"]["ready"] = json!([]);
+    match replay(&record.to_string(), &other).expect("a well-formed record") {
+        Replay::Differs { evaluators, .. } => {
+            assert_eq!(evaluators.recorded, evaluator());
+            assert_eq!(evaluators.replaying, other);
+            assert!(
+                evaluators.changed(),
+                "the difference may be the evaluator's"
+            );
+        }
+        unexpected => panic!("expected a difference, got {unexpected:?}"),
+    }
+    match replay_value(&record) {
+        Replay::Differs { evaluators, .. } => {
+            assert!(
+                !evaluators.changed(),
+                "the same evaluator differs from its record"
+            );
+        }
+        unexpected => panic!("expected a difference, got {unexpected:?}"),
+    }
 }
