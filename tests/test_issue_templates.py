@@ -84,6 +84,12 @@ class IssueTemplatesTest(unittest.TestCase):
 
 
 INSTALLED = ROOT / ".github" / "ISSUE_TEMPLATE"
+
+
+def template_names(folder):
+    """The template files in a folder, by name."""
+    return sorted(p.name for p in folder.iterdir())
+
 THIS_REPO = ("flyingrobots/taskalisk", 83)
 
 
@@ -93,10 +99,20 @@ class InstalledTemplatesTest(unittest.TestCase):
 
     def test_the_installed_folder_holds_exactly_the_canonical_files(self):
         self.assertTrue(INSTALLED.is_dir(), ".github/ISSUE_TEMPLATE/ is missing")
-        self.assertEqual(sorted(p.name for p in INSTALLED.iterdir()), sorted(p.name for p in TEMPLATES.iterdir()))
+        self.assertEqual(template_names(INSTALLED), template_names(TEMPLATES))
+
+    def test_a_hidden_file_left_by_the_system_is_not_drift(self):
+        """A `.DS_Store` that macOS writes into either folder is not a template; it must not fail the suite."""
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            folder = pathlib.Path(tmp)
+            (folder / "task.md").write_text("x")
+            (folder / ".DS_Store").write_bytes(b"\x00\x01")
+            self.assertEqual(template_names(folder), ["task.md"])
 
     def test_each_installed_file_is_its_canonical_template_for_this_repository(self):
-        for canonical in sorted(TEMPLATES.iterdir()):
+        for name in template_names(TEMPLATES):
+            canonical = TEMPLATES / name
             with self.subTest(canonical.name):
                 installed = INSTALLED / canonical.name
                 self.assertTrue(installed.is_file(), f"{canonical.name} is not installed")
