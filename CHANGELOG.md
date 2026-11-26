@@ -78,8 +78,8 @@ schema version under `Unreleased` is a draft and may change in place.
   under C7 contributes no reference to discovery (D8); the bot prefix `app/` and suffix `[bot]`
   match without regard to case (AD3, AD4); a bundle with a repeated JSON member or an unknown
   `observations` member is not a bundle (OB1, new OB15); `unknown_capacity` and `semaphores` are
-  in ascending byte order (CC6). The corpus gains 7 normative graph cases and 2 `--python` twins
-  (differences 23 and 24, both defects of the Python), digest `sha256:9ea9a109…`. The Rust core
+  in ascending byte order (CC6). The corpus gains 8 normative graph cases and 2 `--python` twins
+  (differences 23 and 24, both defects of the Python), digest `sha256:8e450195…`. The Rust core
   passed every new case unchanged; `issue-dag-bundle` gains a test for OB15.
 
 - **Document findings with stable codes** (flyingrobots/taskalisk#43). `issue-dag-core`

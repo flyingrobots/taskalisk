@@ -32,7 +32,7 @@ maintainers have reviewed.
 
 | Corpus | Evidence for | Digest |
 | --- | --- | --- |
-| [`corpus/`](corpus/README.md) | `issue-dag/2`, `issue-dag-planning/2` | `sha256:9ea9a109e3b99e1c06e2535d13f771803cad76ac302792d039f15ab04458a1b0` |
+| [`corpus/`](corpus/README.md) | `issue-dag/2`, `issue-dag-planning/2` | `sha256:8e4501955972ff4f860a29290de61e49236bfe95c9e44a6d5216bf4c8fc24af8` |
 
 The digest is computed as [corpus rule CD1](corpus/README.md#digest) states
 and is also held in `corpus/DIGEST`. It is recorded beside the format and the

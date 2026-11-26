@@ -119,7 +119,9 @@ exactly these members:
   null when it was not observed;
 - `author`: an actor (OB9), or null for a deleted account;
 - `draft`: a boolean, or an unavailable slot when the draft flag that was
-  observed is not a boolean;
+  observed is not a boolean. The member is recorded for every item, even
+  when no rule of the run reads it; profile rule I5 makes only its value
+  unavailable without consequence, never the member absent;
 - `closes`: the references, in canonical form, of the issues it closes.
 
 **OB8. Issues.** `observations.issues` is an object whose members are keyed

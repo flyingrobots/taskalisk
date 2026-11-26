@@ -716,6 +716,8 @@ NORMATIVE_GRAPHS += [
       subject(as_("OWNER", author="APP/helper")), refused(), ["AD3", "AD5"]),
     G("ad4-entry-suffix-ignores-case", "Allowlisting `HELPER[Bot]` trusts the app `helper`",
       subject(HELPER, logins=("HELPER[Bot]",)), admitted(), ["AD3", "AD4", "AD5"]),
+    G("ad4-entry-prefix-ignores-case", "Allowlisting `APP/helper` trusts the app `helper`",
+      subject(HELPER, logins=("APP/helper",)), admitted(), ["AD3", "AD4", "AD5"]),
     G("ad4-person-entry-does-not-trust-the-bot", "Allowlisting `helper` does not trust the app `helper`",
       subject(HELPER, logins=("helper",)), refused(), ["AD4", "AD5"]),
     G("ad4-bot-entry-trusts-the-bot", "Allowlisting `helper[bot]` trusts the app `helper`",

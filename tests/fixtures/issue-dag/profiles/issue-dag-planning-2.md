@@ -65,8 +65,9 @@ listing that may have been truncated is unavailable. A draft flag that is not
 a boolean is unavailable. The draft flag of a pull request is read only by
 S2, and so is required only when the pull request is a linked pull request
 (S1) of an open node: the draft flag of a pull request that is not admitted,
-or that closes no open node, is never required, and its absence or
-unavailability never makes the run incomplete.
+or that closes no open node, is never required, and when it is unavailable
+the run is not incomplete for that reason. An observation bundle still
+records the draft flag of every pull request (bundle rule OB7).
 
 **I6. Admission.** Admission decisions are made under the [admission
 policy](admission.md), rules AD1 to AD10, from the run parameters and the
