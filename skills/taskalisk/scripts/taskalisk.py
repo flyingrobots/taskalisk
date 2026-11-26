@@ -1352,8 +1352,8 @@ MD_LINE_BREAK_RE = re.compile("\r\n|[\n\r\x0b\x0c\x85\u2028\u2029]")
 MD_CONTROL_RE = re.compile(r"[\x00-\x1f\x7f-\x9f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]")
 # Where GFM can start a link: a scheme's `://` or `www.` not preceded by an ASCII letter or digit
 # (GFM starts one after `_`, punctuation or a non-ASCII letter, which `\b` misses), and an `@`
-# before a name (an email address, `mailto:` or a mention). A bounded scheme keeps the scan linear.
-MD_AUTOLINK_RE = re.compile(r"(?i)(?<![a-z0-9])([a-z][a-z0-9+.-]{0,31}:)(//)|(?<![a-z0-9])(www)(\.)|(@)(?=[a-z0-9])")
+# before any non-space character (an email address, `mailto:` or a mention). A bounded scheme keeps the scan linear.
+MD_AUTOLINK_RE = re.compile(r"(?i)(?<![a-z0-9])([a-z][a-z0-9+.-]{0,31}:)(//)|(?<![a-z0-9])(www)(\.)|(@)(?=\S)")
 ZERO_WIDTH_SPACE = "\u200b"
 
 
@@ -1372,7 +1372,8 @@ def _md_cell(text: str) -> str:
     cancel a later escape; every Unicode line break becomes a space; every other C0 or C1 control
     character (ESC included) and every bidirectional control is dropped; `|`, `[`, `]` are escaped
     and `<`, `>` become entities; and nothing can autolink, because a zero-width space (U+200B)
-    follows the colon of `scheme://`, the `www` of `www.` and an `@` before a name (`_unlink`).
+    follows the colon of `scheme://`, the `www` of `www.` and an `@` before any non-space
+    character (`_unlink`).
     Text that needs none of this is returned unchanged."""
     text = str(text).replace("\\", "\\\\")
     text = MD_CONTROL_RE.sub("", MD_LINE_BREAK_RE.sub(" ", text))
