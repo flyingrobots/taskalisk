@@ -360,6 +360,43 @@ class Secrets(Harness):
         self.assertTrue(out[-1]["redacted"])
 
 
+class QuerySecrets(unittest.TestCase):
+    """OUT-31 (F-18): a secret-like query parameter's value in gh or git text is redacted."""
+
+    @classmethod
+    def setUpClass(cls):
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("taskalisk_sanitize", SCRIPT)
+        cls.tk = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(cls.tk)
+
+    def test_secret_parameters_are_redacted(self):
+        cases = {
+            "gh: https://api.github.com/x?token=abc123secret failed":
+                "gh: https://api.github.com/x?token=[redacted] failed",
+            "https://h/p?page=2&token=abc123secret": "https://h/p?page=2&token=[redacted]",
+            "https://h/p?TOKEN=abc123secret&page=2": "https://h/p?TOKEN=[redacted]&page=2",
+            "https://h/p?Access_Token=abc123secret#frag": "https://h/p?Access_Token=[redacted]#frag",
+            "https://user:pw123secret@h/p?sig=abc123secret": "https://[redacted]@h/p?sig=[redacted]",
+            "a https://h/1?key=abc123secret b https://h/2?password=abc123secret c":
+                "a https://h/1?key=[redacted] b https://h/2?password=[redacted] c",
+            "https://h/p?secret=abc123secret;https://h/q?signature=abc123secret":
+                "https://h/p?secret=[redacted];https://h/q?signature=[redacted]",
+            "https://h/cb?code=abc123secret&state=s1&auth=abc123secret":
+                "https://h/cb?code=[redacted]&state=s1&auth=[redacted]",
+        }
+        for given, expected in cases.items():
+            with self.subTest(given):
+                self.assertEqual(self.tk.sanitize_text(given), expected)
+                self.assertNotIn("abc123secret", self.tk.sanitize_text(given))
+
+    def test_other_parameters_and_text_are_untouched(self):
+        for text in ("https://h/p?page=2&per_page=100", "https://h/p?tokens_left=3", "https://h/p?monkey=1",
+                     "a token=abc outside any URL", "https://h/p", "https://h/p?", "https://h/p?token"):
+            with self.subTest(text):
+                self.assertEqual(self.tk.sanitize_text(text), text)
+
+
 MARKS = ("MARK_TITLE_SEED", "MARK_BODY_SEED", "MARK_TITLE_REF", "MARK_BODY_REF")
 
 
