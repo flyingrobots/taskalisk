@@ -13,33 +13,39 @@
 //! its keys in sorted order and a line feed, so equal plans give identical
 //! bytes. Nothing here reads or writes anything.
 //!
-//! # Fields the core's result does not hold
+//! # What comes from where
 //!
-//! The renderer writes only what the run's parameters, its outcome, the
-//! ranking and the batch determine. These fields of the schemas are left
-//! out, never made up:
+//! The run's parameters, its outcome, the ranking and the batch give every
+//! field but those a [`Display`] input carries: the titles and URLs of
+//! issues and pull requests, the recoverable branches, and the persons and
+//! teams the CODEOWNERS files named. Without a display input those fields
+//! are left out, never made up. With one, the plan line also carries
+//! `artifact_hash`, the SHA-256 of the 1.x result document, when that
+//! document is within the core's reach (see [`lines`]).
 //!
-//! - `taskalisk.plan`: `artifact_hash` (the hash of the 1.x result document,
-//!   which holds every field below); `source.trust.codeowners` and
-//!   `codeowners_teams_not_expanded` when the policy reads CODEOWNERS (the
-//!   persons and teams each file named).
-//! - `taskalisk.frontier_node`, `taskalisk.node`: `title`, `url`, `type`,
-//!   `workstream`, `size_hours`, `linked_open_prs`, `recoverable_branches`.
-//! - `taskalisk.batch` members: `title`, `url`, `workstream`.
-//! - `taskalisk.finding`: the `title` (and for `issue.unmodeled` the `url`)
-//!   of a detail; for `issue.untrusted` the message and the detail's `url`,
-//!   `state`, `author`, `reasons` and `referenced_by`; for
-//!   `pull_request.untrusted` the message and every detail but `number`.
-//!   A `frontmatter.violation` or `frontmatter.warning` carries the core's
-//!   fixed message for its rule, one line per rule.
+//! These are not rendered with or without a display input:
+//!
+//! - the message and every detail but the id or number of an
+//!   `issue.untrusted` or `pull_request.untrusted` finding: the trust
+//!   gate's reasons (flyingrobots/taskalisk#46);
+//! - the findings about what discovery read, for a run whose edges form a
+//!   cycle or name an unknown prerequisite: the core reports no graph for
+//!   it, rule F3 (flyingrobots/taskalisk#44).
+//!
+//! A `frontmatter.violation` or `frontmatter.warning` carries the core's
+//! fixed message for its rule, one line per rule.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::cell::Cell;
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
+use std::fmt::Write as _;
 
 use issue_dag_core::{
     Batch, Finding, Graph, Identity, IssueRef, NodeStatus, Outcome, Parameters, Ranking, Severity,
-    Skip, rank, select,
+    Skip, Terms, rank, select,
 };
 use serde_json::{Map, Value, json};
+
+use crate::sha256;
 
 /// The version of every message this module writes.
 pub const SCHEMA_VERSION: &str = "1.0.0";
@@ -47,29 +53,27 @@ pub const SCHEMA_VERSION: &str = "1.0.0";
 /// The edge density band the plan's metrics judge (1.x).
 const DENSITY_BAND: (f64, f64) = (0.01, 0.50);
 
-/// The weights of the score terms (rule K5).
-const WEIGHTS: [(&str, u64); 5] = [
-    ("in_flight", 1000),
-    ("parked", 500),
-    ("descendants", 100),
-    ("critical_path_depth", 10),
-    ("out_degree", 1),
-];
+/// The title 1.x gives an untrusted issue, whose own is never shown
+/// (threat model C3).
+const UNTRUSTED_TITLE: &str = "(untrusted issue)";
 
-/// What the adapters read beside the plan, for display (stub).
+/// What the adapters read beside the observations the core plans from,
+/// only to show it: never an input to the plan.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Display {
-    /// Issue titles.
+    /// The title of each issue, as GitHub returns it.
     pub titles: BTreeMap<IssueRef, String>,
-    /// Issue URLs.
+    /// The URL of each issue.
     pub urls: BTreeMap<IssueRef, String>,
-    /// Pull request URLs.
+    /// The URL of each pull request of the home repository, by number.
     pub pull_request_urls: BTreeMap<u64, String>,
-    /// Recoverable branches.
+    /// The local branches that name each home issue; none when absent.
     pub recoverable_branches: BTreeMap<IssueRef, Vec<String>>,
-    /// CODEOWNERS persons.
+    /// For each repository (`owner/name`), the persons its CODEOWNERS file
+    /// named, when the policy reads CODEOWNERS.
     pub codeowners: BTreeMap<String, Vec<String>>,
-    /// CODEOWNERS teams.
+    /// For each repository, the teams its CODEOWNERS file named, which are
+    /// not expanded.
     pub codeowners_teams_not_expanded: BTreeMap<String, Vec<String>>,
 }
 
@@ -83,8 +87,6 @@ pub enum NotRendered {
     Incomplete,
     /// The outcome reports a graph that cannot be ranked. A run never does.
     Unranked,
-    /// The score terms of a node do not sum to its score. A run never does.
-    ScoreTerms(IssueRef),
 }
 
 /// The result lines of a plan, as text: one JSON object per line.
@@ -95,10 +97,10 @@ pub enum NotRendered {
 pub fn render(
     parameters: &Parameters,
     outcome: &Outcome,
-    _display: Option<&Display>,
+    display: Option<&Display>,
 ) -> Result<String, NotRendered> {
     let mut text = String::new();
-    for line in lines(parameters, outcome)? {
+    for line in lines(parameters, outcome, display)? {
         text.push_str(&line.to_string());
         text.push('\n');
     }
@@ -107,10 +109,20 @@ pub fn render(
 
 /// The result lines of a plan, in the order they are written.
 ///
+/// `artifact_hash` is written when a display input is given, the plan
+/// compiled, it has no frontmatter finding (whose 1.x text the core does
+/// not keep) and no untrusted issue or pull request (whose reasons it does
+/// not keep), and the display input holds every title and URL the document
+/// names.
+///
 /// # Errors
 ///
 /// [`NotRendered`] when the run has no plan to render.
-pub fn lines(parameters: &Parameters, outcome: &Outcome) -> Result<Vec<Value>, NotRendered> {
+pub fn lines(
+    parameters: &Parameters,
+    outcome: &Outcome,
+    display: Option<&Display>,
+) -> Result<Vec<Value>, NotRendered> {
     let (findings, graph) = match outcome {
         Outcome::Rejected(_) => return Err(NotRendered::Rejected),
         Outcome::Incomplete { .. } => return Err(NotRendered::Incomplete),
@@ -118,16 +130,22 @@ pub fn lines(parameters: &Parameters, outcome: &Outcome) -> Result<Vec<Value>, N
         Outcome::Planned { findings, graph } => (findings, Some(graph)),
     };
     let report = Report::of(findings);
+    let shown = Shown {
+        display,
+        unshown: Cell::new(false),
+    };
     let compiled = match graph {
         Some(graph) => {
             let ranking = rank(graph).ok_or(NotRendered::Unranked)?;
             let batch = select(graph, &ranking, &parameters.capacities);
-            Some(Compiled::of(graph, ranking, batch)?)
+            Some(Compiled::of(graph, ranking, batch, &shown))
         }
         None => None,
     };
+    let discovery = graph.map(|g| Discovery::of(g, &shown));
 
-    let mut out = vec![plan_line(parameters, &report, compiled.as_ref())];
+    let mut plan = plan_line(parameters, &report, compiled.as_ref(), display);
+    let mut out = Vec::new();
     if let Some(c) = &compiled {
         out.extend(c.frontier_lines());
         out.push(c.batch_line());
@@ -135,8 +153,83 @@ pub fn lines(parameters: &Parameters, outcome: &Outcome) -> Result<Vec<Value>, N
         out.extend(c.wave_lines());
         out.extend(c.edge_lines());
     }
-    out.extend(finding_lines(&report, graph, compiled.as_ref()));
+    out.extend(finding_lines(
+        &report,
+        discovery.as_ref(),
+        compiled.as_ref(),
+    ));
+
+    let in_reach = report.violations.is_empty()
+        && report.warnings.is_empty()
+        && graph.is_some_and(|g| g.untrusted.is_empty() && g.untrusted_pull_requests.is_empty())
+        && !shown.unshown.get();
+    if let (Some(_), Some(c), Some(d), true) = (display, &compiled, &discovery, in_reach) {
+        let document = c.document(&plan, d);
+        plan["artifact_hash"] = json!(sha256::hex(canonical(&document).as_bytes()));
+    }
+    out.insert(0, plan);
     Ok(out)
+}
+
+/// The text 1.x hashes: keys sorted, compact separators, every character
+/// past ASCII escaped as `\uXXXX`, and a line feed.
+fn canonical(value: &Value) -> String {
+    let mut out = String::new();
+    for c in value.to_string().chars() {
+        if c.is_ascii() {
+            out.push(c);
+        } else {
+            let mut units = [0_u16; 2];
+            for unit in c.encode_utf16(&mut units) {
+                let _ = write!(out, "\\u{unit:04x}");
+            }
+        }
+    }
+    out.push('\n');
+    out
+}
+
+/// The display input, and whether a lookup in it found nothing.
+struct Shown<'a> {
+    display: Option<&'a Display>,
+    unshown: Cell<bool>,
+}
+
+impl Shown<'_> {
+    /// Looks one value up, noting an absent one.
+    fn get<K: Ord, V: Clone>(
+        &self,
+        map: impl Fn(&Display) -> &BTreeMap<K, V>,
+        key: &K,
+    ) -> Option<V> {
+        let found = self.display.and_then(|d| map(d).get(key).cloned());
+        if self.display.is_some() && found.is_none() {
+            self.unshown.set(true);
+        }
+        found
+    }
+
+    /// Adds an issue's title to an object, when shown; an untrusted
+    /// issue's is never its own.
+    fn title(&self, fields: &mut Map<String, Value>, id: &IssueRef, untrusted: bool) {
+        if self.display.is_none() {
+            return;
+        }
+        let title = if untrusted {
+            Some(UNTRUSTED_TITLE.to_owned())
+        } else {
+            self.get(|d| &d.titles, id)
+        };
+        if let Some(title) = title {
+            fields.insert("title".into(), json!(title));
+        }
+    }
+
+    fn url(&self, fields: &mut Map<String, Value>, id: &IssueRef) {
+        if let Some(url) = self.get(|d| &d.urls, id) {
+            fields.insert("url".into(), json!(url));
+        }
+    }
 }
 
 /// One message: its fields, its event and its schema.
@@ -200,7 +293,12 @@ impl<'a> Report<'a> {
     }
 }
 
-fn plan_line(parameters: &Parameters, report: &Report, compiled: Option<&Compiled>) -> Value {
+fn plan_line(
+    parameters: &Parameters,
+    report: &Report,
+    compiled: Option<&Compiled>,
+    display: Option<&Display>,
+) -> Value {
     let mut error_codes = Vec::new();
     let outcome = if compiled.is_some() {
         "compiled"
@@ -220,7 +318,7 @@ fn plan_line(parameters: &Parameters, report: &Report, compiled: Option<&Compile
         "outcome": outcome,
         "ok": compiled.is_some() && error_codes.is_empty(),
         "error_codes": error_codes,
-        "source": source(parameters),
+        "source": source(parameters, display),
         "violating_issues": violating.len(),
         "relationships": {"compared": false},
     }));
@@ -235,7 +333,7 @@ fn plan_line(parameters: &Parameters, report: &Report, compiled: Option<&Compile
 
 /// The plan line's `source`: the home repository, the roots as given and
 /// the trust in force.
-fn source(parameters: &Parameters) -> Value {
+fn source(parameters: &Parameters, display: Option<&Display>) -> Value {
     let lower = |items: Vec<String>| -> Vec<String> {
         let set: BTreeSet<String> = items.into_iter().map(|s| s.to_lowercase()).collect();
         set.into_iter().collect()
@@ -246,9 +344,19 @@ fn source(parameters: &Parameters) -> Value {
         "repos": lower(scope.repositories.iter().map(ToString::to_string).collect()),
         "logins": lower(parameters.trust.logins.iter().map(|l| login(l)).collect()),
     }));
-    if !parameters.trust.codeowners {
-        trust.insert("codeowners".into(), Value::Null);
-        trust.insert("codeowners_teams_not_expanded".into(), json!({}));
+    match (parameters.trust.codeowners, display) {
+        (false, _) => {
+            trust.insert("codeowners".into(), Value::Null);
+            trust.insert("codeowners_teams_not_expanded".into(), json!({}));
+        }
+        (true, Some(d)) => {
+            trust.insert("codeowners".into(), json!(d.codeowners));
+            trust.insert(
+                "codeowners_teams_not_expanded".into(),
+                json!(d.codeowners_teams_not_expanded),
+            );
+        }
+        (true, None) => {}
     }
     json!({
         "kind": "issue-frontmatter",
@@ -278,23 +386,21 @@ struct Compiled<'a> {
     batch: Batch,
     /// The open nodes, sorted as text.
     open: Vec<&'a IssueRef>,
-    /// The children of each open node in the graph, redundant edges
-    /// included, sorted as text.
+    /// The children of each node in the graph, redundant edges included,
+    /// sorted as text.
     raw_children: BTreeMap<&'a IssueRef, Vec<&'a IssueRef>>,
     /// The children in the reduced graph (G5), sorted as text.
     children: BTreeMap<&'a IssueRef, Vec<&'a IssueRef>>,
     /// The parents in the reduced graph, sorted as text.
     parents: BTreeMap<&'a IssueRef, Vec<&'a IssueRef>>,
-    /// The open nodes each node transitively unblocks (K1).
-    descendants: BTreeMap<&'a IssueRef, BTreeSet<&'a IssueRef>>,
-    /// The longest remaining chain from each node, itself counted (K2).
-    depth: BTreeMap<&'a IssueRef, u64>,
     /// The wave of each open node (K7).
     wave: BTreeMap<&'a IssueRef, usize>,
+    /// The 1.x node object of each open node.
+    docs: BTreeMap<&'a IssueRef, Map<String, Value>>,
 }
 
 impl<'a> Compiled<'a> {
-    fn of(graph: &'a Graph, ranking: Ranking, batch: Batch) -> Result<Self, NotRendered> {
+    fn of(graph: &'a Graph, ranking: Ranking, batch: Batch, shown: &Shown) -> Self {
         let mut open: Vec<&IssueRef> = graph
             .nodes
             .iter()
@@ -302,7 +408,6 @@ impl<'a> Compiled<'a> {
             .map(|(id, _)| id)
             .collect();
         open.sort_by_key(ToString::to_string);
-        let by_text = |list: &mut Vec<&IssueRef>| list.sort_by_key(ToString::to_string);
         let mut raw_children: BTreeMap<&IssueRef, Vec<&IssueRef>> = BTreeMap::new();
         let mut children: BTreeMap<&IssueRef, Vec<&IssueRef>> = BTreeMap::new();
         let mut parents: BTreeMap<&IssueRef, Vec<&IssueRef>> = BTreeMap::new();
@@ -318,7 +423,7 @@ impl<'a> Compiled<'a> {
             .chain(children.values_mut())
             .chain(parents.values_mut())
         {
-            by_text(list);
+            list.sort_by_key(ToString::to_string);
         }
         let mut wave = BTreeMap::new();
         for (k, ids) in ranking.waves.iter().enumerate() {
@@ -328,23 +433,7 @@ impl<'a> Compiled<'a> {
                 }
             }
         }
-        // K1 and K2 from the last wave back: every child is in a later wave.
-        let mut descendants: BTreeMap<&IssueRef, BTreeSet<&IssueRef>> = BTreeMap::new();
-        let mut depth: BTreeMap<&IssueRef, u64> = BTreeMap::new();
-        let mut by_wave: Vec<&IssueRef> = wave.keys().copied().collect();
-        by_wave.sort_by_key(|id| std::cmp::Reverse(wave[id]));
-        for u in by_wave {
-            let mut below = BTreeSet::new();
-            let mut longest = 0;
-            for &c in children.get(u).map_or(&[][..], Vec::as_slice) {
-                below.insert(c);
-                below.extend(descendants.get(c).into_iter().flatten().copied());
-                longest = longest.max(depth.get(c).copied().unwrap_or(0));
-            }
-            descendants.insert(u, below);
-            depth.insert(u, longest + 1);
-        }
-        let compiled = Self {
+        let mut compiled = Self {
             graph,
             ranking,
             batch,
@@ -352,17 +441,15 @@ impl<'a> Compiled<'a> {
             raw_children,
             children,
             parents,
-            descendants,
-            depth,
             wave,
+            docs: BTreeMap::new(),
         };
-        for &id in &compiled.open {
-            let total: u64 = compiled.terms(id).iter().map(|(_, v, w)| v * w).sum();
-            if compiled.ranking.scores.get(id) != Some(&total) {
-                return Err(NotRendered::ScoreTerms(id.clone()));
-            }
-        }
-        Ok(compiled)
+        compiled.docs = compiled
+            .open
+            .iter()
+            .map(|&id| (id, compiled.node_doc(id, shown)))
+            .collect();
+        compiled
     }
 
     fn children_of(&self, id: &IssueRef) -> &[&'a IssueRef] {
@@ -381,25 +468,8 @@ impl<'a> Compiled<'a> {
             .unwrap_or(NodeStatus::Open)
     }
 
-    /// The score terms of a node (K3 to K5): name, value and weight.
-    fn terms(&self, id: &IssueRef) -> [(&'static str, u64, u64); 5] {
-        let status = self.status(id);
-        let in_flight = matches!(
-            status,
-            NodeStatus::InProgress | NodeStatus::Wip | NodeStatus::InReview
-        );
-        let values = [
-            u64::from(in_flight),
-            u64::from(status == NodeStatus::Parked),
-            self.descendants.get(id).map_or(0, |d| d.len() as u64),
-            self.depth.get(id).copied().unwrap_or(1),
-            self.children_of(id).len() as u64,
-        ];
-        let mut out = [("", 0, 0); 5];
-        for (slot, ((name, weight), value)) in out.iter_mut().zip(WEIGHTS.iter().zip(values)) {
-            *slot = (name, value, *weight);
-        }
-        out
+    fn terms(&self, id: &IssueRef) -> Terms {
+        self.ranking.terms.get(id).copied().unwrap_or_default()
     }
 
     fn score(&self, id: &IssueRef) -> u64 {
@@ -441,8 +511,9 @@ impl<'a> Compiled<'a> {
         })
     }
 
-    /// The fields of a node's line.
-    fn node_fields(&self, id: &IssueRef) -> Map<String, Value> {
+    /// A node as 1.x writes it in its result document; its lines add their
+    /// own fields.
+    fn node_doc(&self, id: &IssueRef, shown: &Shown) -> Map<String, Value> {
         let node = &self.graph.nodes[id];
         let completed = self
             .graph
@@ -451,23 +522,55 @@ impl<'a> Compiled<'a> {
             .filter(|e| e.to == *id)
             .map(|e| &e.from);
         let wave = self.wave.get(id).copied().unwrap_or(0);
-        object(json!({
+        let terms = self.terms(id);
+        let (kind, workstream) = match node.task_type {
+            Some(t) => (t.as_str(), t.as_str()),
+            None if node.opaque => ("opaque", "unassigned"),
+            None => ("task", "unassigned"),
+        };
+        let pulls: Vec<Value> = node
+            .pull_requests
+            .iter()
+            .map(|p| {
+                let mut pull = object(json!({"number": p.number, "isDraft": p.draft}));
+                if let Some(url) = shown.get(|d| &d.pull_request_urls, &p.number) {
+                    pull.insert("url".into(), json!(url));
+                }
+                Value::Object(pull)
+            })
+            .collect();
+        let mut fields = object(json!({
             "id": id.to_string(),
+            "type": kind,
+            "workstream": workstream,
             "milestone": null,
             "in_filter": true,
             "status": self.status(id).as_str(),
             "derived_status": if wave == 0 { "open-frontier" } else { "blocked" },
+            "linked_open_prs": pulls,
             "completed_parents": sorted_texts(completed),
             "open_parents": texts(self.parents_of(id).iter().copied()),
             "directly_unlocks": texts(self.children_of(id).iter().copied()),
-            "transitive_unblocks_count": self.descendants.get(id).map_or(0, BTreeSet::len),
-            "critical_path_remaining_depth": self.depth.get(id).copied().unwrap_or(1),
+            "transitive_unblocks_count": terms.descendants,
+            "critical_path_remaining_depth": terms.critical_path_depth,
             "priority_score": self.score(id),
             "holds": node.holds,
             "meters": meters(id, self.graph),
             "opaque": node.opaque,
             "untrusted": node.untrusted,
-        }))
+            "size_hours": node.size_hours,
+        }));
+        if let Some(display) = shown.display {
+            shown.title(&mut fields, id, node.untrusted);
+            shown.url(&mut fields, id);
+            let branches = display
+                .recoverable_branches
+                .get(id)
+                .cloned()
+                .unwrap_or_default();
+            fields.insert("recoverable_branches".into(), json!(branches));
+        }
+        fields
     }
 
     fn frontier_lines(&self) -> Vec<Value> {
@@ -476,12 +579,12 @@ impl<'a> Compiled<'a> {
             .iter()
             .enumerate()
             .map(|(i, id)| {
-                let mut fields = self.node_fields(id);
+                let mut fields = self.docs.get(id).cloned().unwrap_or_default();
                 let terms: Map<String, Value> = self
                     .terms(id)
+                    .points()
                     .iter()
-                    .map(|&(name, value, weight)| {
-                        let points = value * weight;
+                    .map(|&(name, value, weight, points)| {
                         (
                             name.to_owned(),
                             json!({"value": value, "weight": weight, "points": points}),
@@ -492,29 +595,41 @@ impl<'a> Compiled<'a> {
                 fields.insert("wave".into(), json!(0));
                 fields.insert(
                     "score".into(),
-                    json!({"total": self.score(id), "terms": terms}),
+                    json!({"total": self.terms(id).total(), "terms": terms}),
                 );
                 message("frontier_node", fields)
             })
             .collect()
     }
 
-    fn batch_line(&self) -> Value {
-        let members: Vec<Value> = self
-            .batch
+    /// The batch's members, as 1.x writes them.
+    fn members(&self) -> Vec<Value> {
+        self.batch
             .selected
             .iter()
             .map(|id| {
-                json!({
-                    "id": id.to_string(),
-                    "priority_score": self.score(id),
-                    "holds": self.graph.nodes.get(id).map(|n| &n.holds),
-                    "meters": meters(id, self.graph),
-                })
+                let doc = self.docs.get(id).cloned().unwrap_or_default();
+                let member: Map<String, Value> = doc
+                    .into_iter()
+                    .filter(|(k, _)| {
+                        matches!(
+                            k.as_str(),
+                            "id" | "title"
+                                | "url"
+                                | "workstream"
+                                | "priority_score"
+                                | "holds"
+                                | "meters"
+                        )
+                    })
+                    .collect();
+                Value::Object(member)
             })
-            .collect();
-        let skipped: Vec<Value> = self
-            .batch
+            .collect()
+    }
+
+    fn skipped(&self) -> Vec<Value> {
+        self.batch
             .skipped
             .iter()
             .map(|(id, skip)| {
@@ -528,12 +643,15 @@ impl<'a> Compiled<'a> {
                 };
                 json!({"id": id.to_string(), "reason": reason})
             })
-            .collect();
+            .collect()
+    }
+
+    fn batch_line(&self) -> Value {
         message(
             "batch",
             object(json!({
-                "members": members,
-                "skipped": skipped,
+                "members": self.members(),
+                "skipped": self.skipped(),
                 "semaphores_with_unknown_capacity_treated_as_1": self.batch.unknown_capacity,
             })),
         )
@@ -543,7 +661,7 @@ impl<'a> Compiled<'a> {
         let mut out = Vec::new();
         for (k, ids) in self.ranking.waves.iter().enumerate().skip(1) {
             for id in ids {
-                let mut fields = self.node_fields(id);
+                let mut fields = self.docs.get(id).cloned().unwrap_or_default();
                 fields.insert("wave".into(), json!(k));
                 out.push(message("node", fields));
             }
@@ -565,26 +683,49 @@ impl<'a> Compiled<'a> {
             .collect()
     }
 
-    fn edge_lines(&self) -> Vec<Value> {
+    /// The reduced edges, as 1.x writes them: by source, then target, as
+    /// text.
+    fn edges(&self) -> Vec<Value> {
         let mut out = Vec::new();
         for &u in &self.open {
             for &v in self.children_of(u) {
-                out.push(message(
-                    "edge",
-                    object(json!({
-                        "from": u.to_string(),
-                        "to": v.to_string(),
-                        "evidence": format!("frontmatter: {v} .blocked_by {u}"),
-                    })),
-                ));
+                out.push(json!({
+                    "from": u.to_string(),
+                    "to": v.to_string(),
+                    "evidence": format!("frontmatter: {v} .blocked_by {u}"),
+                }));
             }
         }
         out
     }
 
+    fn edge_lines(&self) -> Vec<Value> {
+        self.edges()
+            .into_iter()
+            .map(|e| message("edge", object(e)))
+            .collect()
+    }
+
+    /// Whether `to` is reachable from `from` in the graph.
+    fn reaches(&self, from: &IssueRef, to: &IssueRef) -> bool {
+        let mut seen = BTreeSet::new();
+        let mut queue = VecDeque::from([from]);
+        while let Some(u) = queue.pop_front() {
+            for &c in self.raw_children.get(u).map_or(&[][..], Vec::as_slice) {
+                if c == to {
+                    return true;
+                }
+                if seen.insert(c) {
+                    queue.push_back(c);
+                }
+            }
+        }
+        false
+    }
+
     /// The redundant edges (G5), each with the first child of its source,
     /// as text, through which it is implied.
-    fn redundant(&self) -> Vec<(&'a IssueRef, &'a IssueRef, &'a IssueRef)> {
+    fn redundant(&self) -> Vec<Value> {
         let mut out = Vec::new();
         for &u in &self.open {
             let raw = self.raw_children.get(u).map_or(&[][..], Vec::as_slice);
@@ -597,16 +738,53 @@ impl<'a> Compiled<'a> {
                 if !redundant {
                     continue;
                 }
-                let via = raw
-                    .iter()
-                    .copied()
-                    .find(|&w| w != v && self.descendants.get(w).is_some_and(|d| d.contains(v)));
-                if let Some(w) = via {
-                    out.push((u, v, w));
+                if let Some(w) = raw.iter().find(|&&w| w != v && self.reaches(w, v)) {
+                    out.push(json!({"from": u.to_string(), "to": v.to_string(), "implied_via": w.to_string()}));
                 }
             }
         }
         out
+    }
+
+    /// The 1.x result document of a compiled plan with no finding the core
+    /// lacks the text of, which `artifact_hash` digests.
+    fn document(&self, plan: &Value, discovery: &Discovery) -> Value {
+        let ranked = |ids: &[IssueRef]| -> Vec<Value> {
+            ids.iter()
+                .filter_map(|id| self.docs.get(id).cloned().map(Value::Object))
+                .collect()
+        };
+        let waves: Map<String, Value> = self
+            .ranking
+            .waves
+            .iter()
+            .enumerate()
+            .map(|(k, ids)| (format!("Wave {k}"), json!(ranked(ids))))
+            .collect();
+        let mut source = object(plan["source"].clone());
+        source.insert("containers_excluded".into(), json!(discovery.containers));
+        source.insert("unmodeled_open_issues".into(), json!(discovery.unmodeled));
+        source.insert("untrusted_issues".into(), json!([]));
+        source.insert("untrusted_linked_prs".into(), json!([]));
+        source.insert("opaque_nodes".into(), json!(discovery.opaque));
+        source.insert("not_planned_parents".into(), json!(discovery.not_planned));
+        json!({
+            "ok": plan["ok"],
+            "metrics": plan["metrics"],
+            "edges": self.edges(),
+            "transitive_redundant_edges_removed": self.redundant(),
+            "soft_or_low_confidence_edges": [],
+            "unknown_dependencies": [],
+            "stale_merged_hints": [],
+            "open_frontier_count": self.ranking.ready.len(),
+            "open_frontier_ranked": ranked(&self.ranking.ready),
+            "conflict_free_frontier_batch": self.members(),
+            "batch_skipped": self.skipped(),
+            "semaphores_with_unknown_capacity_treated_as_1": self.batch.unknown_capacity,
+            "waves": waves,
+            "source": source,
+            "frontmatter": {"violating_issues": 0, "violations": {}, "warnings": {}},
+        })
     }
 }
 
@@ -619,6 +797,92 @@ fn meters(id: &IssueRef, graph: &Graph) -> Value {
             .map(|m| json!({"name": m.name, "slots": m.slots}))
             .collect::<Vec<_>>()
     )
+}
+
+/// What discovery read that is not a node (rule W1), as 1.x lists it in
+/// its result's `source`.
+struct Discovery {
+    containers: Vec<Value>,
+    unmodeled: Vec<Value>,
+    untrusted: Vec<Value>,
+    untrusted_pull_requests: Vec<Value>,
+    opaque: Vec<Value>,
+    not_planned: Vec<Value>,
+}
+
+impl Discovery {
+    fn of(graph: &Graph, shown: &Shown) -> Self {
+        let containers = graph
+            .containers
+            .keys()
+            .map(|id| {
+                let mut c = object(json!({"id": id.to_string(), "number": id.number()}));
+                shown.title(&mut c, id, false);
+                Value::Object(c)
+            })
+            .collect();
+        let unmodeled = graph
+            .unmodeled
+            .iter()
+            .map(|id| {
+                let mut u = object(json!({"id": id.to_string()}));
+                shown.title(&mut u, id, false);
+                shown.url(&mut u, id);
+                Value::Object(u)
+            })
+            .collect();
+        let untrusted = graph
+            .untrusted
+            .iter()
+            .map(|id| json!({"id": id.to_string()}))
+            .collect();
+        let untrusted_pull_requests = graph
+            .untrusted_pull_requests
+            .iter()
+            .map(|n| json!({"number": n}))
+            .collect();
+        let opaque = graph
+            .nodes
+            .iter()
+            .filter(|(_, n)| n.opaque && !n.untrusted)
+            .map(|(id, node)| {
+                let referenced_by = sorted_texts(
+                    graph
+                        .edges
+                        .iter()
+                        .chain(&graph.satisfied)
+                        .filter(|e| e.from == *id)
+                        .map(|e| &e.to),
+                );
+                let mut o = object(json!({
+                    "id": id.to_string(),
+                    "state": if node.complete { "closed" } else { "open" },
+                    "referenced_by": referenced_by,
+                }));
+                shown.title(&mut o, id, false);
+                Value::Object(o)
+            })
+            .collect();
+        let not_planned = graph
+            .not_planned
+            .iter()
+            .map(|e| {
+                let mut n =
+                    object(json!({"parent": e.from.to_string(), "child": e.to.to_string()}));
+                let untrusted = graph.nodes.get(&e.from).is_some_and(|n| n.untrusted);
+                shown.title(&mut n, &e.from, untrusted);
+                Value::Object(n)
+            })
+            .collect();
+        Self {
+            containers,
+            unmodeled,
+            untrusted,
+            untrusted_pull_requests,
+            opaque,
+            not_planned,
+        }
+    }
 }
 
 fn finding(
@@ -641,15 +905,19 @@ fn finding(
     message("finding", fields)
 }
 
+fn field(value: &Value, key: &str) -> String {
+    value[key].as_str().unwrap_or_default().to_owned()
+}
+
 /// Every finding, in the 1.x order of codes.
 fn finding_lines(
     report: &Report,
-    graph: Option<&Graph>,
+    discovery: Option<&Discovery>,
     compiled: Option<&Compiled>,
 ) -> Vec<Value> {
     let mut out = Vec::new();
-    if let Some(graph) = graph {
-        out.extend(graph_findings(graph));
+    if let Some(d) = discovery {
+        out.extend(discovery_findings(d));
     }
     for (code, list) in [
         ("frontmatter.violation", &report.violations),
@@ -665,12 +933,13 @@ fn finding_lines(
         }
     }
     if let Some(c) = compiled {
-        for (u, v, w) in c.redundant() {
+        for e in c.redundant() {
+            let (u, v, w) = (field(&e, "from"), field(&e, "to"), field(&e, "implied_via"));
             out.push(finding(
                 "edge.redundant",
                 Some(format!("{u}->{v}")),
                 Some(format!("{u} -> {v} is implied via {w}")),
-                Some(json!({"from": u.to_string(), "to": v.to_string(), "implied_via": w.to_string()})),
+                Some(e),
             ));
         }
     }
@@ -685,7 +954,9 @@ fn finding_lines(
                 "{} names {prerequisite}, which is neither open nor completed",
                 f.subject
             )),
-            Some(json!({"node": f.subject.to_string(), "unknown_prerequisite": prerequisite.to_string()})),
+            Some(
+                json!({"node": f.subject.to_string(), "unknown_prerequisite": prerequisite.to_string()}),
+            ),
         ));
     }
     for id in sorted_texts(report.cyclic.iter().map(|f| &f.subject)) {
@@ -699,85 +970,78 @@ fn finding_lines(
     out
 }
 
-/// The findings a graph lists (rule W1): containers, unmodeled, untrusted
-/// and opaque issues, untrusted pull requests and not-planned blockers.
-fn graph_findings(graph: &Graph) -> Vec<Value> {
+/// The findings about what discovery read (rule W1).
+fn discovery_findings(d: &Discovery) -> Vec<Value> {
     let mut out = Vec::new();
-    for id in graph.containers.keys() {
+    for c in &d.containers {
+        let id = field(c, "id");
         out.push(finding(
             "container.excluded",
-            Some(id.to_string()),
+            Some(id.clone()),
             Some(format!(
                 "{id} is a container: its children are nodes and it is not"
             )),
-            Some(json!({"id": id.to_string(), "number": id.number()})),
+            Some(c.clone()),
         ));
     }
-    for id in &graph.unmodeled {
+    for u in &d.unmodeled {
+        let id = field(u, "id");
         out.push(finding(
             "issue.unmodeled",
-            Some(id.to_string()),
+            Some(id.clone()),
             Some(format!(
                 "{id} is an open home issue without frontmatter; it is not a node"
             )),
-            Some(json!({"id": id.to_string()})),
+            Some(u.clone()),
         ));
     }
-    for id in &graph.untrusted {
+    for u in &d.untrusted {
         out.push(finding(
             "issue.untrusted",
-            Some(id.to_string()),
+            Some(field(u, "id")),
             None,
-            Some(json!({"id": id.to_string()})),
+            Some(u.clone()),
         ));
     }
-    for number in &graph.untrusted_pull_requests {
+    for p in &d.untrusted_pull_requests {
         out.push(finding(
             "pull_request.untrusted",
             None,
             None,
-            Some(json!({"number": number})),
+            Some(p.clone()),
         ));
     }
-    for (id, node) in &graph.nodes {
-        if !node.opaque || node.untrusted {
-            continue;
-        }
-        let referenced_by = sorted_texts(
-            graph
-                .edges
-                .iter()
-                .chain(&graph.satisfied)
-                .filter(|e| e.from == *id)
-                .map(|e| &e.to),
-        );
-        let blocks = if referenced_by.is_empty() {
+    for o in &d.opaque {
+        let id = field(o, "id");
+        let by: Vec<&str> = o["referenced_by"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(Value::as_str)
+            .collect();
+        let blocks = if by.is_empty() {
             "nothing".to_owned()
         } else {
-            referenced_by.join(", ")
+            by.join(", ")
         };
         out.push(finding(
             "issue.opaque",
-            Some(id.to_string()),
+            Some(id.clone()),
             Some(format!(
                 "{id} has no frontmatter; it blocks {blocks} until it closes"
             )),
-            Some(json!({
-                "id": id.to_string(),
-                "state": if node.complete { "closed" } else { "open" },
-                "referenced_by": referenced_by,
-            })),
+            Some(o.clone()),
         ));
     }
-    for edge in &graph.not_planned {
+    for n in &d.not_planned {
+        let (parent, child) = (field(n, "parent"), field(n, "child"));
         out.push(finding(
             "parent.not_planned",
-            Some(edge.from.to_string()),
+            Some(parent.clone()),
             Some(format!(
-                "{} closed as not planned and still satisfies the edge to {}; review it",
-                edge.from, edge.to
+                "{parent} closed as not planned and still satisfies the edge to {child}; review it"
             )),
-            Some(json!({"parent": edge.from.to_string(), "child": edge.to.to_string()})),
+            Some(n.clone()),
         ));
     }
     out

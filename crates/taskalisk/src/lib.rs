@@ -6,3 +6,4 @@
 //! The crate performs no I/O.
 
 pub mod render;
+mod sha256;
