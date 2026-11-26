@@ -5,7 +5,7 @@
 
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
-use crate::admission::{Admission, Undecided};
+use crate::admission::{Admission, Gaps, Undecided, lookup};
 use crate::carrier::{Parse, Slot, Value, parse};
 use crate::finding::{Finding, Rule, Severity};
 use crate::forge::Forge;
@@ -13,7 +13,7 @@ use crate::label::Label;
 use crate::observation::{Issue, IssueState, Missing, Observed, Parameters, Repo, TRUST_POLICY};
 use crate::record::{Kind, MeterClaim, Status};
 use crate::reference::IssueRef;
-use crate::{Judgement, admit};
+use crate::{Judgement, judge};
 
 /// The status of an open node (rule S2).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -207,8 +207,8 @@ struct Reading {
 }
 
 impl Reading {
-    fn of(body: &str, address: &IssueRef) -> Self {
-        let Parse::Block(block) = parse(body) else {
+    fn of(parsed: &Parse, address: &IssueRef) -> Self {
+        let Parse::Block(block) = parsed else {
             return Self::default();
         };
         let one = |key: &str| match block.slot(key) {
@@ -307,13 +307,15 @@ impl Closure {
     }
 
     /// F5: the issues that receive the D3 or D5 finding about a reference:
-    /// each document that names it, or the reference itself when nobody
-    /// does.
+    /// each document that names it, or the reference itself when it is a
+    /// root that no document names. A seed of the home listing is not a
+    /// root: unnamed, it gives no finding (D5).
     fn namers(&self, reference: &IssueRef) -> Vec<IssueRef> {
-        self.named_by.get(reference).map_or_else(
-            || vec![reference.clone()],
-            |by| by.iter().cloned().collect(),
-        )
+        match self.named_by.get(reference) {
+            Some(by) => by.iter().cloned().collect(),
+            None if self.has_roots && self.seeds.contains(reference) => vec![reference.clone()],
+            None => Vec::new(),
+        }
     }
 }
 
@@ -337,16 +339,24 @@ impl<'a, F: Forge + ?Sized> Run<'a, F> {
         }
     }
 
+    /// Discovery reads every observation the rules reach before it decides
+    /// that the run cannot go on: one lookup that cannot be made does not
+    /// stop the others (D1, D2, I4), so neither the order of the roots nor
+    /// that of discovery changes the result, and a missing slot is never
+    /// hidden by an unavailable one (OB5).
     fn execute(mut self, roots: Vec<IssueRef>) -> Result<Outcome, Undecided> {
         let has_roots = !roots.is_empty();
+        let mut gaps = Gaps::default();
         // D1: the seeds.
         let seeds = if has_roots {
             roots
         } else {
-            value(self.forge.home_open_issues()?)?
+            gaps.note(lookup(self.forge.home_open_issues()))
+                .unwrap_or_default()
         };
-        let (linked, untrusted_pull_requests) = self.pull_requests()?;
-        let closure = self.closure(seeds, has_roots)?;
+        let (linked, untrusted_pull_requests) = self.pull_requests(&mut gaps);
+        let closure = self.closure(seeds, has_roots, &mut gaps);
+        gaps.check()?;
         let mut assembly = Assembly::new(&closure, untrusted_pull_requests);
         assembly.prerequisites();
         assembly.statuses(&linked, &self.parameters.home)?;
@@ -355,39 +365,52 @@ impl<'a, F: Forge + ?Sized> Run<'a, F> {
 
     /// I4 and AD9: for each issue, the draft slots of the admitted pull
     /// requests that close it; and the numbers of those not admitted.
-    fn pull_requests(&mut self) -> Result<(Linked, BTreeSet<u64>), Undecided> {
+    fn pull_requests(&mut self, gaps: &mut Gaps) -> (Linked, BTreeSet<u64>) {
         let mut linked = Linked::new();
         let mut untrusted = BTreeSet::new();
         let home = &self.parameters.home;
-        for pull in value(self.forge.home_open_pull_requests()?)? {
+        let pulls = gaps
+            .note(lookup(self.forge.home_open_pull_requests()))
+            .unwrap_or_default();
+        for pull in pulls {
             if pull.closes.is_empty() {
                 continue;
             }
-            if self.admission.pull_request_admitted(&pull, home)? {
-                for closed in pull.closes {
-                    linked.entry(closed).or_default().push(pull.draft.clone());
+            match gaps.note(self.admission.pull_request_admitted(&pull, home)) {
+                Some(true) => {
+                    for closed in pull.closes {
+                        linked.entry(closed).or_default().push(pull.draft.clone());
+                    }
                 }
-            } else {
-                untrusted.insert(pull.number);
+                Some(false) => {
+                    untrusted.insert(pull.number);
+                }
+                None => {}
             }
         }
-        Ok((linked, untrusted))
+        (linked, untrusted)
     }
 
-    /// D2: visits the seeds and every reference D8 adds, each once.
-    fn closure(&mut self, seeds: Vec<IssueRef>, has_roots: bool) -> Result<Closure, Undecided> {
+    /// D2: visits the seeds and every reference D8 adds, each once. A
+    /// reference whose visit cannot be decided is noted in `gaps` and adds
+    /// nothing; discovery goes on with the rest.
+    fn closure(&mut self, seeds: Vec<IssueRef>, has_roots: bool, gaps: &mut Gaps) -> Closure {
         let mut closure = Closure {
             has_roots,
             seeds: seeds.iter().cloned().collect(),
             visits: BTreeMap::new(),
             named_by: BTreeMap::new(),
         };
+        let mut undecided = BTreeSet::new();
         let mut queue: VecDeque<IssueRef> = seeds.into_iter().collect();
         while let Some(reference) = queue.pop_front() {
-            if closure.visits.contains_key(&reference) {
+            if closure.visits.contains_key(&reference) || undecided.contains(&reference) {
                 continue;
             }
-            let visit = self.visit(&reference)?;
+            let Some(visit) = gaps.note(self.visit(&reference)) else {
+                undecided.insert(reference);
+                continue;
+            };
             if let Visit::Document(document) = &visit {
                 for name in document.reading.names() {
                     closure
@@ -400,7 +423,7 @@ impl<'a, F: Forge + ?Sized> Run<'a, F> {
             }
             closure.visits.insert(reference, visit);
         }
-        Ok(closure)
+        closure
     }
 
     /// D3 to D8 for one reference.
@@ -409,7 +432,7 @@ impl<'a, F: Forge + ?Sized> Run<'a, F> {
         if !self.parameters.read_scope.contains(&repo) {
             return Ok(Visit::OutOfScope);
         }
-        let issue = value(self.forge.issue(reference)?)?;
+        let issue = lookup(self.forge.issue(reference))?;
         if issue.pull_request {
             return Ok(Visit::PullRequest);
         }
@@ -427,11 +450,13 @@ impl<'a, F: Forge + ?Sized> Run<'a, F> {
         if !self.admission.editors_trusted(author, &body, &repo)? {
             return Ok(Visit::Untrusted(Box::new(issue)));
         }
-        let judgement = admit(&body.text, Some(&issue.address));
+        // One parse serves both the judgement and the reading.
+        let parsed = parse(&body.text);
+        let judgement = judge(&parsed, Some(&issue.address));
         if judgement == Judgement::NoDocument {
             return Ok(Visit::NoDocument(Box::new(issue)));
         }
-        let reading = Reading::of(&body.text, &issue.address);
+        let reading = Reading::of(&parsed, &issue.address);
         Ok(Visit::Document(Box::new(Document {
             issue,
             judgement,
@@ -723,6 +748,12 @@ impl Indexed {
     /// redundant when `v` descends from another child of `u`. Descendant
     /// sets are bit sets built in reverse topological order.
     fn redundant(&self, order: &[usize]) -> BTreeSet<Edge> {
+        // An edge `(u, v)` is redundant only through another child of `u`.
+        // With no node of two children there is none, and the descendant
+        // sets, n² bits, are not worth building.
+        if self.children.iter().all(|children| children.len() < 2) {
+            return BTreeSet::new();
+        }
         let words = self.ids.len().div_ceil(64);
         let mut descendants = vec![vec![0_u64; words]; self.ids.len()];
         for &u in order.iter().rev() {
@@ -767,8 +798,8 @@ mod tests {
     use super::{Edge, NodeStatus, Outcome, plan};
     use crate::forge::{Observations, RecordedForge};
     use crate::observation::{
-        Actor, Body, Issue, IssueState, Observed, Parameters, PullRequest, ReadScope, Repo,
-        TRUST_POLICY, TrustParameters,
+        Actor, Body, Issue, IssueState, Missing, Observed, Parameters, PullRequest, ReadScope,
+        Repo, TRUST_POLICY, TrustParameters,
     };
     use crate::reference::IssueRef;
 
@@ -863,12 +894,52 @@ mod tests {
         }
     }
 
-    /// The bound the large graphs below must plan within, in a debug build.
+    /// The bound the large graphs below must plan within. Wall-clock time
+    /// depends on the machine's load, so the default suite checks only the
+    /// graphs; the `perf_` tests, ignored by default, check the bound, and
+    /// CI runs them in a release build as a job of their own.
     const LARGE_GRAPH_BOUND: Duration = Duration::from_secs(1);
     const LARGE: u32 = 5_000;
 
     #[test]
-    fn a_chain_of_5000_tasks_plans_within_the_bound() {
+    fn a_chain_of_5000_tasks_plans() {
+        chain_of_5000();
+    }
+
+    #[test]
+    #[ignore = "wall-clock bound; run with --release --ignored"]
+    fn perf_a_chain_of_5000_tasks_plans_within_the_bound() {
+        let took = chain_of_5000();
+        assert!(took < LARGE_GRAPH_BOUND, "a chain took {took:?}");
+    }
+
+    #[test]
+    fn a_wide_graph_of_5000_tasks_plans() {
+        wide_graph_of_5000();
+    }
+
+    #[test]
+    #[ignore = "wall-clock bound; run with --release --ignored"]
+    fn perf_a_wide_graph_of_5000_tasks_plans_within_the_bound() {
+        let took = wide_graph_of_5000();
+        assert!(took < LARGE_GRAPH_BOUND, "a wide graph took {took:?}");
+    }
+
+    #[test]
+    fn g4_a_long_cycle_and_what_is_downstream_of_it_are_reported() {
+        long_cycle();
+    }
+
+    #[test]
+    #[ignore = "wall-clock bound; run with --release --ignored"]
+    fn perf_g4_a_long_cycle_is_reported_within_the_bound() {
+        let took = long_cycle();
+        assert!(took < LARGE_GRAPH_BOUND, "a cycle took {took:?}");
+    }
+
+    /// Plans a chain of [`LARGE`] tasks, checks the graph, and returns how
+    /// long the plan took.
+    fn chain_of_5000() -> Duration {
         let observations = tasks(
             (1..=LARGE)
                 .map(|n| {
@@ -888,11 +959,12 @@ mod tests {
         assert_eq!(graph.edges.len(), LARGE as usize - 1);
         assert!(graph.redundant.is_empty());
         assert_eq!(graph.ready, BTreeSet::from([reference("o/r#1")]));
-        assert!(took < LARGE_GRAPH_BOUND, "a chain took {took:?}");
+        took
     }
 
-    #[test]
-    fn a_wide_graph_of_5000_tasks_plans_within_the_bound() {
+    /// Plans a wide graph of [`LARGE`] tasks, checks it, and returns how
+    /// long the plan took.
+    fn wide_graph_of_5000() -> Duration {
         // o/r#1 blocks every middle task; the sink waits on all of them and
         // on o/r#1 too, an edge the reduction removes (G5).
         let sink = LARGE + 2;
@@ -917,11 +989,12 @@ mod tests {
             }])
         );
         assert_eq!(graph.ready, BTreeSet::from([reference("o/r#1")]));
-        assert!(took < LARGE_GRAPH_BOUND, "a wide graph took {took:?}");
+        took
     }
 
-    #[test]
-    fn g4_a_long_cycle_and_what_is_downstream_of_it_are_reported() {
+    /// Plans a cycle of 3,000 tasks and one downstream of it, checks that
+    /// G4 reports them all, and returns how long the plan took.
+    fn long_cycle() -> Duration {
         // 1 <- 2 <- ... <- 3000 <- 1 is a cycle; 3001 waits on it.
         let n = 3_000;
         let mut bodies: Vec<(u32, String)> = (1..=n)
@@ -947,7 +1020,130 @@ mod tests {
             .map(|f| f.subject.number())
             .collect();
         assert_eq!(cyclic, (1..=n + 1).collect());
-        assert!(took < LARGE_GRAPH_BOUND, "a cycle took {took:?}");
+        took
+    }
+
+    #[test]
+    fn d5_a_transferred_listing_seed_that_no_document_names_has_no_finding() {
+        // Without roots the seeds come from the home listing (D1). D5 and F5
+        // give a transferred reference its own finding only when it is a
+        // root that no document names; a listing seed is not a root.
+        let observations = Observations {
+            home_open_issues: Some(Observed::Value(vec![
+                reference("o/r#1"),
+                reference("o/r#5"),
+            ])),
+            home_open_pull_requests: Some(Observed::Value(Vec::new())),
+            issues: BTreeMap::from([
+                (reference("o/r#1"), owned_issue("o/r#1", &task(1, &[]))),
+                (reference("o/r#5"), owned_issue("o/r#9", "Moved here.")),
+            ]),
+            ..Observations::default()
+        };
+        let outcome = plan(&parameters(&[]), &RecordedForge::new(&observations));
+        let Ok(Outcome::Planned { findings, graph }) = outcome else {
+            panic!("expected a plan, got {outcome:?}");
+        };
+        assert!(findings.is_empty(), "got {findings:?}");
+        assert_eq!(graph.ready, BTreeSet::from([reference("o/r#1")]));
+    }
+
+    /// Plans with these roots, in this order and reversed, and returns both
+    /// results.
+    fn both_orders(roots: &[&str], observations: &Observations) -> [Result<Outcome, Missing>; 2] {
+        let reversed: Vec<&str> = roots.iter().rev().copied().collect();
+        let forge = RecordedForge::new(observations);
+        [
+            plan(&parameters(roots), &forge),
+            plan(&parameters(&reversed), &forge),
+        ]
+    }
+
+    #[test]
+    fn ob5_a_missing_root_is_not_hidden_by_an_unavailable_one() {
+        // o/r#1 is unavailable; o/r#2 was not recorded. Both are seeds, so
+        // both are read (D1, D2, I5) and the bundle is unusable (OB5),
+        // whichever root comes first.
+        let observations = Observations {
+            home_open_pull_requests: Some(Observed::Value(Vec::new())),
+            issues: BTreeMap::from([(
+                reference("o/r#1"),
+                Observed::Unavailable("HTTP 502".to_owned()),
+            )]),
+            ..Observations::default()
+        };
+        for outcome in both_orders(&["o/r#1", "o/r#2"], &observations) {
+            assert!(outcome.is_err(), "got {outcome:?}");
+        }
+    }
+
+    #[test]
+    fn ob5_a_missing_prerequisite_is_not_hidden_by_an_unavailable_one() {
+        // The root names o/r#2 (unavailable) and o/r#3 (not recorded).
+        let mut observations = tasks(vec![(1, task(1, &[2, 3]))]);
+        observations.issues.insert(
+            reference("o/r#2"),
+            Observed::Unavailable("HTTP 502".to_owned()),
+        );
+        let outcome = plan(&parameters(&["o/r#1"]), &RecordedForge::new(&observations));
+        assert!(outcome.is_err(), "got {outcome:?}");
+    }
+
+    #[test]
+    fn ob5_a_missing_root_is_not_hidden_by_an_unavailable_pull_request_admission() {
+        // The pull request's author needs a permission lookup that is
+        // unavailable; the root was not recorded.
+        let mut closing = pull("o/r#1", Observed::Value(false));
+        closing.author = Some(Actor {
+            login: "carol".to_owned(),
+            actor_type: "User".to_owned(),
+        });
+        let mut observations = Observations {
+            home_open_pull_requests: Some(Observed::Value(vec![closing])),
+            ..Observations::default()
+        };
+        observations.permissions.insert(
+            Repo::parse("o/r").expect("repo"),
+            BTreeMap::from([(
+                "carol".to_owned(),
+                Observed::Unavailable("HTTP 502".to_owned()),
+            )]),
+        );
+        let outcome = plan(&parameters(&["o/r#1"]), &RecordedForge::new(&observations));
+        assert!(outcome.is_err(), "got {outcome:?}");
+    }
+
+    #[test]
+    fn d2_the_order_of_the_roots_does_not_change_the_result() {
+        // Two unavailable roots with different reasons.
+        let observations = Observations {
+            home_open_pull_requests: Some(Observed::Value(Vec::new())),
+            issues: BTreeMap::from([
+                (
+                    reference("o/r#1"),
+                    Observed::Unavailable("first".to_owned()),
+                ),
+                (
+                    reference("o/r#2"),
+                    Observed::Unavailable("second".to_owned()),
+                ),
+            ]),
+            ..Observations::default()
+        };
+        let [forward, backward] = both_orders(&["o/r#1", "o/r#2"], &observations);
+        assert!(
+            matches!(forward, Ok(Outcome::Incomplete { .. })),
+            "got {forward:?}"
+        );
+        assert_eq!(forward, backward);
+        // Two roots that were not recorded.
+        let observations = Observations {
+            home_open_pull_requests: Some(Observed::Value(Vec::new())),
+            ..Observations::default()
+        };
+        let [forward, backward] = both_orders(&["o/r#1", "o/r#2"], &observations);
+        assert!(forward.is_err(), "got {forward:?}");
+        assert_eq!(forward, backward);
     }
 
     fn pull(closes: &str, draft: Observed<bool>) -> PullRequest {

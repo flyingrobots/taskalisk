@@ -7,6 +7,25 @@ schema version under `Unreleased` is a draft and may change in place.
 
 ## Unreleased
 
+### Fixed
+
+- **Review findings on the Rust graph core** (flyingrobots/taskalisk#105, merged before its review
+  finished). Each fix has a test that failed before it. The planner no longer stops at the first
+  lookup it cannot make. It reads every slot the rules reach, so neither the order of the roots
+  nor the order of discovery changes the result (D2), and a slot that was never recorded is never
+  hidden behind an unavailable one (OB5). That holds for roots, for discovered prerequisites, for
+  pull-request admission and for the editors of one body (AD8). When several lookups fail, a
+  missing one is reported before an unavailable one, and the least of its kind is chosen. A
+  transferred seed from the home listing that no document names gets no D5 finding: only a root
+  keeps the finding itself (F5). `Admission::trusted` checks the read scope before the allowlist,
+  so an allowlisted login is never trusted outside it (AD2). `Finding` compares, sorts and hashes
+  by subject, code and concerned reference alone, so its message and severity are not part of its
+  identity (F5). The bundle reader rejects a scope owner that is not a name of rule L1, such as one
+  with a space or a non-ASCII letter. The planner parses each body once, and skips the reduction's
+  n² descendant sets when no node has two children. The 1 s bounds on large graphs left the default
+  suite, which they made flaky under load, for an ignored `perf_` suite that the new CI job "Rust
+  planning bounds (release)" runs.
+
 ### Added
 
 - **The Rust document core** (flyingrobots/taskalisk#27). A Cargo workspace at the repository root
@@ -36,7 +55,7 @@ schema version under `Unreleased` is a draft and may change in place.
   `issue-dag-bundle`, reads an
   `issue-dag-observations/1` bundle into the core and rejects one that breaks OB1 to OB13, or that
   gives a JSON member twice. Cycles (G4) use Kahn's algorithm and the reduction (G5) descendant
-  bit sets, so a 5,000-task chain or wide graph plans in under a second in a debug build. All 179
+  bit sets, so a 5,000-task chain or wide graph plans in under a second. All 179
   graph cases of the vendored corpus pass; for each `--python` twin the crate matches the
   normative case. Ranking and batch selection are not yet ported (flyingrobots/taskalisk#29), so
   the corpus test compares the ready set as a set, checks only that each expected batch member is

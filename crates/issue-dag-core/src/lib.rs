@@ -33,7 +33,7 @@ pub use observation::{
 };
 pub use plan::{Edge, Graph, Node, NodeStatus, Outcome, Rejection, plan};
 pub use record::{Kind, MeterClaim, Record, Status, TaskType, VERSION};
-pub use reference::{IssueRef, MAX_NUMBER};
+pub use reference::{IssueRef, MAX_NUMBER, is_name};
 pub use rewrite::{EdgeEdit, Refusal, Rewrite, rewrite_blocked_by};
 pub use validate::{Validation, validate};
 
@@ -58,13 +58,19 @@ pub enum Judgement {
 /// `.id` is also judged under profile rule X1.
 #[must_use]
 pub fn admit(body: &str, address: Option<&IssueRef>) -> Judgement {
-    match parse(body) {
+    judge(&parse(body), address)
+}
+
+/// [`admit`] for a body already parsed, so a caller that also reads the
+/// parse does not parse the same text twice.
+pub(crate) fn judge(parsed: &Parse, address: Option<&IssueRef>) -> Judgement {
+    match parsed {
         Parse::NoDocument => Judgement::NoDocument,
         Parse::Unreadable => Judgement::Invalid(Validation {
             violations: BTreeSet::from([Label::C4]),
             warnings: BTreeSet::new(),
         }),
-        Parse::Block(block) => match validate::decode(&block, address) {
+        Parse::Block(block) => match validate::decode(block, address) {
             (validation, Some(record)) if validation.violations.is_empty() => Judgement::Valid {
                 record,
                 warnings: validation.warnings,
