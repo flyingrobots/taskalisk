@@ -714,17 +714,15 @@ fn human_output_is_grouped_by_issue_and_escapes_github_text() {
     edited["editors"][1]["login"] = json!("mal\nlory\u{202e}");
     planted["observations"]["permissions"]["o/r"]["mal\nlory\u{202e}"] = json!({"value": null});
     let file = fixture.bundle("planted.json", &planted);
+    // The bundle loader takes a login as recorded, so it reaches a trust
+    // warning's detail, and --human must escape it.
     let json_run = fixture.doctor(&file, &[]);
-    if json_run.status() == 2 {
-        // The loader refuses such a login; the escape is then checked on a
-        // finding's subject and message alone.
-        assert_eq!(json_run.errors()[0]["code"], "bundle.invalid");
-    } else {
-        let human = fixture.doctor(&file, &["--human"]);
-        let text = human.text();
-        assert!(!text.contains('\u{202e}'), "{text}");
-        assert!(text.contains("mal\\u000alory\\u202e"), "{text}");
-    }
+    assert_eq!(json_run.status(), 0, "{}", json_run.explain());
+    json_run.validate();
+    let human = fixture.doctor(&file, &["--human"]);
+    let text = human.text();
+    assert!(!text.contains('\u{202e}'), "{text}");
+    assert!(text.contains("login=mal\\u000alory\\u202e"), "{text}");
     let human = fixture.doctor(&fixture.bundle("shape.json", &shapes()), &["--human"]);
     assert_eq!(human.status(), 0, "{}", human.explain());
     let text = human.text();

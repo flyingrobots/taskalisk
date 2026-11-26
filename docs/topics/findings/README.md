@@ -29,6 +29,11 @@ and the plan warnings share the catalogue:
 These are the Rust crate's codes. The Python compiler reports frontmatter
 problems as `frontmatter.violation` and `frontmatter.warning` lines; their
 codes are in the [output reference](../output/README.md#finding-codes).
+The Rust binary's `taskalisk doctor --bundle FILE` prints every family for a
+recorded bundle under these codes, grouped by issue
+([`doctor`](../output/README.md#doctor)); its schema's list of codes is held
+equal to `CODES` by a test, so a new family is printed only once the schema
+lists it.
 
 ## How to read a code
 

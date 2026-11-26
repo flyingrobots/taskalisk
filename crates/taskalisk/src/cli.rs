@@ -9,7 +9,8 @@
 //! `--trust-repo`, `--trust-codeowners`, `--from-github` (which selects
 //! `plan`, as in 1.x), and the writer's `--human` and `--help`. Every other
 //! flag of the Python's, and every other command, is refused before the run
-//! starts (exit 3), never ignored.
+//! starts (exit 3), never ignored. The binary's own `doctor` command, named
+//! first, is handed to its own module (flyingrobots/taskalisk#49).
 //!
 //! Its own flags capture and replay a plan's observations
 //! (flyingrobots/taskalisk#59, [`crate::replay`]): `--capture-bundle`

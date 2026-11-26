@@ -49,6 +49,17 @@ the Python follows them: `.parley`, its `receipts/` and `--repo` may be links, a
 binary writes is created new, never written through an existing one. Its other differences from
 the Python are listed under *The Rust binary* in `docs/topics/output/README.md`.
 
+`doctor` prints every finding of a recorded observation bundle (one that
+`plan --capture-bundle` wrote), grouped by issue, without reading `gh` or `git`:
+
+```sh
+target/release/taskalisk doctor --bundle .parley/receipts/<run>/bundle.json --human
+```
+
+It exits 0 with no error finding, 1 with one, and 2 when the bundle cannot be read; `--strict`
+counts a warning as an error. Its lines and statuses are under *doctor* in
+`docs/topics/output/README.md`; the finding codes are in `docs/topics/findings/README.md`.
+
 ## Install a release
 
 Each release has `taskalisk-v<version>.zip` and `SHA256SUMS`. The ZIP holds one

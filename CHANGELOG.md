@@ -9,6 +9,21 @@ schema version under `Unreleased` is a draft and may change in place.
 
 ### Added
 
+- **`doctor --bundle`** (flyingrobots/taskalisk#49, part of #42). The Rust binary's
+  `taskalisk doctor --bundle FILE` prints every finding of a recorded observation bundle, with no
+  `gh` or `git` read (the bundle is planned through a recorded forge, as `plan --from-bundle`
+  plans it): document and profile findings, the cause of an incomplete run (`profile.D11` to
+  `D13`), body warnings (without the title check: a bundle holds no title), shape warnings, plan
+  warnings and trust warnings, which nothing printed before. Two new draft message schemas,
+  `taskalisk.doctor` (a summary: outcome, error and warning counts, `strict`, `ok`) and
+  `taskalisk.doctor.issue` (one line per issue or pull request, then the plan, with its findings),
+  whose code enum a test holds equal to `CODES`. It exits 0 with no error finding, 1 with one, and
+  2 when the bundle cannot be read, is not a bundle or is incomplete evidence; `--strict` counts a
+  warning as an error (#47's acceptance item, moved here by coordinator decision D18). `--json` is
+  accepted and is the default; `--human` prints each issue with its findings under it, GitHub text
+  escaped. `Run::end_with` lets a run end with its own status: never 3, and 2 once an error was
+  reported.
+
 - **Trust findings** (flyingrobots/taskalisk#46). The admission policy now returns why it does not
   trust an actor alongside the decision: the login as recorded and the rule that decided
   (`Distrust`: `AD5.1` a deleted account, `AD2` outside the scope, `AD5.3` a bot, `AD5.6` an

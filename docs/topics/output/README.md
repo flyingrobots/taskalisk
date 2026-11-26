@@ -38,6 +38,7 @@ exit status. The compiler owns the result messages below.
 | `edit` | `--add-edge` or `--remove-edge` | as `plan` | the child issue's body (its `.blocked_by` line) |
 | `verify` | `--verify-dag FILE` | the file | nothing |
 | `inventory` | no mode flag | git worktrees and branches, open pull requests and issues | nothing |
+| `doctor` (Rust binary only) | none; named first, with `--bundle FILE` | the bundle file | nothing |
 
 Inventory applies no trust gate: its `inventory.issue` and `inventory.pull_request` lines, and its
 receipt, carry every open issue and pull request as GitHub returns it, strangers' titles, authors and
@@ -70,6 +71,8 @@ All are drafts at `1.0.0` until a release names them in `CHANGELOG.md`.
 | `taskalisk.inventory.branch` | 1.0.0 | `inventory.branch` | unmerged branch (`scope` local or remote) |
 | `taskalisk.inventory.pull_request` | 1.0.0 | `inventory.pull_request` | open pull request |
 | `taskalisk.inventory.issue` | 1.0.0 | `inventory.issue` | open issue |
+| `taskalisk.doctor` | 1.0.0 | `doctor` | Rust `doctor` run (first): its counts and `ok` |
+| `taskalisk.doctor.issue` | 1.0.0 | `doctor.issue` | Rust `doctor` subject, with its findings |
 
 Errors and warnings are the writer's `parley.error` (2.0.0) and `parley.warning` lines on stderr;
 discovery is `parley.command` and `parley.schema`; a usage error is `parley.startup.failed`.
@@ -328,7 +331,7 @@ Every line is written with its keys in sorted order, the envelope's included.
 
 It differs from the Python in these ways, each tested in `crates/taskalisk/tests/cli.rs`:
 
-- **Commands and flags.** Only `plan`. `--repo`, `--root`, `--sem-capacity`, `--trust`,
+- **Commands and flags.** Only `plan` and `doctor` (below). For `plan`, `--repo`, `--root`, `--sem-capacity`, `--trust`,
   `--trust-owner`, `--trust-repo`, `--trust-codeowners`, `--from-github`, `--human` and `--help`
   are accepted, with the binary's own `--capture-bundle`, `--from-bundle`, `--from-record` and
   `--offline` (see *Capture and replay*); every other flag and command is
@@ -412,6 +415,48 @@ It differs from the Python in these ways, each tested in `crates/taskalisk/tests
   may be links. Every file the binary writes is created new (`O_EXCL`), so it never overwrites a
   file a link points at.
 - **Not ported from the writer.** The capture of stray output, `--dry-run` and `--schema`.
+- **`doctor`** (flyingrobots/taskalisk#49), described below. The Python has no equivalent.
+
+### `doctor`
+
+`taskalisk doctor --bundle FILE` prints every finding of a recorded `issue-dag-observations/1`
+bundle. It plans the bundle as `plan --from-bundle` does, through a recorded forge alone: no `gh` or
+`git` is read, `effects.network` is false, and the file is the declared input (role
+`observations`). The command must be named first. Its flags are `--bundle FILE` (once, required),
+`--strict`, `--json`, `--human` and `--help`; any other is `startup.arguments_invalid`, exit 3.
+JSON lines are the default, so `--json` changes nothing and is refused with `--human`.
+
+Its results are two messages, each `1.0.0`:
+
+| `_schema.id` | `event` | One line per |
+| --- | --- | --- |
+| `taskalisk.doctor` | `doctor` | run (first): the home repository, the plan's `outcome` (`planned`, `invalid` or `incomplete`), the `errors` and `warnings` counted over every finding, `strict`, and `ok` |
+| `taskalisk.doctor.issue` | `doctor.issue` | subject: an issue or pull request, in the order of its reference, then (`subject` null) the plan as a whole; its `findings`, sorted by code, then the reference they concern |
+
+A finding carries its `code`, an entry of `issue-dag-core`'s catalogue `CODES`
+(`docs/topics/findings/README.md`, which the schema's enum equals), the catalogue's `severity`, its
+`family`, the fixed `message`, `concerns` when its rule has one, and a `detail` of what its check
+measured. The families are `document` and `profile` (the run's own findings), `cause` (the part of
+a reference that resolves to nothing, D11 to D13, for an incomplete run; its detail holds the
+reason the bundle records), `body` (body warnings of each open issue the run admitted, without the
+title check, since a bundle holds no title), `shape`, `plan` and `trust`. An untrusted issue's body
+is never judged, and no line carries a title or a line of a body. `--human` prints the summary,
+then each subject and its findings indented under it, every GitHub-sourced string escaped as
+`plan --human` escapes it.
+
+| Status | Meaning |
+| --- | --- |
+| 0 | no error finding, and under `--strict` no warning finding |
+| 1 | an error finding, or under `--strict` a warning finding; the `end` line's `status` is 1 |
+| 2 | a reported `parley.error`, and no `taskalisk.` line: the bundle cannot be read or is over 64 MiB (`bundle.unreadable`), is not a bundle (`bundle.invalid`), is incomplete evidence (`bundle.incomplete`), records a needed observation as unavailable with no cause (`observation.unavailable`), or holds rejected run parameters (`root.out_of_scope` and the rest) |
+| 3, 4 | as for `plan` |
+
+Status 1 means "the bundle has an error finding". The table above reserves 1 only for the Python
+script whose writer cannot be imported, which the Rust binary cannot meet, and Parley reserves 2
+for a reported error and 3 for a run that never started; a finding is a result, not a run error,
+so a bundle that was read and diagnosed ends 0 or 1, never 2. A reference that resolves to nothing
+is therefore a `profile.D11` (D12, D13) finding here, exit 1, where `plan` reports it as the error
+`issue.not_found`, exit 2.
 
 ## Conformance
 
