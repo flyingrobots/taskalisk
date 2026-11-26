@@ -28,7 +28,7 @@ use std::cell::RefCell;
 use std::ffi::{OsStr, OsString};
 
 use issue_dag_core::{
-    CodeownersFile, Forge, Issue, IssueRef, Lookup, Observations, Observed, PullRequest, Repo,
+    Body, CodeownersFile, Forge, Issue, IssueRef, Lookup, Observations, Observed, PullRequest, Repo,
 };
 
 pub use error::GhError;
@@ -178,6 +178,15 @@ impl Forge for GhForge {
             .issues
             .insert(reference.clone(), slot.clone());
         Ok(slot)
+    }
+
+    fn body(&self, reference: &IssueRef) -> Lookup<Body> {
+        Ok(match self.issue(reference)? {
+            Observed::Value(issue) => issue
+                .body
+                .unwrap_or_else(|| Observed::Unavailable(format!("the body of {reference}"))),
+            Observed::Unavailable(why) => Observed::Unavailable(why),
+        })
     }
 
     fn permission(&self, repo: &Repo, login: &str) -> Lookup<Option<String>> {

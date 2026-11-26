@@ -423,7 +423,9 @@ impl<'a, F: Forge + ?Sized> Run<'a, F> {
         {
             return Ok(Visit::Untrusted(Box::new(issue)));
         }
-        let body = value(issue.body.clone())?;
+        let body = value(issue.body.clone().ok_or_else(|| Missing {
+            what: format!("the body of {reference}"),
+        })?)?;
         if !self.admission.editors_trusted(author, &body, &repo)? {
             return Ok(Visit::Untrusted(Box::new(issue)));
         }
@@ -805,10 +807,10 @@ mod tests {
             state_reason: None,
             author: Some(owner.clone()),
             author_association: Some("OWNER".to_owned()),
-            body: Observed::Value(Body {
+            body: Some(Observed::Value(Body {
                 text: text.to_owned(),
                 editors: vec![Some(owner)],
-            }),
+            })),
         })
     }
 

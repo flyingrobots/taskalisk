@@ -4,7 +4,7 @@
 use std::collections::BTreeMap;
 
 use crate::observation::{
-    CodeownersFile, Issue, Lookup, Missing, Observed, Parameters, PullRequest, Repo,
+    Body, CodeownersFile, Issue, Lookup, Missing, Observed, Parameters, PullRequest, Repo,
 };
 use crate::reference::IssueRef;
 
@@ -38,6 +38,17 @@ pub trait Forge {
     ///
     /// [`Missing`] when the issue was not recorded.
     fn issue(&self, reference: &IssueRef) -> Lookup<Issue>;
+
+    /// The body of the issue a reference resolves to, and the actor of
+    /// every edit of it (bundle rule OB8). A separate read from
+    /// [`Forge::issue`], so that a planner reads it only for an issue whose
+    /// author is trusted: an issue a stranger wrote costs no further query
+    /// (threat model C15).
+    ///
+    /// # Errors
+    ///
+    /// [`Missing`] when the body was not recorded.
+    fn body(&self, reference: &IssueRef) -> Lookup<Body>;
 
     /// The permission of a login on a repository (bundle rule OB10), or
     /// `None` when the login is not a collaborator. `login` is in lower case.
@@ -137,6 +148,17 @@ impl Forge for RecordedForge<'_> {
         recorded(self.observations.issues.get(reference), || {
             format!("the issue {reference}")
         })
+    }
+
+    fn body(&self, reference: &IssueRef) -> Lookup<Body> {
+        let missing = || Missing {
+            what: format!("the body of {reference}"),
+        };
+        match self.observations.issues.get(reference) {
+            Some(Observed::Value(issue)) => issue.body.clone().ok_or_else(missing),
+            Some(Observed::Unavailable(why)) => Ok(Observed::Unavailable(why.clone())),
+            None => Err(missing()),
+        }
     }
 
     fn permission(&self, repo: &Repo, login: &str) -> Lookup<Option<String>> {

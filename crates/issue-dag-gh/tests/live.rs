@@ -69,10 +69,10 @@ fn every_open_issue_reads_with_its_body() {
     };
     assert_eq!(&issue.address, first);
     assert!(!issue.pull_request);
+    let body = forge.body(first);
     assert!(
-        matches!(&issue.body, Observed::Value(body) if !body.text.is_empty()),
-        "{first}: body {:?}",
-        issue.body
+        matches!(&body, Ok(Observed::Value(body)) if !body.text.is_empty()),
+        "{first}: body {body:?}"
     );
     assert!(forge.failures().is_empty(), "{:?}", forge.failures());
 }

@@ -324,7 +324,7 @@ pub fn issue(
         state_reason: optional_text(&source, item, "state_reason")?,
         author,
         author_association: optional_text(&source, item, "author_association")?,
-        body,
+        body: Some(body),
     };
     Ok((Observed::Value(issue), failure))
 }

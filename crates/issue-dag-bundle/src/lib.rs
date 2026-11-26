@@ -499,7 +499,7 @@ fn issue(value: &Value, at: &str) -> Read<Issue> {
             &i["author_association"],
             &format!("{at}.author_association"),
         )?,
-        body: slot(&i["body"], &format!("{at}.body"), body)?,
+        body: Some(slot(&i["body"], &format!("{at}.body"), body)?),
     })
 }
 

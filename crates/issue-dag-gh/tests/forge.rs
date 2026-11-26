@@ -73,7 +73,7 @@ fn recorded_issues() -> BTreeMap<IssueRef, Observed<Issue>> {
             state_reason: None,
             author,
             author_association: Some(association.to_owned()),
-            body,
+            body: Some(body),
         })
     };
     let mut issues = BTreeMap::new();
@@ -98,14 +98,14 @@ fn recorded_issues() -> BTreeMap<IssueRef, Observed<Issue>> {
             state_reason: Some("completed".to_owned()),
             author: Some(actor("Dev", "User")),
             author_association: Some("CONTRIBUTOR".to_owned()),
-            body: Observed::Value(Body {
+            body: Some(Observed::Value(Body {
                 text: "B2".to_owned(),
                 editors: vec![
                     Some(actor("Dev", "User")),
                     None,
                     Some(actor("helper", "Bot")),
                 ],
-            }),
+            })),
         }),
     );
     issues.insert(
@@ -117,7 +117,9 @@ fn recorded_issues() -> BTreeMap<IssueRef, Observed<Issue>> {
             state_reason: None,
             author: Some(actor("owner", "User")),
             author_association: Some("OWNER".to_owned()),
-            body: Observed::Unavailable("o/r#3 is a pull request; its body is not read".to_owned()),
+            body: Some(Observed::Unavailable(
+                "o/r#3 is a pull request; its body is not read".to_owned(),
+            )),
         }),
     );
     issues.insert(
@@ -471,10 +473,12 @@ fn a_failed_edit_history_leaves_the_body_unavailable() {
     ] {
         let fake = Fake::new(&with(&change));
         let forge = fake.forge("o/r");
-        let Ok(Observed::Value(issue)) = forge.issue(&reference("o/r#2")) else {
-            panic!("the issue itself was read ({change})");
-        };
-        assert_eq!(failed(&forge, &issue.body).code(), code, "{change}");
+        assert!(
+            matches!(forge.issue(&reference("o/r#2")), Ok(Observed::Value(_))),
+            "the issue itself was read ({change})"
+        );
+        let body = forge.body(&reference("o/r#2")).expect("never missing");
+        assert_eq!(failed(&forge, &body).code(), code, "{change}");
     }
 }
 
@@ -485,10 +489,12 @@ fn an_edit_history_past_its_page_bound_is_refused() {
         edit_history_pages: 2,
         ..Limits::default()
     });
-    let Ok(Observed::Value(issue)) = forge.issue(&reference("o/r#2")) else {
-        panic!("the issue itself was read");
-    };
-    let error = failed(&forge, &issue.body);
+    assert!(
+        matches!(forge.issue(&reference("o/r#2")), Ok(Observed::Value(_))),
+        "the issue itself was read"
+    );
+    let body = forge.body(&reference("o/r#2")).expect("never missing");
+    let error = failed(&forge, &body);
     assert_eq!(error.code(), "gh.response_invalid");
     assert!(error.to_string().contains("2 pages"), "{error}");
 }
