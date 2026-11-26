@@ -3,6 +3,7 @@
 
 use std::collections::BTreeMap;
 
+use crate::local::{AheadBehind, Branch, Worktree};
 use crate::observation::{
     CodeownersFile, Issue, Lookup, Missing, Observed, Parameters, PullRequest, Repo,
 };
@@ -61,9 +62,24 @@ pub trait Forge {
 /// The `issue-dag-planning/2` profile reads nothing from it: branch names
 /// are hints outside the profile (its section 13). The port exists so that
 /// adapters and later profiles have one place to read local state from.
+///
+/// The inventory reads the branches, the worktrees and how far each has
+/// diverged from a base. A read that fails answers
+/// [`Observed::Unavailable`], never an empty value.
 pub trait LocalRepository {
     /// The names of the local branches.
     fn branch_names(&self) -> Observed<Vec<String>>;
+
+    /// The local and remote-tracking branches with their tips; a symbolic
+    /// ref such as `origin/HEAD` is not a branch.
+    fn branches(&self) -> Observed<Vec<Branch>>;
+
+    /// The worktrees, the main one first.
+    fn worktrees(&self) -> Observed<Vec<Worktree>>;
+
+    /// How far `revision` has diverged from `base`. Unavailable when either
+    /// does not resolve to a commit.
+    fn ahead_behind(&self, revision: &str, base: &str) -> Observed<AheadBehind>;
 }
 
 /// A local repository with no branches, for runs that read none.
@@ -73,6 +89,20 @@ pub struct NoLocalRepository;
 impl LocalRepository for NoLocalRepository {
     fn branch_names(&self) -> Observed<Vec<String>> {
         Observed::Value(Vec::new())
+    }
+
+    fn branches(&self) -> Observed<Vec<Branch>> {
+        Observed::Value(Vec::new())
+    }
+
+    fn worktrees(&self) -> Observed<Vec<Worktree>> {
+        Observed::Value(Vec::new())
+    }
+
+    fn ahead_behind(&self, revision: &str, base: &str) -> Observed<AheadBehind> {
+        Observed::Unavailable(format!(
+            "no local repository: {revision} and {base} resolve to nothing"
+        ))
     }
 }
 
@@ -162,9 +192,21 @@ impl Forge for RecordedForge<'_> {
 
 #[cfg(test)]
 mod tests {
-    use super::{Forge, Observations, RecordedForge};
+    use super::{Forge, LocalRepository, NoLocalRepository, Observations, RecordedForge};
     use crate::observation::{Observed, Repo};
     use crate::reference::IssueRef;
+
+    #[test]
+    fn no_local_repository_answers_empty_for_every_read() {
+        let local = NoLocalRepository;
+        assert_eq!(local.branch_names(), Observed::Value(Vec::new()));
+        assert_eq!(local.branches(), Observed::Value(Vec::new()));
+        assert_eq!(local.worktrees(), Observed::Value(Vec::new()));
+        assert!(matches!(
+            local.ahead_behind("HEAD", "main"),
+            Observed::Unavailable(_)
+        ));
+    }
 
     #[test]
     fn a_slot_not_recorded_is_missing_never_empty() {
