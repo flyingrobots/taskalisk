@@ -4,7 +4,8 @@
 //! ([`parse`]), validity ([`validate`]), the decoded record ([`admit`]), and
 //! the `.blocked_by` rewrite of the edge-edit contract ([`rewrite_blocked_by`]),
 //! and a planning run under `issue-dag-planning/2` ([`plan`]) over the
-//! observations a [`Forge`] answers with, admission included.
+//! observations a [`Forge`] answers with, admission included, with the
+//! ranking of its graph ([`rank`]) and its batch ([`select`]).
 //! A body becomes findings with stable codes ([`findings`]); the codes
 //! are tabled on [`code`].
 //! The crate performs no I/O and has no dependencies.

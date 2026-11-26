@@ -1,7 +1,8 @@
 //! A planning run under `issue-dag-planning/2`: discovery and closure
 //! (rules D1 to D10), admission (I6), the cross-document rules (X1 to X3),
 //! the graph (G1 to G5), status (S1, S2), readiness (Q1, Q2) and the outcome
-//! (F1 to F5). Ranking and batch selection (K and B rules) are not here.
+//! (F1 to F5). Ranking and batch selection (K and B rules) are in `rank` and
+//! `batch`.
 
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 

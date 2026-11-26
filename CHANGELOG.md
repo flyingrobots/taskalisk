@@ -38,15 +38,30 @@ schema version under `Unreleased` is a draft and may change in place.
   gives a JSON member twice. Cycles (G4) use Kahn's algorithm and the reduction (G5) descendant
   bit sets, so a 5,000-task chain or wide graph plans in under a second in a debug build. All 179
   graph cases of the vendored corpus pass; for each `--python` twin the crate matches the
-  normative case. Ranking and batch selection are not yet ported (flyingrobots/taskalisk#29), so
-  the corpus test compares the ready set as a set, checks only that each expected batch member is
-  dispatchable (Q2), and leaves scores, waves, the critical path and the batch order uncompared.
+  normative case. Ranking and batch selection came next (flyingrobots/taskalisk#29, below).
   Choices the specification leaves open: an admitted pull request's draft flag is read only where
   S2 needs it, for an open node of the home repository the pull request closes (I5); an invalid
   run reports its graph unless a prerequisite is unknown (X3) or the edges form a cycle (G4); a
   key repeated in an invalid document contributes nothing to its reading; a bot's `app/` prefix
   and `[bot]` suffix are matched without regard to case; a bundle with an `observations` member
   the bundle rules do not define is rejected.
+
+- **Ranking and batch selection in the Rust core** (flyingrobots/taskalisk#29). `issue-dag-core`
+  gains `rank`, which scores every open node of a reported graph (K1 to K5: in-flight and parked
+  terms from the S2 status, a trusted linked pull request included; descendants by bit set; depth;
+  out-degree in the reduced graph), orders them with identifiers compared as text (K6), and gives
+  the waves (K7) and the critical path through reduced predecessors (K8); and `select`, which
+  builds the batch from the dispatchable ready set in rank order (B1 to B5). Keys are subtrees in
+  one key space, looked up in an ordered index of held subtrees instead of a pairwise scan; a
+  semaphore without a capacity counts as 1 and is reported for every node B5 considers, including
+  one skipped for a key conflict. One decision function returns either admission or the skip
+  reason (`holds conflict`, or `semaphore full` with the semaphores over capacity), so every
+  reason comes from the predicate that made the decision. The corpus test now compares every
+  member of CC6, the ready set in rank order: all 179 graph cases pass. A 5,000-node chain, fan or
+  wide frontier ranks and selects in well under a second in a debug build. Choices the
+  specification leaves open: a graph whose edges form a cycle has no ranking at all (a run never
+  reports one); the critical path is empty when no node is open; `unknown_capacity` and each
+  skip's semaphores are in ascending order.
 
 - **Repeated keys, warnings and refusal order in the specification** (flyingrobots/taskalisk#104).
   The vendored issue-dag specification now states the rulings the Rust core implements: no rule of
