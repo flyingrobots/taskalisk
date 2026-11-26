@@ -1,0 +1,11 @@
+{
+  "cites": [
+    "D6",
+    "W1"
+  ],
+  "id": "graph/d6-not-admitted-seed",
+  "kind": "normative",
+  "level": "graph",
+  "source": "constructed from the rule text",
+  "title": "A seed that is not admitted and that no document names is only listed"
+}

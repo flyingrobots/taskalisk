@@ -1,0 +1,12 @@
+{
+  "cites": [
+    "S1",
+    "S2",
+    "K4"
+  ],
+  "id": "graph/s2-draft-pull-request",
+  "kind": "normative",
+  "level": "graph",
+  "source": "constructed from the rule text",
+  "title": "A task whose linked pull requests are all drafts is wip"
+}

@@ -1,0 +1,10 @@
+{
+  "cites": [
+    "C1"
+  ],
+  "id": "document/c1-blank-lines-before-fence",
+  "kind": "normative",
+  "level": "document",
+  "source": "constructed from the rule text",
+  "title": "SP, HT, CR and LF may precede the opening fence"
+}

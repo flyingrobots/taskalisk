@@ -1,0 +1,16 @@
+{
+  "cites": [
+    "V5"
+  ],
+  "disagreement": {
+    "classification": "defect",
+    "difference": 7,
+    "note": "the validator raises TypeError and the run ends without an outcome"
+  },
+  "id": "document/v5-type-as-list--python",
+  "kind": "characterisation",
+  "level": "document",
+  "normative_case": "document/v5-type-as-list",
+  "source": "the Python compiler, on the input of document/v5-type-as-list",
+  "title": "What the compiler does: A list `.type` is invalid"
+}

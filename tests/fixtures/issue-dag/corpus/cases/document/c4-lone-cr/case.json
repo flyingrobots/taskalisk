@@ -1,0 +1,15 @@
+{
+  "cites": [
+    "C4"
+  ],
+  "disagreement": {
+    "classification": "defect",
+    "difference": 4,
+    "note": "the compiler splits the line at the CR and reads two valid entries"
+  },
+  "id": "document/c4-lone-cr",
+  "kind": "normative",
+  "level": "document",
+  "source": "constructed from the rule text",
+  "title": "A CR not followed by LF makes the document invalid"
+}

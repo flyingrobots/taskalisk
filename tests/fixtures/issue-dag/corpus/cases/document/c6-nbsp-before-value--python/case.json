@@ -1,0 +1,17 @@
+{
+  "cites": [
+    "C6",
+    "V5"
+  ],
+  "disagreement": {
+    "classification": "defect",
+    "difference": 5,
+    "note": "the compiler strips U+00A0 from the value and reads `feature`"
+  },
+  "id": "document/c6-nbsp-before-value--python",
+  "kind": "characterisation",
+  "level": "document",
+  "normative_case": "document/c6-nbsp-before-value",
+  "source": "the Python compiler, on the input of document/c6-nbsp-before-value",
+  "title": "What the compiler does: U+00A0 before a value is part of the value"
+}

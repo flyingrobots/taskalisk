@@ -1,0 +1,7 @@
+{
+  "result": "invalid",
+  "violations": [
+    "C6",
+    "V5"
+  ]
+}

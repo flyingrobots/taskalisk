@@ -1,0 +1,27 @@
+{
+  "record": {
+    "blocked_by": [
+      "o/s#2",
+      "o/s#3"
+    ],
+    "children": null,
+    "holds": [
+      "docs/",
+      "src"
+    ],
+    "id": "o/r#1",
+    "kind": "task",
+    "meters": [
+      [
+        "gpu",
+        2
+      ]
+    ],
+    "size_hours": 3,
+    "status": "active",
+    "type": "feature",
+    "version": "issue-dag/2"
+  },
+  "result": "valid",
+  "warnings": []
+}

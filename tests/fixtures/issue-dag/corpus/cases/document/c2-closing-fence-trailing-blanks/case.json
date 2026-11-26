@@ -1,0 +1,10 @@
+{
+  "cites": [
+    "C2"
+  ],
+  "id": "document/c2-closing-fence-trailing-blanks",
+  "kind": "normative",
+  "level": "document",
+  "source": "constructed from the rule text",
+  "title": "A closing fence may end in blanks"
+}

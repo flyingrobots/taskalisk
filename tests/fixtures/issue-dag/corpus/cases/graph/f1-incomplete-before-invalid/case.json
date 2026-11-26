@@ -1,0 +1,10 @@
+{
+  "cites": [
+    "F1"
+  ],
+  "id": "graph/f1-incomplete-before-invalid",
+  "kind": "normative",
+  "level": "graph",
+  "source": "constructed from the rule text",
+  "title": "An unavailable observation outranks a violation"
+}

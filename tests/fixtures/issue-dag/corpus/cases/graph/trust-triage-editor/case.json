@@ -1,0 +1,8 @@
+{
+  "cites": [],
+  "id": "graph/trust-triage-editor",
+  "kind": "characterisation",
+  "level": "graph",
+  "source": "tests/test_taskalisk.py Trust.test_triage_collaborator_is_not_trusted",
+  "title": "Scenario trust-triage-editor"
+}

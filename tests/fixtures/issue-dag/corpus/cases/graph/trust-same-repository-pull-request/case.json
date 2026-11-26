@@ -1,0 +1,8 @@
+{
+  "cites": [],
+  "id": "graph/trust-same-repository-pull-request",
+  "kind": "characterisation",
+  "level": "graph",
+  "source": "tests/test_taskalisk.py Trust.test_same_repository_pr_by_a_trusted_author_marks_in_flight",
+  "title": "Scenario trust-same-repository-pull-request"
+}

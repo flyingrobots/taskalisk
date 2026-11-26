@@ -1,0 +1,11 @@
+{
+  "cites": [
+    "V9",
+    "M4"
+  ],
+  "id": "document/v9-duplicate-prerequisites",
+  "kind": "normative",
+  "level": "document",
+  "source": "constructed from the rule text",
+  "title": "A reference may repeat; the record keeps it"
+}

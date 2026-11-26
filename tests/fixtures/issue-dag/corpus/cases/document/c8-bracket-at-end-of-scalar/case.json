@@ -1,0 +1,10 @@
+{
+  "cites": [
+    "C8"
+  ],
+  "id": "document/c8-bracket-at-end-of-scalar",
+  "kind": "normative",
+  "level": "document",
+  "source": "constructed from the rule text",
+  "title": "A scalar may end with `]`"
+}

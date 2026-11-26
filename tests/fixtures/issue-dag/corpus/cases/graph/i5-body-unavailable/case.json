@@ -1,0 +1,12 @@
+{
+  "cites": [
+    "I3",
+    "I5",
+    "F2"
+  ],
+  "id": "graph/i5-body-unavailable",
+  "kind": "normative",
+  "level": "graph",
+  "source": "constructed from the rule text",
+  "title": "An unavailable body and edit history make the run incomplete"
+}

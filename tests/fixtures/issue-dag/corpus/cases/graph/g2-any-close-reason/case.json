@@ -1,0 +1,10 @@
+{
+  "cites": [
+    "G2"
+  ],
+  "id": "graph/g2-any-close-reason",
+  "kind": "normative",
+  "level": "graph",
+  "source": "constructed from the rule text",
+  "title": "A prerequisite closed for any reason is complete"
+}

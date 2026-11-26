@@ -1,0 +1,11 @@
+{
+  "cites": [
+    "X1",
+    "V3"
+  ],
+  "id": "document/x1-id-is-not-the-address",
+  "kind": "normative",
+  "level": "document",
+  "source": "constructed from the rule text",
+  "title": "A copied document names another issue"
+}

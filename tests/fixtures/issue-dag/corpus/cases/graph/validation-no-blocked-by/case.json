@@ -1,0 +1,8 @@
+{
+  "cites": [],
+  "id": "graph/validation-no-blocked-by",
+  "kind": "characterisation",
+  "level": "graph",
+  "source": "tests/test_taskalisk.py Validation.test_task_without_blocked_by_fails",
+  "title": "Scenario validation-no-blocked-by"
+}

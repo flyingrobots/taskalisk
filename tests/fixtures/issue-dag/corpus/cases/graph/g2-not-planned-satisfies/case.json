@@ -1,0 +1,12 @@
+{
+  "cites": [
+    "G2",
+    "G3",
+    "W1"
+  ],
+  "id": "graph/g2-not-planned-satisfies",
+  "kind": "normative",
+  "level": "graph",
+  "source": "constructed from the rule text",
+  "title": "A prerequisite closed as not planned is complete; the pair is listed for review"
+}

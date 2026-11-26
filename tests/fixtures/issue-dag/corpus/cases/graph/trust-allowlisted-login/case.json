@@ -1,0 +1,8 @@
+{
+  "cites": [],
+  "id": "graph/trust-allowlisted-login",
+  "kind": "characterisation",
+  "level": "graph",
+  "source": "tests/test_taskalisk.py Trust.test_allowlisted_login_is_trusted",
+  "title": "Scenario trust-allowlisted-login"
+}

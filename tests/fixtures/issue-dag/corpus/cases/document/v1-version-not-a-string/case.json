@@ -1,0 +1,10 @@
+{
+  "cites": [
+    "V1"
+  ],
+  "id": "document/v1-version-not-a-string",
+  "kind": "normative",
+  "level": "document",
+  "source": "constructed from the rule text",
+  "title": "An integer `.dag` is not the string issue-dag/2"
+}

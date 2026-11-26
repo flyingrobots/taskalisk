@@ -1,0 +1,10 @@
+{
+  "cites": [
+    "V8"
+  ],
+  "id": "document/v8-holds-scalar",
+  "kind": "normative",
+  "level": "document",
+  "source": "constructed from the rule text",
+  "title": "`.holds` must be a list"
+}

@@ -1,0 +1,60 @@
+{
+  "batch": [
+    "o/s#2"
+  ],
+  "critical_path": [
+    "o/s#2",
+    "o/r#1"
+  ],
+  "edges": [
+    {
+      "from": "o/s#2",
+      "status": "open",
+      "to": "o/r#1"
+    },
+    {
+      "from": "o/t#3",
+      "status": "satisfied",
+      "to": "o/s#2"
+    }
+  ],
+  "findings": [],
+  "nodes": [
+    {
+      "complete": false,
+      "id": "o/r#1",
+      "opaque": false,
+      "status": "open",
+      "untrusted": false
+    },
+    {
+      "complete": false,
+      "id": "o/s#2",
+      "opaque": false,
+      "status": "open",
+      "untrusted": false
+    },
+    {
+      "complete": true,
+      "id": "o/t#3",
+      "opaque": false,
+      "untrusted": false
+    }
+  ],
+  "outcome": "planned",
+  "ready": [
+    "o/s#2"
+  ],
+  "scores": {
+    "o/r#1": 10,
+    "o/s#2": 121
+  },
+  "waves": [
+    [
+      "o/s#2"
+    ],
+    [
+      "o/r#1"
+    ]
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "cites": [
+    "I2",
+    "F1"
+  ],
+  "id": "graph/i2-root-not-a-reference",
+  "kind": "normative",
+  "level": "graph",
+  "source": "constructed from the rule text",
+  "title": "A root that is not a reference rejects the run"
+}

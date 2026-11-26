@@ -1,0 +1,8 @@
+{
+  "cites": [],
+  "id": "graph/resources-overlapping-holds",
+  "kind": "characterisation",
+  "level": "graph",
+  "source": "tests/test_taskalisk.py Resources.test_overlapping_holds_conflict",
+  "title": "Scenario resources-overlapping-holds"
+}

@@ -1,0 +1,12 @@
+{
+  "cites": [
+    "D3",
+    "D8",
+    "X3"
+  ],
+  "id": "graph/d3-closed-document-naming-it",
+  "kind": "normative",
+  "level": "graph",
+  "source": "constructed from the rule text",
+  "title": "A closed document that names a reference outside the scope receives a violation; no prerequisite is unknown"
+}

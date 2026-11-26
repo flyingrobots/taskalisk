@@ -47,6 +47,14 @@ python3 skills/taskalisk/scripts/taskalisk.py --from-github
 `tests/fake_gh.py`. Every change to `skills/taskalisk/scripts/taskalisk.py`
 comes with a test. A security control without a test is not implemented.
 
+The suite also checks the issue-dag conformance corpus
+(`tests/test_corpus.py`), vendored in `tests/fixtures/issue-dag/` from the
+issue-dag repository and pinned by its digest. A change to what the compiler
+computes fails as drift there. The corpus is the issue-dag repository's:
+change it there with `scripts/corpus/generate.py <issue-dag checkout>
+--vendor tests/fixtures/issue-dag`, through a pull request to that
+repository, and never edit an expected result by hand.
+
 ## Git
 
 - Work on a branch and open a pull request. Never push to `main`.

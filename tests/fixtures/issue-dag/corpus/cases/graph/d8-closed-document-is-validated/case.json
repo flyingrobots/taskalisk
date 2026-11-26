@@ -1,0 +1,11 @@
+{
+  "cites": [
+    "D8",
+    "V2"
+  ],
+  "id": "graph/d8-closed-document-is-validated",
+  "kind": "normative",
+  "level": "graph",
+  "source": "constructed from the rule text",
+  "title": "A closed issue's document is validated"
+}

@@ -1,0 +1,8 @@
+{
+  "cites": [],
+  "id": "graph/references-mis-cased",
+  "kind": "characterisation",
+  "level": "graph",
+  "source": "tests/test_taskalisk.py Trust.test_mis_cased_reference_is_not_reported_as_transferred",
+  "title": "Scenario references-mis-cased"
+}

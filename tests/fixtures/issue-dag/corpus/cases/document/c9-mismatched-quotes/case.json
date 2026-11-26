@@ -1,0 +1,11 @@
+{
+  "cites": [
+    "C9",
+    "V5"
+  ],
+  "id": "document/c9-mismatched-quotes",
+  "kind": "normative",
+  "level": "document",
+  "source": "constructed from the rule text",
+  "title": "Mismatched quotes are part of the text"
+}

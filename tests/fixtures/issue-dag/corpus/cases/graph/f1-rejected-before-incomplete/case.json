@@ -1,0 +1,12 @@
+{
+  "cites": [
+    "F1",
+    "I2",
+    "I5"
+  ],
+  "id": "graph/f1-rejected-before-incomplete",
+  "kind": "normative",
+  "level": "graph",
+  "source": "constructed from the rule text",
+  "title": "A rejected run is rejected even when an observation is unavailable"
+}

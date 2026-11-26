@@ -1,0 +1,8 @@
+{
+  "cites": [],
+  "id": "graph/resources-none",
+  "kind": "characterisation",
+  "level": "graph",
+  "source": "tests/test_taskalisk.py Resources.test_no_resources_means_full_parallelism",
+  "title": "Scenario resources-none"
+}

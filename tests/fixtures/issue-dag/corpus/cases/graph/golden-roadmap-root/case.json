@@ -1,0 +1,8 @@
+{
+  "cites": [],
+  "id": "graph/golden-roadmap-root",
+  "kind": "characterisation",
+  "level": "graph",
+  "source": "tests/golden_scenarios.py roadmap_root",
+  "title": "Scenario golden-roadmap-root"
+}

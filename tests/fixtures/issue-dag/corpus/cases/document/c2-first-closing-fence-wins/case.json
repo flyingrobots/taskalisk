@@ -1,0 +1,10 @@
+{
+  "cites": [
+    "C2"
+  ],
+  "id": "document/c2-first-closing-fence-wins",
+  "kind": "normative",
+  "level": "document",
+  "source": "constructed from the rule text",
+  "title": "The block ends at the first closing fence"
+}

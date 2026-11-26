@@ -1,0 +1,52 @@
+{
+  "batch": [
+    "o/r#1",
+    "o/r#2",
+    "o/r#4"
+  ],
+  "edges": [],
+  "findings": [],
+  "nodes": [
+    {
+      "complete": false,
+      "id": "o/r#1",
+      "opaque": false,
+      "status": "in-progress",
+      "untrusted": false
+    },
+    {
+      "complete": false,
+      "id": "o/r#2",
+      "opaque": false,
+      "status": "parked",
+      "untrusted": false
+    },
+    {
+      "complete": false,
+      "id": "o/r#3",
+      "opaque": false,
+      "status": "blocked",
+      "untrusted": false
+    },
+    {
+      "complete": false,
+      "id": "o/r#4",
+      "opaque": false,
+      "status": "open",
+      "untrusted": false
+    }
+  ],
+  "outcome": "planned",
+  "ready": [
+    "o/r#1",
+    "o/r#2",
+    "o/r#3",
+    "o/r#4"
+  ],
+  "scores": {
+    "o/r#1": 1010,
+    "o/r#2": 510,
+    "o/r#3": 10,
+    "o/r#4": 10
+  }
+}

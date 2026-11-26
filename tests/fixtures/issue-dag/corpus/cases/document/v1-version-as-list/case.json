@@ -1,0 +1,15 @@
+{
+  "cites": [
+    "V1"
+  ],
+  "disagreement": {
+    "classification": "defect",
+    "difference": 7,
+    "note": "the validator raises TypeError and the run ends without an outcome"
+  },
+  "id": "document/v1-version-as-list",
+  "kind": "normative",
+  "level": "document",
+  "source": "constructed from the rule text",
+  "title": "A list `.dag` is invalid"
+}

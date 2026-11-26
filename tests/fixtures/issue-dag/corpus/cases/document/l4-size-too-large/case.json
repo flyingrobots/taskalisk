@@ -1,0 +1,15 @@
+{
+  "cites": [
+    "L4"
+  ],
+  "disagreement": {
+    "classification": "defect",
+    "difference": 3,
+    "note": "the compiler's integers are unbounded; it accepts the value with a warning"
+  },
+  "id": "document/l4-size-too-large",
+  "kind": "normative",
+  "level": "document",
+  "source": "constructed from the rule text",
+  "title": "`.size_hours` above 2147483647 is invalid"
+}

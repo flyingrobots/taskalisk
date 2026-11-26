@@ -1,0 +1,10 @@
+{
+  "cites": [
+    "B3"
+  ],
+  "id": "graph/b3-declared-capacity",
+  "kind": "normative",
+  "level": "graph",
+  "source": "constructed from the rule text",
+  "title": "A declared capacity admits that many slots"
+}

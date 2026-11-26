@@ -1,0 +1,17 @@
+{
+  "findings": [
+    {
+      "rule": "G4",
+      "subject": "o/r#1"
+    },
+    {
+      "rule": "G4",
+      "subject": "o/r#2"
+    },
+    {
+      "rule": "G4",
+      "subject": "o/r#3"
+    }
+  ],
+  "outcome": "invalid"
+}

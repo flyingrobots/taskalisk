@@ -1,0 +1,21 @@
+{
+  "batch": [],
+  "containers": [],
+  "critical_path": [],
+  "edges": [],
+  "findings": [],
+  "nodes": [],
+  "not_planned": [],
+  "outcome": "planned",
+  "ready": [],
+  "redundant": [],
+  "scores": {},
+  "skipped": [],
+  "unknown_capacity": [],
+  "unmodeled": [],
+  "untrusted": [
+    "flyingrobots/geordi#77"
+  ],
+  "untrusted_pull_requests": [],
+  "waves": []
+}

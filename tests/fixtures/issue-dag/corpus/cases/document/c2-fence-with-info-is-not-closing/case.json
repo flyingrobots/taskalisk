@@ -1,0 +1,11 @@
+{
+  "cites": [
+    "C2",
+    "C3"
+  ],
+  "id": "document/c2-fence-with-info-is-not-closing",
+  "kind": "normative",
+  "level": "document",
+  "source": "constructed from the rule text",
+  "title": "A fence line with text after it does not close the block"
+}

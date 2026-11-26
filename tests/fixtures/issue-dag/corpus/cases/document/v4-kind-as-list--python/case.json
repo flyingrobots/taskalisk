@@ -1,0 +1,16 @@
+{
+  "cites": [
+    "V4"
+  ],
+  "disagreement": {
+    "classification": "defect",
+    "difference": 7,
+    "note": "the validator raises TypeError and the run ends without an outcome"
+  },
+  "id": "document/v4-kind-as-list--python",
+  "kind": "characterisation",
+  "level": "document",
+  "normative_case": "document/v4-kind-as-list",
+  "source": "the Python compiler, on the input of document/v4-kind-as-list",
+  "title": "What the compiler does: A list `.kind` is invalid"
+}

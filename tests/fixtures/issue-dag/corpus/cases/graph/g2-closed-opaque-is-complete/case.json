@@ -1,0 +1,11 @@
+{
+  "cites": [
+    "G2",
+    "D7"
+  ],
+  "id": "graph/g2-closed-opaque-is-complete",
+  "kind": "normative",
+  "level": "graph",
+  "source": "constructed from the rule text",
+  "title": "A closed issue without frontmatter is a complete node"
+}

@@ -1,0 +1,4 @@
+{
+  "address": "o/r#1",
+  "body": " \t\r\n\n```yaml\n.dag: issue-dag/2\n.id: o/r#1\n.kind: task\n.type: feature\n.blocked_by: []\n```\n\nFree text.\n"
+}

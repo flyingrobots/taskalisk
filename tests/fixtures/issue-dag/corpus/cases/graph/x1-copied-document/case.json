@@ -1,0 +1,10 @@
+{
+  "cites": [
+    "X1"
+  ],
+  "id": "graph/x1-copied-document",
+  "kind": "normative",
+  "level": "graph",
+  "source": "constructed from the rule text",
+  "title": "A document whose `.id` is not its issue's address receives a violation"
+}

@@ -1,0 +1,13 @@
+{
+  "findings": [
+    {
+      "rule": "V2",
+      "subject": "o/r#1"
+    },
+    {
+      "rule": "V2",
+      "subject": "o/r#9"
+    }
+  ],
+  "outcome": "invalid"
+}

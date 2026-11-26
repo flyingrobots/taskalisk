@@ -1,0 +1,10 @@
+{
+  "cites": [
+    "V6"
+  ],
+  "id": "document/v6-container-no-children",
+  "kind": "normative",
+  "level": "document",
+  "source": "constructed from the rule text",
+  "title": "A container may have no children"
+}

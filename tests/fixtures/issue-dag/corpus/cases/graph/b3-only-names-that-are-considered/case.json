@@ -1,0 +1,11 @@
+{
+  "cites": [
+    "B3",
+    "Q2"
+  ],
+  "id": "graph/b3-only-names-that-are-considered",
+  "kind": "normative",
+  "level": "graph",
+  "source": "constructed from the rule text",
+  "title": "A semaphore claimed only by a node that is not dispatchable is not reported"
+}

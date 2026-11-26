@@ -1,0 +1,175 @@
+{
+  "bundle": "issue-dag-observations/1",
+  "format": "issue-dag/2",
+  "observations": {
+    "home_open_pull_requests": {
+      "value": []
+    },
+    "issues": {
+      "flyingrobots/bunny#110": {
+        "value": {
+          "address": "flyingrobots/bunny#110",
+          "author": {
+            "login": "owner",
+            "type": "User"
+          },
+          "author_association": "OWNER",
+          "body": {
+            "unavailable": "the edit history could not be read in full"
+          },
+          "pull_request": false,
+          "state": "open",
+          "state_reason": null
+        }
+      },
+      "flyingrobots/bunny#7": {
+        "value": {
+          "address": "flyingrobots/bunny#7",
+          "author": {
+            "login": "owner",
+            "type": "User"
+          },
+          "author_association": "OWNER",
+          "body": {
+            "unavailable": "the edit history could not be read in full"
+          },
+          "pull_request": false,
+          "state": "closed",
+          "state_reason": "completed"
+        }
+      },
+      "flyingrobots/echo#5": {
+        "value": {
+          "address": "flyingrobots/echo#5",
+          "author": {
+            "login": "owner",
+            "type": "User"
+          },
+          "author_association": "OWNER",
+          "body": {
+            "unavailable": "the edit history could not be read in full"
+          },
+          "pull_request": false,
+          "state": "open",
+          "state_reason": null
+        }
+      },
+      "flyingrobots/echo#6": {
+        "value": {
+          "address": "flyingrobots/echo#6",
+          "author": {
+            "login": "owner",
+            "type": "User"
+          },
+          "author_association": "OWNER",
+          "body": {
+            "unavailable": "the edit history could not be read in full"
+          },
+          "pull_request": false,
+          "state": "open",
+          "state_reason": null
+        }
+      },
+      "flyingrobots/geordi#1": {
+        "value": {
+          "address": "flyingrobots/geordi#1",
+          "author": {
+            "login": "owner",
+            "type": "User"
+          },
+          "author_association": "OWNER",
+          "body": {
+            "unavailable": "the edit history could not be read in full"
+          },
+          "pull_request": false,
+          "state": "open",
+          "state_reason": null
+        }
+      },
+      "flyingrobots/geordi#110": {
+        "value": {
+          "address": "flyingrobots/geordi#110",
+          "author": {
+            "login": "owner",
+            "type": "User"
+          },
+          "author_association": "OWNER",
+          "body": {
+            "unavailable": "the edit history could not be read in full"
+          },
+          "pull_request": false,
+          "state": "open",
+          "state_reason": null
+        }
+      },
+      "flyingrobots/geordi#2": {
+        "value": {
+          "address": "flyingrobots/geordi#2",
+          "author": {
+            "login": "owner",
+            "type": "User"
+          },
+          "author_association": "OWNER",
+          "body": {
+            "unavailable": "the edit history could not be read in full"
+          },
+          "pull_request": false,
+          "state": "open",
+          "state_reason": null
+        }
+      },
+      "flyingrobots/geordi#9": {
+        "value": {
+          "address": "flyingrobots/geordi#9",
+          "author": {
+            "login": "owner",
+            "type": "User"
+          },
+          "author_association": "OWNER",
+          "body": {
+            "unavailable": "the edit history could not be read in full"
+          },
+          "pull_request": false,
+          "state": "open",
+          "state_reason": null
+        }
+      }
+    },
+    "permissions": {
+      "flyingrobots/bunny": {
+        "owner": {
+          "value": null
+        }
+      },
+      "flyingrobots/echo": {
+        "owner": {
+          "value": null
+        }
+      },
+      "flyingrobots/geordi": {
+        "owner": {
+          "value": null
+        }
+      }
+    }
+  },
+  "parameters": {
+    "capacities": {},
+    "home": "flyingrobots/geordi",
+    "read_scope": {
+      "owners": [
+        "flyingrobots"
+      ],
+      "repositories": []
+    },
+    "roots": [
+      "flyingrobots/geordi#9"
+    ],
+    "trust": {
+      "codeowners": false,
+      "logins": [],
+      "policy": "taskalisk/threat-model"
+    }
+  },
+  "profile": "issue-dag-planning/2"
+}

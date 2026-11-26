@@ -1,0 +1,8 @@
+{
+  "cites": [],
+  "id": "graph/trust-member-association",
+  "kind": "characterisation",
+  "level": "graph",
+  "source": "tests/test_taskalisk.py Trust.test_member_association_alone_is_not_trusted",
+  "title": "Scenario trust-member-association"
+}

@@ -1,0 +1,12 @@
+{
+  "cites": [
+    "B4",
+    "B5",
+    "L3"
+  ],
+  "id": "graph/b4-need-is-the-sum",
+  "kind": "normative",
+  "level": "graph",
+  "source": "constructed from the rule text",
+  "title": "A node's need is the sum of its claims"
+}

@@ -1,0 +1,13 @@
+{
+  "cites": [
+    "D7",
+    "S2",
+    "Q1",
+    "Q2"
+  ],
+  "id": "graph/d7-no-frontmatter-is-opaque",
+  "kind": "normative",
+  "level": "graph",
+  "source": "constructed from the rule text",
+  "title": "An admitted issue without frontmatter is an opaque node"
+}

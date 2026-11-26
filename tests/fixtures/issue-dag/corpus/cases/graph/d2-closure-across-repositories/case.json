@@ -1,0 +1,16 @@
+{
+  "cites": [
+    "D2",
+    "D8",
+    "G2",
+    "G3",
+    "K5",
+    "K7",
+    "K8"
+  ],
+  "id": "graph/d2-closure-across-repositories",
+  "kind": "normative",
+  "level": "graph",
+  "source": "constructed from the rule text",
+  "title": "The closure follows prerequisites across repositories"
+}

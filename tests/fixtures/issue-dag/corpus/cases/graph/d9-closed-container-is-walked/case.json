@@ -1,0 +1,10 @@
+{
+  "cites": [
+    "D9"
+  ],
+  "id": "graph/d9-closed-container-is-walked",
+  "kind": "normative",
+  "level": "graph",
+  "source": "constructed from the rule text",
+  "title": "Discovery walks a closed container's children"
+}

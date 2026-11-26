@@ -1,0 +1,17 @@
+{
+  "cites": [
+    "D2",
+    "D5",
+    "X3"
+  ],
+  "disagreement": {
+    "classification": "defect",
+    "difference": 16,
+    "note": "the compiler gives the violation only to the documents visited before the reference"
+  },
+  "id": "graph/d5-each-document-naming-it",
+  "kind": "normative",
+  "level": "graph",
+  "source": "constructed from the rule text",
+  "title": "Every document that names a transferred reference receives a violation, whatever the order of visits"
+}

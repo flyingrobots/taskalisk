@@ -1,0 +1,12 @@
+{
+  "cites": [
+    "S1",
+    "S2",
+    "T2"
+  ],
+  "id": "graph/s1-untrusted-node",
+  "kind": "normative",
+  "level": "graph",
+  "source": "constructed from the rule text",
+  "title": "An untrusted node has no linked pull request"
+}

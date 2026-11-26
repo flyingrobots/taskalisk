@@ -1,0 +1,10 @@
+{
+  "cites": [
+    "V7"
+  ],
+  "id": "document/v7-self-blocked-by",
+  "kind": "normative",
+  "level": "document",
+  "source": "constructed from the rule text",
+  "title": "A task may not name itself"
+}

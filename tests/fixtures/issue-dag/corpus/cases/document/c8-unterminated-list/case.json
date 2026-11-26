@@ -1,0 +1,10 @@
+{
+  "cites": [
+    "C8"
+  ],
+  "id": "document/c8-unterminated-list",
+  "kind": "normative",
+  "level": "document",
+  "source": "constructed from the rule text",
+  "title": "A value that begins with `[` must end with `]`"
+}

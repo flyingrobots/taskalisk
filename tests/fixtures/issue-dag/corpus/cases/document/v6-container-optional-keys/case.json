@@ -1,0 +1,11 @@
+{
+  "cites": [
+    "V6",
+    "V8"
+  ],
+  "id": "document/v6-container-optional-keys",
+  "kind": "normative",
+  "level": "document",
+  "source": "constructed from the rule text",
+  "title": "`.size_hours`, `.holds`, `.meters` and `.status` are valid on a container"
+}

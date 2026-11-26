@@ -1,0 +1,8 @@
+{
+  "cites": [],
+  "id": "graph/trust-untrusted-editor",
+  "kind": "characterisation",
+  "level": "graph",
+  "source": "tests/test_taskalisk.py Trust.test_untrusted_editor_makes_a_trusted_issue_an_opaque_blocker",
+  "title": "Scenario trust-untrusted-editor"
+}

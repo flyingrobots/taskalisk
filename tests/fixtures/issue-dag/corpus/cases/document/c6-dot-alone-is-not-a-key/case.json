@@ -1,0 +1,10 @@
+{
+  "cites": [
+    "C6"
+  ],
+  "id": "document/c6-dot-alone-is-not-a-key",
+  "kind": "normative",
+  "level": "document",
+  "source": "constructed from the rule text",
+  "title": "A key of `.` alone is not a key"
+}

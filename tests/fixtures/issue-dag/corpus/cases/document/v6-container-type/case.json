@@ -1,0 +1,10 @@
+{
+  "cites": [
+    "V6"
+  ],
+  "id": "document/v6-container-type",
+  "kind": "normative",
+  "level": "document",
+  "source": "constructed from the rule text",
+  "title": "A container may have a valid `.type`"
+}

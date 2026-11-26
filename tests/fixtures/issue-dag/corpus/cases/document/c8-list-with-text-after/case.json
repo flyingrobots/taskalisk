@@ -1,0 +1,10 @@
+{
+  "cites": [
+    "C8"
+  ],
+  "id": "document/c8-list-with-text-after",
+  "kind": "normative",
+  "level": "document",
+  "source": "constructed from the rule text",
+  "title": "Text after the closing bracket leaves the list unterminated"
+}

@@ -1,0 +1,10 @@
+{
+  "cites": [
+    "K6"
+  ],
+  "id": "graph/k6-ties-compare-as-text",
+  "kind": "normative",
+  "level": "graph",
+  "source": "constructed from the rule text",
+  "title": "Equal scores are ordered by identifier as text"
+}

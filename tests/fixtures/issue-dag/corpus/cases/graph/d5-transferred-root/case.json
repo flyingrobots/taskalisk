@@ -1,0 +1,10 @@
+{
+  "cites": [
+    "D5"
+  ],
+  "id": "graph/d5-transferred-root",
+  "kind": "normative",
+  "level": "graph",
+  "source": "constructed from the rule text",
+  "title": "A transferred root that no document names receives the violation itself"
+}

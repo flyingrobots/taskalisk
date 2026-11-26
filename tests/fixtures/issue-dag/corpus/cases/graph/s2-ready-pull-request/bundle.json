@@ -1,0 +1,98 @@
+{
+  "bundle": "issue-dag-observations/1",
+  "format": "issue-dag/2",
+  "observations": {
+    "home_open_issues": {
+      "value": [
+        "o/r#1"
+      ]
+    },
+    "home_open_pull_requests": {
+      "value": [
+        {
+          "author": {
+            "login": "dev",
+            "type": "User"
+          },
+          "closes": [
+            "o/r#1"
+          ],
+          "cross_repository": false,
+          "draft": true,
+          "head_repository": "o/r",
+          "number": 8,
+          "repository": "o/r"
+        },
+        {
+          "author": {
+            "login": "dev",
+            "type": "User"
+          },
+          "closes": [
+            "o/r#1"
+          ],
+          "cross_repository": false,
+          "draft": false,
+          "head_repository": "o/r",
+          "number": 9,
+          "repository": "o/r"
+        }
+      ]
+    },
+    "issues": {
+      "o/r#1": {
+        "value": {
+          "address": "o/r#1",
+          "author": {
+            "login": "o",
+            "type": "User"
+          },
+          "author_association": "OWNER",
+          "body": {
+            "value": {
+              "editors": [
+                {
+                  "login": "o",
+                  "type": "User"
+                }
+              ],
+              "text": "```yaml\n.dag: issue-dag/2\n.id: o/r#1\n.kind: task\n.type: feature\n.blocked_by: []\narea: notes are free\n```\n\n# Feature\n\nBody text.\n"
+            }
+          },
+          "pull_request": false,
+          "state": "open",
+          "state_reason": null
+        }
+      }
+    },
+    "permissions": {
+      "o/r": {
+        "dev": {
+          "value": null
+        },
+        "o": {
+          "value": null
+        }
+      }
+    }
+  },
+  "parameters": {
+    "capacities": {},
+    "home": "o/r",
+    "read_scope": {
+      "owners": [
+        "o"
+      ],
+      "repositories": []
+    },
+    "roots": [],
+    "trust": {
+      "codeowners": false,
+      "logins": [
+        "dev"
+      ],
+      "policy": "taskalisk/threat-model"
+    }
+  },
+  "profile": "issue-dag-planning/2"
+}

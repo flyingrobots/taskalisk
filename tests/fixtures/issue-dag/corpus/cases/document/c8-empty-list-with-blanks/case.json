@@ -1,0 +1,10 @@
+{
+  "cites": [
+    "C8"
+  ],
+  "id": "document/c8-empty-list-with-blanks",
+  "kind": "normative",
+  "level": "document",
+  "source": "constructed from the rule text",
+  "title": "A list of blanks is empty"
+}

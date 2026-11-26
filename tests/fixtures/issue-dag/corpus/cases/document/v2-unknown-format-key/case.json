@@ -1,0 +1,11 @@
+{
+  "cites": [
+    "V2",
+    "M2"
+  ],
+  "id": "document/v2-unknown-format-key",
+  "kind": "normative",
+  "level": "document",
+  "source": "constructed from the rule text",
+  "title": "A `.` key outside M2 is a violation"
+}

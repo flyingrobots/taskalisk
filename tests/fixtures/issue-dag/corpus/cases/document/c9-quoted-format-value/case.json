@@ -1,0 +1,10 @@
+{
+  "cites": [
+    "C9"
+  ],
+  "id": "document/c9-quoted-format-value",
+  "kind": "normative",
+  "level": "document",
+  "source": "constructed from the rule text",
+  "title": "A quoted format value is unquoted"
+}

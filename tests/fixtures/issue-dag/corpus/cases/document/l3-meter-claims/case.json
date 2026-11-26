@@ -1,0 +1,11 @@
+{
+  "cites": [
+    "L3",
+    "M4"
+  ],
+  "id": "document/l3-meter-claims",
+  "kind": "normative",
+  "level": "document",
+  "source": "constructed from the rule text",
+  "title": "A meter claim is a name with an optional slot count"
+}

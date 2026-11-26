@@ -1,0 +1,11 @@
+{
+  "cites": [
+    "D4",
+    "X3"
+  ],
+  "id": "graph/d4-pull-request",
+  "kind": "normative",
+  "level": "graph",
+  "source": "constructed from the rule text",
+  "title": "A reference to a pull request receives a violation and is not a node"
+}

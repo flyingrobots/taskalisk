@@ -1,0 +1,8 @@
+{
+  "cites": [],
+  "id": "graph/references-bare-id",
+  "kind": "characterisation",
+  "level": "graph",
+  "source": "tests/test_taskalisk.py QualifiedReferences.test_bare_id_is_invalid",
+  "title": "Scenario references-bare-id"
+}

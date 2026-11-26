@@ -1,0 +1,15 @@
+{
+  "findings": [
+    {
+      "concerns": "mallory/trap#1",
+      "rule": "D3",
+      "subject": "flyingrobots/geordi#1"
+    },
+    {
+      "concerns": "mallory/trap#1",
+      "rule": "X3",
+      "subject": "flyingrobots/geordi#1"
+    }
+  ],
+  "outcome": "invalid"
+}

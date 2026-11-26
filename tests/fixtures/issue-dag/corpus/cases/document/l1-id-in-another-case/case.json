@@ -1,0 +1,11 @@
+{
+  "cites": [
+    "L1",
+    "X1"
+  ],
+  "id": "document/l1-id-in-another-case",
+  "kind": "normative",
+  "level": "document",
+  "source": "constructed from the rule text",
+  "title": "An `.id` in another case names the same issue"
+}

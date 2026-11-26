@@ -1,0 +1,11 @@
+{
+  "cites": [
+    "D6",
+    "I3"
+  ],
+  "id": "graph/d6-not-admitted-editor",
+  "kind": "normative",
+  "level": "graph",
+  "source": "constructed from the rule text",
+  "title": "An issue with an editor who is not trusted is not admitted"
+}

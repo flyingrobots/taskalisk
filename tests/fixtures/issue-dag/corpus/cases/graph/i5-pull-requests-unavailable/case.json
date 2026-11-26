@@ -1,0 +1,13 @@
+{
+  "cites": [
+    "I4",
+    "I5",
+    "F1",
+    "F2"
+  ],
+  "id": "graph/i5-pull-requests-unavailable",
+  "kind": "normative",
+  "level": "graph",
+  "source": "constructed from the rule text",
+  "title": "An unavailable pull-request listing makes the run incomplete"
+}

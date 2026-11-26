@@ -1,0 +1,11 @@
+{
+  "cites": [
+    "C2",
+    "C3"
+  ],
+  "id": "document/c2-immediate-fence-alone",
+  "kind": "normative",
+  "level": "document",
+  "source": "constructed from the rule text",
+  "title": "An opening fence followed at once by a fence, with no later fence: no frontmatter"
+}

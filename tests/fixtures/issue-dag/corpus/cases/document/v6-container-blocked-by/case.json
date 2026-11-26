@@ -1,0 +1,10 @@
+{
+  "cites": [
+    "V6"
+  ],
+  "id": "document/v6-container-blocked-by",
+  "kind": "normative",
+  "level": "document",
+  "source": "constructed from the rule text",
+  "title": "A container must not have `.blocked_by`"
+}

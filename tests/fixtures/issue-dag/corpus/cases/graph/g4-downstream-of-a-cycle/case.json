@@ -1,0 +1,10 @@
+{
+  "cites": [
+    "G4"
+  ],
+  "id": "graph/g4-downstream-of-a-cycle",
+  "kind": "normative",
+  "level": "graph",
+  "source": "constructed from the rule text",
+  "title": "Nodes downstream of a cycle are reported; upstream ones are not"
+}

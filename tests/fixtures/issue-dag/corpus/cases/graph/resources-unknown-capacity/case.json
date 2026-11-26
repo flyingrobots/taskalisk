@@ -1,0 +1,8 @@
+{
+  "cites": [],
+  "id": "graph/resources-unknown-capacity",
+  "kind": "characterisation",
+  "level": "graph",
+  "source": "tests/test_taskalisk.py Resources.test_unknown_semaphore_capacity_is_exclusive",
+  "title": "Scenario resources-unknown-capacity"
+}

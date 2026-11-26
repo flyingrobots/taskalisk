@@ -1,0 +1,11 @@
+{
+  "cites": [
+    "D1",
+    "D2"
+  ],
+  "id": "graph/d1-seeds-are-the-open-home-issues",
+  "kind": "normative",
+  "level": "graph",
+  "source": "constructed from the rule text",
+  "title": "Without roots, the seeds are the open issues of the home repository"
+}

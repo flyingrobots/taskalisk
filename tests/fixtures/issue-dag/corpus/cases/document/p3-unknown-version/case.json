@@ -1,0 +1,11 @@
+{
+  "cites": [
+    "P3",
+    "V1"
+  ],
+  "id": "document/p3-unknown-version",
+  "kind": "normative",
+  "level": "document",
+  "source": "constructed from the rule text",
+  "title": "An unknown version is rejected"
+}

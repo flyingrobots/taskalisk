@@ -1,0 +1,16 @@
+{
+  "cites": [
+    "C6",
+    "V5"
+  ],
+  "disagreement": {
+    "classification": "defect",
+    "difference": 5,
+    "note": "the compiler strips U+00A0 from the value and reads `feature`"
+  },
+  "id": "document/c6-nbsp-before-value",
+  "kind": "normative",
+  "level": "document",
+  "source": "constructed from the rule text",
+  "title": "U+00A0 before a value is part of the value"
+}

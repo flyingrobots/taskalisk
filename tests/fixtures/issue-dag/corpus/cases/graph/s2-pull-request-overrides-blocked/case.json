@@ -1,0 +1,11 @@
+{
+  "cites": [
+    "S2",
+    "Q2"
+  ],
+  "id": "graph/s2-pull-request-overrides-blocked",
+  "kind": "normative",
+  "level": "graph",
+  "source": "constructed from the rule text",
+  "title": "A linked pull request overrides `.status: blocked`"
+}

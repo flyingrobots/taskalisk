@@ -1,0 +1,11 @@
+{
+  "cites": [
+    "C2",
+    "C6"
+  ],
+  "id": "document/c2-immediate-fence-then-more",
+  "kind": "normative",
+  "level": "document",
+  "source": "constructed from the rule text",
+  "title": "A fence right after the opening fence is the block's first line when a later fence exists"
+}

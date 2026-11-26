@@ -1,0 +1,8 @@
+{
+  "cites": [],
+  "id": "graph/trust-untrusted-seed-referenced",
+  "kind": "characterisation",
+  "level": "graph",
+  "source": "tests/test_taskalisk.py Trust.test_untrusted_seed_referenced_by_a_trusted_task_blocks_it",
+  "title": "Scenario trust-untrusted-seed-referenced"
+}

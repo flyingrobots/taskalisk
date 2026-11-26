@@ -1,0 +1,19 @@
+{
+  "record": {
+    "blocked_by": [
+      "o/r#2",
+      "o/r#2"
+    ],
+    "children": null,
+    "holds": [],
+    "id": "o/r#1",
+    "kind": "task",
+    "meters": [],
+    "size_hours": null,
+    "status": null,
+    "type": "feature",
+    "version": "issue-dag/2"
+  },
+  "result": "valid",
+  "warnings": []
+}

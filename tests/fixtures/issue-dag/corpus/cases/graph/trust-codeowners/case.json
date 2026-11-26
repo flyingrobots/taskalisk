@@ -1,0 +1,8 @@
+{
+  "cites": [],
+  "id": "graph/trust-codeowners",
+  "kind": "characterisation",
+  "level": "graph",
+  "source": "tests/test_taskalisk.py Trust.test_codeowners_allowlists_per_repository",
+  "title": "Scenario trust-codeowners"
+}

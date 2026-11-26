@@ -1,0 +1,25 @@
+{
+  "batch": [
+    "o/r#1"
+  ],
+  "edges": [],
+  "findings": [
+    {
+      "rule": "V10",
+      "subject": "o/r#1"
+    }
+  ],
+  "nodes": [
+    {
+      "complete": false,
+      "id": "o/r#1",
+      "opaque": false,
+      "status": "open",
+      "untrusted": false
+    }
+  ],
+  "outcome": "planned",
+  "ready": [
+    "o/r#1"
+  ]
+}

@@ -1,0 +1,8 @@
+{
+  "cites": [],
+  "id": "graph/validation-copied-id",
+  "kind": "characterisation",
+  "level": "graph",
+  "source": "tests/test_taskalisk.py Validation.test_copied_frontmatter_with_wrong_id_fails",
+  "title": "Scenario validation-copied-id"
+}

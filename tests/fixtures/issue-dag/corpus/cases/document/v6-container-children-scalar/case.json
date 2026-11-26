@@ -1,0 +1,10 @@
+{
+  "cites": [
+    "V6"
+  ],
+  "id": "document/v6-container-children-scalar",
+  "kind": "normative",
+  "level": "document",
+  "source": "constructed from the rule text",
+  "title": "`.children` must be a list"
+}

@@ -1,0 +1,38 @@
+{
+  "batch": [
+    "o/r#1",
+    "o/s#2"
+  ],
+  "containers": [
+    {
+      "children": [
+        "o/r#1",
+        "o/s#2"
+      ],
+      "id": "o/r#9"
+    }
+  ],
+  "edges": [],
+  "findings": [],
+  "nodes": [
+    {
+      "complete": false,
+      "id": "o/r#1",
+      "opaque": false,
+      "status": "open",
+      "untrusted": false
+    },
+    {
+      "complete": false,
+      "id": "o/s#2",
+      "opaque": false,
+      "status": "open",
+      "untrusted": false
+    }
+  ],
+  "outcome": "planned",
+  "ready": [
+    "o/r#1",
+    "o/s#2"
+  ]
+}

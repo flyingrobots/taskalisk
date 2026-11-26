@@ -1,0 +1,8 @@
+{
+  "cites": [],
+  "id": "graph/trust-owner-widens-scope",
+  "kind": "characterisation",
+  "level": "graph",
+  "source": "tests/test_taskalisk.py Trust.test_trust_owner_widens_the_scope",
+  "title": "Scenario trust-owner-widens-scope"
+}

@@ -1,0 +1,8 @@
+{
+  "cites": [],
+  "id": "graph/discovery-unmodeled-home-issue",
+  "kind": "characterisation",
+  "level": "graph",
+  "source": "tests/test_taskalisk.py Discovery.test_home_issue_without_frontmatter_is_listed_not_a_node",
+  "title": "Scenario discovery-unmodeled-home-issue"
+}

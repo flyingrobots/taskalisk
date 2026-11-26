@@ -1,0 +1,13 @@
+{
+  "cites": [
+    "M2",
+    "M4",
+    "V5",
+    "V8"
+  ],
+  "id": "document/m2-every-format-key",
+  "kind": "normative",
+  "level": "document",
+  "source": "constructed from the rule text",
+  "title": "A document with every format key"
+}

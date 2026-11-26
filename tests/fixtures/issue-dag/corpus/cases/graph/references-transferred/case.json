@@ -1,0 +1,8 @@
+{
+  "cites": [],
+  "id": "graph/references-transferred",
+  "kind": "characterisation",
+  "level": "graph",
+  "source": "tests/test_taskalisk.py QualifiedReferences.test_transferred_reference_is_reported",
+  "title": "Scenario references-transferred"
+}

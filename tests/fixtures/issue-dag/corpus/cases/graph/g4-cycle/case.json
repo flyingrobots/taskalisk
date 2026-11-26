@@ -1,0 +1,10 @@
+{
+  "cites": [
+    "G4"
+  ],
+  "id": "graph/g4-cycle",
+  "kind": "normative",
+  "level": "graph",
+  "source": "constructed from the rule text",
+  "title": "A cycle makes the run invalid; its members are reported"
+}

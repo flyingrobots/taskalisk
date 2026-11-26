@@ -1,0 +1,16 @@
+{
+  "cites": [
+    "L4"
+  ],
+  "disagreement": {
+    "classification": "defect",
+    "difference": 3,
+    "note": "the compiler's integers are unbounded; it accepts the value with a warning"
+  },
+  "id": "document/l4-size-too-large--python",
+  "kind": "characterisation",
+  "level": "document",
+  "normative_case": "document/l4-size-too-large",
+  "source": "the Python compiler, on the input of document/l4-size-too-large",
+  "title": "What the compiler does: `.size_hours` above 2147483647 is invalid"
+}

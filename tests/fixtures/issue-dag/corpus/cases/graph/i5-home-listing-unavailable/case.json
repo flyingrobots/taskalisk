@@ -1,0 +1,12 @@
+{
+  "cites": [
+    "I4",
+    "I5",
+    "F2"
+  ],
+  "id": "graph/i5-home-listing-unavailable",
+  "kind": "normative",
+  "level": "graph",
+  "source": "constructed from the rule text",
+  "title": "An unavailable listing of open home issues makes the run incomplete"
+}

@@ -1,0 +1,11 @@
+{
+  "cites": [
+    "D7",
+    "W1"
+  ],
+  "id": "graph/d7-unmodeled-seed",
+  "kind": "normative",
+  "level": "graph",
+  "source": "constructed from the rule text",
+  "title": "A seed of a run without roots that has no frontmatter and that no document names is unmodeled"
+}

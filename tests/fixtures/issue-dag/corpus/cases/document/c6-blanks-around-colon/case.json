@@ -1,0 +1,11 @@
+{
+  "cites": [
+    "C6",
+    "L4"
+  ],
+  "id": "document/c6-blanks-around-colon",
+  "kind": "normative",
+  "level": "document",
+  "source": "constructed from the rule text",
+  "title": "Blanks may surround the colon"
+}

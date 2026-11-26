@@ -1,0 +1,10 @@
+{
+  "cites": [
+    "V3"
+  ],
+  "id": "document/v3-id-missing",
+  "kind": "normative",
+  "level": "document",
+  "source": "constructed from the rule text",
+  "title": "`.id` must be present"
+}

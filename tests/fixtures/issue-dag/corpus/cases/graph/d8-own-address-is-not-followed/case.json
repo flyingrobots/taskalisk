@@ -1,0 +1,11 @@
+{
+  "cites": [
+    "D8",
+    "V7"
+  ],
+  "id": "graph/d8-own-address-is-not-followed",
+  "kind": "normative",
+  "level": "graph",
+  "source": "constructed from the rule text",
+  "title": "A self reference is a violation and is not followed"
+}

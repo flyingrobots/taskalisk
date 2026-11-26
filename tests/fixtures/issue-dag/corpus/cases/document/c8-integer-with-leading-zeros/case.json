@@ -1,0 +1,11 @@
+{
+  "cites": [
+    "C8",
+    "L4"
+  ],
+  "id": "document/c8-integer-with-leading-zeros",
+  "kind": "normative",
+  "level": "document",
+  "source": "constructed from the rule text",
+  "title": "An integer may have leading zeros"
+}

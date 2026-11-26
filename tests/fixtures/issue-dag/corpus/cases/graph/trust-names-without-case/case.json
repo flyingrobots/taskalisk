@@ -1,0 +1,8 @@
+{
+  "cites": [],
+  "id": "graph/trust-names-without-case",
+  "kind": "characterisation",
+  "level": "graph",
+  "source": "tests/test_taskalisk.py Trust.test_names_compare_case_insensitively",
+  "title": "Scenario trust-names-without-case"
+}

@@ -1,0 +1,68 @@
+{
+  "batch": [
+    "flyingrobots/echo#5"
+  ],
+  "containers": [],
+  "critical_path": [
+    "flyingrobots/echo#5",
+    "flyingrobots/geordi#1"
+  ],
+  "edges": [
+    {
+      "from": "flyingrobots/bunny#7",
+      "status": "satisfied",
+      "to": "flyingrobots/echo#5"
+    },
+    {
+      "from": "flyingrobots/echo#5",
+      "status": "open",
+      "to": "flyingrobots/geordi#1"
+    }
+  ],
+  "findings": [],
+  "nodes": [
+    {
+      "complete": true,
+      "id": "flyingrobots/bunny#7",
+      "opaque": false,
+      "untrusted": false
+    },
+    {
+      "complete": false,
+      "id": "flyingrobots/echo#5",
+      "opaque": false,
+      "status": "open",
+      "untrusted": false
+    },
+    {
+      "complete": false,
+      "id": "flyingrobots/geordi#1",
+      "opaque": false,
+      "status": "open",
+      "untrusted": false
+    }
+  ],
+  "not_planned": [],
+  "outcome": "planned",
+  "ready": [
+    "flyingrobots/echo#5"
+  ],
+  "redundant": [],
+  "scores": {
+    "flyingrobots/echo#5": 121,
+    "flyingrobots/geordi#1": 10
+  },
+  "skipped": [],
+  "unknown_capacity": [],
+  "unmodeled": [],
+  "untrusted": [],
+  "untrusted_pull_requests": [],
+  "waves": [
+    [
+      "flyingrobots/echo#5"
+    ],
+    [
+      "flyingrobots/geordi#1"
+    ]
+  ]
+}

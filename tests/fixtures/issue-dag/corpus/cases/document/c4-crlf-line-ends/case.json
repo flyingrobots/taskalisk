@@ -1,0 +1,12 @@
+{
+  "cites": [
+    "C1",
+    "C2",
+    "C4"
+  ],
+  "id": "document/c4-crlf-line-ends",
+  "kind": "normative",
+  "level": "document",
+  "source": "constructed from the rule text",
+  "title": "CR LF is a line end throughout"
+}

@@ -1,0 +1,11 @@
+{
+  "cites": [
+    "D5",
+    "X3"
+  ],
+  "id": "graph/d5-transferred",
+  "kind": "normative",
+  "level": "graph",
+  "source": "constructed from the rule text",
+  "title": "A transferred reference gives a violation to the document that names it"
+}

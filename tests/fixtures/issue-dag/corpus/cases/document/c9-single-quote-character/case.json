@@ -1,0 +1,10 @@
+{
+  "cites": [
+    "C9"
+  ],
+  "id": "document/c9-single-quote-character",
+  "kind": "normative",
+  "level": "document",
+  "source": "constructed from the rule text",
+  "title": "A single quote character is its own text"
+}

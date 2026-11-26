@@ -1,0 +1,11 @@
+{
+  "cites": [
+    "L4",
+    "V10"
+  ],
+  "id": "document/l4-largest-size",
+  "kind": "normative",
+  "level": "document",
+  "source": "constructed from the rule text",
+  "title": "`.size_hours` may be 2147483647, with a warning"
+}

@@ -1,0 +1,12 @@
+{
+  "cites": [
+    "S2",
+    "Q2",
+    "K4"
+  ],
+  "id": "graph/s2-opaque-with-pull-request",
+  "kind": "normative",
+  "level": "graph",
+  "source": "constructed from the rule text",
+  "title": "An opaque node with a linked pull request is in review and still not dispatchable"
+}

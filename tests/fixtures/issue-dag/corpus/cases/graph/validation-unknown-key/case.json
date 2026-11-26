@@ -1,0 +1,8 @@
+{
+  "cites": [],
+  "id": "graph/validation-unknown-key",
+  "kind": "characterisation",
+  "level": "graph",
+  "source": "tests/test_taskalisk.py Validation.test_unknown_dot_key_fails",
+  "title": "Scenario validation-unknown-key"
+}

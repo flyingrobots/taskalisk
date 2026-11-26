@@ -1,0 +1,10 @@
+{
+  "cites": [
+    "C6"
+  ],
+  "id": "document/c6-no-colon",
+  "kind": "normative",
+  "level": "document",
+  "source": "constructed from the rule text",
+  "title": "A line without a colon is of another form"
+}

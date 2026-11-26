@@ -1,0 +1,11 @@
+{
+  "cites": [
+    "C5",
+    "M3"
+  ],
+  "id": "document/c5-hash-inside-a-value",
+  "kind": "normative",
+  "level": "document",
+  "source": "constructed from the rule text",
+  "title": "A `#` inside a value is part of it"
+}

@@ -1,0 +1,10 @@
+{
+  "cites": [
+    "C1"
+  ],
+  "id": "document/c1-blanks-after-info-string",
+  "kind": "normative",
+  "level": "document",
+  "source": "constructed from the rule text",
+  "title": "Blanks may follow `yaml` on the opening fence"
+}

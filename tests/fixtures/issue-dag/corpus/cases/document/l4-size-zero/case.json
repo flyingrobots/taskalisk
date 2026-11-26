@@ -1,0 +1,10 @@
+{
+  "cites": [
+    "L4"
+  ],
+  "id": "document/l4-size-zero",
+  "kind": "normative",
+  "level": "document",
+  "source": "constructed from the rule text",
+  "title": "`.size_hours` is at least 1"
+}

@@ -1,0 +1,12 @@
+{
+  "cites": [
+    "C8",
+    "C9",
+    "L2"
+  ],
+  "id": "document/c8-items-trimmed-and-unquoted",
+  "kind": "normative",
+  "level": "document",
+  "source": "constructed from the rule text",
+  "title": "List items are trimmed and unquoted"
+}

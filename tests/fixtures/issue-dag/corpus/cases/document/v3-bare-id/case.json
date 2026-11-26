@@ -1,0 +1,11 @@
+{
+  "cites": [
+    "V3",
+    "L1"
+  ],
+  "id": "document/v3-bare-id",
+  "kind": "normative",
+  "level": "document",
+  "source": "constructed from the rule text",
+  "title": "`.id` must be a reference"
+}

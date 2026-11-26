@@ -1,0 +1,8 @@
+{
+  "cites": [],
+  "id": "graph/trust-root-outside-scope",
+  "kind": "characterisation",
+  "level": "graph",
+  "source": "tests/test_taskalisk.py Trust.test_root_outside_the_scope_is_refused",
+  "title": "Scenario trust-root-outside-scope"
+}

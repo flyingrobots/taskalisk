@@ -1,0 +1,8 @@
+{
+  "cites": [],
+  "id": "graph/resources-declared-capacity",
+  "kind": "characterisation",
+  "level": "graph",
+  "source": "tests/test_taskalisk.py Resources.test_declared_semaphore_capacity_allows_parallel_slots",
+  "title": "Scenario resources-declared-capacity"
+}

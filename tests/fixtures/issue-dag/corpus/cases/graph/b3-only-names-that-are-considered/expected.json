@@ -1,0 +1,31 @@
+{
+  "batch": [
+    "o/r#2"
+  ],
+  "edges": [],
+  "findings": [],
+  "nodes": [
+    {
+      "complete": false,
+      "id": "o/r#1",
+      "opaque": false,
+      "status": "blocked",
+      "untrusted": false
+    },
+    {
+      "complete": false,
+      "id": "o/r#2",
+      "opaque": false,
+      "status": "open",
+      "untrusted": false
+    }
+  ],
+  "outcome": "planned",
+  "ready": [
+    "o/r#1",
+    "o/r#2"
+  ],
+  "unknown_capacity": [
+    "gpu"
+  ]
+}

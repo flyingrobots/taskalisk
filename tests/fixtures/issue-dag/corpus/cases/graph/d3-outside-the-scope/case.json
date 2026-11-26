@@ -1,0 +1,12 @@
+{
+  "cites": [
+    "D3",
+    "X3",
+    "F1"
+  ],
+  "id": "graph/d3-outside-the-scope",
+  "kind": "normative",
+  "level": "graph",
+  "source": "constructed from the rule text",
+  "title": "A reference outside the read scope is never read; the document naming it receives a violation"
+}

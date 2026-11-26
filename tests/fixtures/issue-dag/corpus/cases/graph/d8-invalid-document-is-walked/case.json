@@ -1,0 +1,10 @@
+{
+  "cites": [
+    "D8"
+  ],
+  "id": "graph/d8-invalid-document-is-walked",
+  "kind": "normative",
+  "level": "graph",
+  "source": "constructed from the rule text",
+  "title": "Discovery follows the prerequisites of a document with violations"
+}

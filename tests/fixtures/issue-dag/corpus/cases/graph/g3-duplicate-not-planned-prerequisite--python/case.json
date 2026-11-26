@@ -1,0 +1,16 @@
+{
+  "cites": [
+    "G3"
+  ],
+  "disagreement": {
+    "classification": "compatibility-exception",
+    "difference": 10,
+    "note": "the compiler lists one pair per occurrence; only the review list differs, never readiness, ranking or the batch"
+  },
+  "id": "graph/g3-duplicate-not-planned-prerequisite--python",
+  "kind": "characterisation",
+  "level": "graph",
+  "normative_case": "graph/g3-duplicate-not-planned-prerequisite",
+  "source": "the Python compiler, on the bundle of graph/g3-duplicate-not-planned-prerequisite",
+  "title": "What the compiler does: A not-planned prerequisite named twice is one pair for review"
+}

@@ -1,0 +1,8 @@
+{
+  "cites": [],
+  "id": "graph/trust-untrusted-dependents",
+  "kind": "characterisation",
+  "level": "graph",
+  "source": "tests/test_taskalisk.py Trust.test_untrusted_descendants_do_not_inflate_ranking",
+  "title": "Scenario trust-untrusted-dependents"
+}

@@ -1,0 +1,8 @@
+{
+  "cites": [],
+  "id": "graph/trust-association-outside-scope",
+  "kind": "characterisation",
+  "level": "graph",
+  "source": "tests/test_taskalisk.py Trust.test_association_only_counts_inside_the_scope",
+  "title": "Scenario trust-association-outside-scope"
+}
