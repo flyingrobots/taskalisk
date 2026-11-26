@@ -258,6 +258,16 @@ schema version under `Unreleased` is a draft and may change in place.
   always matches its code. A caller that read `finding.code` as a string uses
   `finding.code().as_str()`, and one that read `finding.severity` uses `finding.severity()`.
 
+- **Why a reference could not be read, in part** (flyingrobots/taskalisk#45). The test
+  `unreadable_references` pins the three causes today's observations tell apart: outside the read
+  scope (`profile.D3`), a pull request (`profile.D4`, with `profile.X3` to each open task that
+  writes it) and transferred (`profile.D5`). Each gives one finding with its code, and a D3 or D5
+  reference written by two documents gives each one. The finding reference gains a section on
+  them. Owner, repository and issue number not found are not told apart and get no code: bundle
+  rule OB8 records a reference that resolves to no issue as one unavailable slot with a free-text
+  reason, and profile rule D10 makes the run incomplete, with no findings. Telling them apart needs
+  a change to the issue-dag specification first, which is flyingrobots/taskalisk#126.
+
 - **A provenance check for the vendored Parley writer** (flyingrobots/taskalisk#77).
   `scripts/check_vendored_writer.py` fetches the writer from flyingrobots/parley at the pinned
   commit and requires it to equal the pin and the copy; CI runs it. The offline pin test proves
