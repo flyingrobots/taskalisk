@@ -9,6 +9,22 @@ schema version under `Unreleased` is a draft and may change in place.
 
 ### Added
 
+- **Which part of a reference could not be found** (flyingrobots/taskalisk#126). The vendored
+  issue-dag specification (flyingrobots/issue-dag#9) adds bundle rule OB17: an unavailable issue
+  slot may record `not_found` (`owner`, `repository` or `number`) beside its free-text reason, and
+  any other value or placement is refused. Profile rules D11 to D13 name the three causes; D10
+  keeps the run incomplete whatever the cause, and a cause is no finding. `issue-dag-core` gains
+  `NotFound`, `Observations::not_found`, `Forge::not_found` (default `None`) and
+  `Outcome::Incomplete::cause`, reported under OB16 for the slot with the least reason (no cause
+  first); its codes `profile.D11`, `profile.D12` and `profile.D13` are in `CODES` and
+  `docs/topics/findings/README.md`. `issue-dag-bundle` reads and checks OB17. The corpus tooling
+  validates OB17, allows `cause` only in normative cases, compares findings with repeats (CC8), and
+  keeps one X3 per occurrence in the Python projection. #125's D10 test now pins the causes. A task
+  that names the same unknown prerequisite twice gets one X3 finding (F5); the Python's one per
+  occurrence is difference 27. 25 new graph cases; corpus digest
+  `sha256:4f008167c292e543961fbdd3604bfc96267323e86ce52fa37c5ccccb22674ab3`. The `gh` adapter
+  records no cause yet (flyingrobots/taskalisk#51).
+
 - **The Rust document core** (flyingrobots/taskalisk#27). A Cargo workspace at the repository root
   (Rust 1.100.0, pinned in `rust-toolchain.toml`) holds `crates/issue-dag-core`, a library with no
   I/O and no dependencies: a hand-written `issue-dag/2` carrier parser and validator, the typed

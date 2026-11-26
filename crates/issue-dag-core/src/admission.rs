@@ -5,7 +5,9 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::forge::Forge;
-use crate::observation::{Actor, Body, Lookup, Missing, Observed, PullRequest, ReadScope, Repo};
+use crate::observation::{
+    Actor, Body, Lookup, Missing, NotFound, Observed, PullRequest, ReadScope, Repo,
+};
 
 /// An actor's identity (rule AD3): whether it is a bot, and its name in
 /// ASCII lower case. A bot and a person never share an identity.
@@ -102,6 +104,11 @@ pub enum Undecided {
     /// A lookup the rules reach is unavailable (rule AD10): the run is
     /// incomplete.
     Unavailable(String),
+    /// A reference resolves to no issue, and its unavailable slot records
+    /// which part was not found (bundle rule OB17, profile rules D10 to
+    /// D13): the run is incomplete, as for [`Undecided::Unavailable`], with
+    /// the reason and the cause.
+    NotFound(String, NotFound),
     /// A lookup the rules reach was not recorded (bundle rule OB5).
     Missing(Missing),
 }
@@ -117,11 +124,13 @@ impl From<Missing> for Undecided {
 /// reach. A missing slot (bundle rule OB5) takes precedence over an
 /// unavailable one (AD10, profile rule F1). The one reported is the least
 /// of its kind (bundle rule OB16): of missing slots, the least path from
-/// `observations`; of unavailable ones, the least reason. So the order of
+/// `observations`; of unavailable ones, the least reason, and of those with
+/// that reason the least cause (OB17), no cause first. So the order of
 /// reading never changes the result (profile rule D2).
 #[derive(Debug, Default)]
 pub struct Gaps {
-    unavailable: BTreeSet<String>,
+    /// Each reason with its cause; `None` sorts before every cause.
+    unavailable: BTreeSet<(String, Option<NotFound>)>,
     missing: BTreeSet<Missing>,
 }
 
@@ -131,7 +140,11 @@ impl Gaps {
         match result {
             Ok(v) => Some(v),
             Err(Undecided::Unavailable(why)) => {
-                self.unavailable.insert(why);
+                self.unavailable.insert((why, None));
+                None
+            }
+            Err(Undecided::NotFound(why, cause)) => {
+                self.unavailable.insert((why, Some(cause)));
                 None
             }
             Err(Undecided::Missing(missing)) => {
@@ -146,10 +159,11 @@ impl Gaps {
         if let Some(missing) = self.missing.into_iter().next() {
             return Err(Undecided::Missing(missing));
         }
-        if let Some(why) = self.unavailable.into_iter().next() {
-            return Err(Undecided::Unavailable(why));
+        match self.unavailable.into_iter().next() {
+            Some((why, None)) => Err(Undecided::Unavailable(why)),
+            Some((why, Some(cause))) => Err(Undecided::NotFound(why, cause)),
+            None => Ok(()),
         }
-        Ok(())
     }
 }
 

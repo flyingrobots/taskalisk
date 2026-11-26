@@ -297,7 +297,8 @@ fn ob17_an_unavailable_issue_records_which_part_was_not_found() {
         ("number", NotFound::Number),
     ] {
         let mut b = example();
-        b["observations"]["issues"]["o/r#2"] = json!({"unavailable": "HTTP 404", "not_found": value});
+        b["observations"]["issues"]["o/r#2"] =
+            json!({"unavailable": "HTTP 404", "not_found": value});
         let bundle = load(&b.to_string()).expect("the bundle loads");
         assert_eq!(
             bundle.observations.issues.get(&two),
@@ -313,11 +314,22 @@ fn ob17_an_unavailable_issue_records_which_part_was_not_found() {
 /// OB17: a value outside the three is refused, not ignored.
 #[test]
 fn ob17_an_unknown_cause_is_rejected() {
-    for value in [json!("team"), json!("Owner"), json!(""), json!(null), json!(1), json!(["owner"])] {
+    for value in [
+        json!("team"),
+        json!("Owner"),
+        json!(""),
+        json!(null),
+        json!(1),
+        json!(["owner"]),
+    ] {
         let mut b = example();
-        b["observations"]["issues"]["o/r#2"] = json!({"unavailable": "HTTP 404", "not_found": value});
+        b["observations"]["issues"]["o/r#2"] =
+            json!({"unavailable": "HTTP 404", "not_found": value});
         let error = reject(&b);
-        assert_eq!(error.at, "observations.issues[\"o/r#2\"].not_found", "{value}");
+        assert_eq!(
+            error.at, "observations.issues[\"o/r#2\"].not_found",
+            "{value}"
+        );
     }
 }
 

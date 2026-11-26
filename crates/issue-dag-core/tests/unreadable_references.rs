@@ -339,7 +339,10 @@ fn the_cause_is_the_recorded_one_not_the_one_the_reason_names() {
     );
     assert_eq!(
         incomplete(&["o/r#1"], &obs),
-        ("owner not found (HTTP 404)".to_owned(), Some(NotFound::Number))
+        (
+            "owner not found (HTTP 404)".to_owned(),
+            Some(NotFound::Number)
+        )
     );
 }
 

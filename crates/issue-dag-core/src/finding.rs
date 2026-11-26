@@ -14,6 +14,7 @@ use core::fmt;
 
 use crate::body::BODY_CODES;
 use crate::label::{self, Label};
+use crate::observation::NotFound;
 use crate::plan_warning::PLAN_CODES;
 use crate::reference::IssueRef;
 use crate::shape::SHAPE_CODES;
@@ -26,7 +27,8 @@ pub const LABELS: [Label; label::VARIANTS] = label::ALL;
 /// The catalogue of every finding code the crate can report.
 ///
 /// Each code comes with its severity: the document codes in [`LABELS`] order, then the planning
-/// profile's in [`PROFILE_RULES`] order, then Taskalisk's body warnings in
+/// profile's in [`PROFILE_RULES`] order, then the causes of a reference not found
+/// ([`NotFound::code`], in [`NotFound::ALL`] order), then Taskalisk's body warnings in
 /// [`crate::BODY_WARNINGS`] order, then its shape warnings in [`crate::SHAPE_WARNINGS`] order,
 /// then its plan warnings in [`crate::PLAN_WARNINGS`] order.
 /// Each code appears once.
@@ -42,6 +44,7 @@ pub const CODES: &[(&str, Severity)] = &CATALOGUE;
 const FAMILIES: &[&[(&str, Severity)]] = &[
     &LABEL_CODES,
     &PROFILE_CODES,
+    &NOT_FOUND_CODES,
     &BODY_CODES,
     &SHAPE_CODES,
     &PLAN_CODES,
@@ -70,6 +73,38 @@ const PROFILE_CODES: [(&str, Severity); PROFILE_RULES.len()] = {
     }
     out
 };
+
+/// The causes of a reference not found (profile rules D11 to D13), in
+/// [`NotFound::ALL`] order. A cause is no finding: an incomplete run reports
+/// it beside its reason ([`crate::Outcome::Incomplete`]), and it has a code
+/// so that the report is stable.
+const NOT_FOUND_CODES: [(&str, Severity); NotFound::ALL.len()] = {
+    let mut out = [("", Severity::Error); NotFound::ALL.len()];
+    let mut i = 0;
+    while i < NotFound::ALL.len() {
+        out[i] = (not_found_code(NotFound::ALL[i]), Severity::Error);
+        i += 1;
+    }
+    out
+};
+
+/// The code text of a cause: `profile.` and the label of its rule.
+const fn not_found_code(cause: NotFound) -> &'static str {
+    match cause {
+        NotFound::Owner => "profile.D11",
+        NotFound::Repository => "profile.D12",
+        NotFound::Number => "profile.D13",
+    }
+}
+
+impl NotFound {
+    /// The catalogued code of the cause: `profile.D11`, `profile.D12` or
+    /// `profile.D13`.
+    #[must_use]
+    pub const fn code(self) -> Code {
+        Code::of(not_found_code(self))
+    }
+}
 
 /// The number of codes over all [`FAMILIES`].
 const CODE_COUNT: usize = {
@@ -470,8 +505,10 @@ impl fmt::Display for Rule {
 /// run that [`Rule::code`] codes: D3, D4, D5, X2, X3 and G4). A code never
 /// changes meaning; a rule that is added gets a new code. The table lists
 /// the codes in [`CODES`] order: the labels' codes in [`LABELS`] order, then
-/// the profile's in [`PROFILE_RULES`] order, then the body warnings, then
-/// the shape warnings, then the plan warnings.
+/// the profile's in [`PROFILE_RULES`] order, then the causes of a reference
+/// not found ([`NotFound::code`]: D11, D12 and D13, which are no findings but
+/// the cause an incomplete run reports), then the body warnings, then the
+/// shape warnings, then the plan warnings.
 ///
 /// Rules C1 to C3 decide whether a body has a document at all (a body without
 /// one has no findings), and C5, C9, C10, V9, V11 and V12 never fail a
@@ -523,6 +560,9 @@ impl fmt::Display for Rule {
 /// | `profile.X2` | a prerequisite that is a container | error |
 /// | `profile.X3` | an unknown prerequisite | error |
 /// | `profile.G4` | a node of a cycle, or downstream of one | error |
+/// | `profile.D13` | the cause of an incomplete run: issue number not found | error |
+/// | `profile.D11` | the cause of an incomplete run: owner not found | error |
+/// | `profile.D12` | the cause of an incomplete run: repository not found | error |
 /// | `taskalisk.acceptance-missing` | a task body without `## Acceptance` | warning |
 /// | `taskalisk.outcome-items` | an Outcome of more than one list item | warning |
 /// | `taskalisk.outcome-missing` | a task body without `## Outcome` | warning |

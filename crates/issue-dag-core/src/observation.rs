@@ -68,6 +68,66 @@ pub enum Observed<T> {
     Unavailable(String),
 }
 
+/// The part of a reference that no lookup found (bundle rule OB17).
+///
+/// It is the cause of an unavailable issue slot, profile rules D11 to D13.
+/// A cause is read only from the slot's `not_found` member, never out of its
+/// reason.
+///
+/// The variants are declared in the order of the UTF-8 bytes of their
+/// values, the order in which bundle rule OB16 compares causes; do not move
+/// them.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum NotFound {
+    /// `number`: the repository was found, and no issue or pull request has
+    /// the number (D13).
+    Number,
+    /// `owner`: no account has the owner's login (D11).
+    Owner,
+    /// `repository`: the owner was found, and has no repository of that
+    /// name (D12).
+    Repository,
+}
+
+impl NotFound {
+    /// Every cause, in the order of [`Ord`].
+    pub const ALL: [Self; 3] = [Self::Number, Self::Owner, Self::Repository];
+
+    /// The cause a `not_found` value names, or `None` for any other text,
+    /// which a reader refuses (OB17).
+    #[must_use]
+    pub fn parse(text: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|cause| cause.as_str() == text)
+    }
+
+    /// The value of `not_found`, as a bundle records it.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Number => "number",
+            Self::Owner => "owner",
+            Self::Repository => "repository",
+        }
+    }
+
+    /// The label of the profile rule that names the cause, as the corpus
+    /// writes it (corpus rule CC6).
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Owner => "D11",
+            Self::Repository => "D12",
+            Self::Number => "D13",
+        }
+    }
+}
+
+impl fmt::Display for NotFound {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
 /// A slot the run needs and the observations do not hold (bundle rule
 /// OB5). It is neither empty nor unavailable: the evidence is unusable.
 ///
