@@ -93,7 +93,9 @@ schema version under `Unreleased` is a draft and may change in place.
   sorted the same way; a body filled minimally from each canonical template has none. A missing
   section's message names the exact heading it requires. `CODES` is the one public catalogue of
   every finding code with its severity, document codes, then profile codes, then body warnings;
-  every family of findings registers there.
+  every family of findings registers there. The body is read as CommonMark renders it, parsed by
+  `pulldown-cmark` (no default features, no extensions): headings may be ATX or setext, and
+  code spans, code blocks and HTML, and real paragraph boundaries, are the parser's.
 
 - **A provenance check for the vendored Parley writer** (flyingrobots/taskalisk#77).
   `scripts/check_vendored_writer.py` fetches the writer from flyingrobots/parley at the pinned

@@ -8,35 +8,40 @@
 //!
 //! # How a body is read
 //!
-//! - **Headings.** A section is found by an ATX heading of level 2 whose text
-//!   is exactly `Outcome`, `Scope` or `Acceptance`: case-sensitive, nothing
-//!   after the name except an optional closing `#` sequence, with up to three
-//!   spaces of indent and any spaces or tabs around the text. So
-//!   `## Out of scope` is not Scope, and `# Outcome`, `### Outcome` and
-//!   `## outcome` are not Outcome. Setext headings are not read.
-//! - **Hidden text.** Lines inside a fenced code block (three or more
-//!   backticks or tildes, which includes the frontmatter block) and text
-//!   inside an HTML comment are not read, as GitHub does not render them.
+//! The body is parsed as `CommonMark` (no extensions) by `pulldown-cmark`,
+//! so it is read as it renders, not line by line.
+//!
+//! - **Headings.** A section is found by a level-2 heading, ATX or setext,
+//!   outside any block quote or list, whose rendered text is exactly
+//!   `Outcome`, `Scope` or `Acceptance` and holds nothing but plain text:
+//!   case-sensitive, with no code, emphasis, link or HTML. So
+//!   `## Out of scope` and `## **Scope**` are not Scope, and `# Outcome`,
+//!   `### Outcome` and `## outcome` are not Outcome.
+//! - **Hidden text.** Code blocks (which include the frontmatter block),
+//!   inline code spans and HTML, comments included, add no text.
 //! - **The Outcome section** runs from its heading (the first, if there are
-//!   several) to the next heading of level 1 or 2. A line starting with `-`,
-//!   `*`, `+`, or a number and `.` or `)`, then a space, is a list item;
-//!   other lines are prose, and an indented line after an item continues
-//!   it. More than one item is `taskalisk.outcome-items`.
-//! - **Sentences.** Inline code spans are skipped. A sentence ends at `.`,
-//!   `!` or `?` (after any closing quote or bracket) followed by whitespace
-//!   and an uppercase letter; each paragraph of prose holds at least one.
-//!   More than one sentence in the prose, or in any single item, is
-//!   `taskalisk.outcome-sentences`. So `e.g. a block` and `v1.2` do not
-//!   end a sentence, and two paragraphs are two sentences.
-//! - **The title**, when given, joins two things when, outside inline code,
-//!   it holds a `;` or the word `and` (any ASCII case) between two other
-//!   words. The observation bundle records no titles, so a caller without
-//!   one passes `None` and this check is skipped.
+//!   several) to the next heading of level 1 or 2. Every list item in it, at
+//!   any depth, counts; more than one is `taskalisk.outcome-items`. An
+//!   item's text is that of its own paragraphs; each paragraph or lower
+//!   heading outside a list is a prose paragraph.
+//! - **Sentences.** A sentence ends at `.`, `!` or `?` (after any closing
+//!   quote or bracket) followed by whitespace and an uppercase letter; each
+//!   prose paragraph holds at least one. More than one sentence over all the
+//!   prose paragraphs, or in any single item, is
+//!   `taskalisk.outcome-sentences`. So `e.g. a block` and `v1.2` do not end
+//!   a sentence, and two paragraphs (separated by a blank line, a code block
+//!   or anything else that ends a `CommonMark` paragraph) are two sentences.
+//! - **The title**, when given, is read as inline Markdown and joins two
+//!   things when, outside code spans, it holds a `;` or the word `and` (any
+//!   ASCII case) between two other words. The observation bundle records no
+//!   titles, so a caller without one passes `None` and this check is skipped.
 //!
 //! Only a valid document of `.kind: task` is checked: a container, a body
 //! without a document, and an invalid document have no body warnings, as an
 //! invalid document reports no warnings of its own. Deciding whether a task
 //! is atomic, and any threshold on acceptance items, are out of scope.
+
+use pulldown_cmark::{Event, HeadingLevel, Parser, Tag, TagEnd};
 
 use crate::finding::{Finding, Severity};
 use crate::record::Kind;
@@ -124,20 +129,19 @@ pub fn body_warnings(body: &str, address: &IssueRef, title: Option<&str>) -> Vec
     if !is_task {
         return Vec::new();
     }
-    let lines = visible_lines(body);
+    let reading = read(body);
     let mut found = Vec::new();
     for (name, warning) in [
         ("Acceptance", BodyWarning::AcceptanceMissing),
         ("Scope", BodyWarning::ScopeMissing),
     ] {
-        if section(&lines, name).is_none() {
+        if !reading.sections.iter().any(|s| s == name) {
             found.push(warning);
         }
     }
-    match section(&lines, "Outcome") {
+    match reading.outcome {
         None => found.push(BodyWarning::OutcomeMissing),
-        Some(outcome) => {
-            let shape = Shape::of(outcome);
+        Some(shape) => {
             if shape.items > 1 {
                 found.push(BodyWarning::OutcomeItems);
             }
@@ -163,152 +167,80 @@ pub fn body_warnings(body: &str, address: &IssueRef, title: Option<&str>) -> Vec
     findings
 }
 
-/// The lines of a body as rendered text: `None` for a line that is hidden
-/// (in or delimiting a fenced code block, or wholly inside an HTML comment),
-/// otherwise the line without its comments and its line end.
-fn visible_lines(body: &str) -> Vec<Option<String>> {
-    let mut fence: Option<(char, usize)> = None;
-    let mut in_comment = false;
-    let mut out = Vec::new();
-    for raw in body.lines() {
-        let line = raw.strip_suffix('\r').unwrap_or(raw);
-        if let Some((mark, open)) = fence {
-            if fence_run(line)
-                .is_some_and(|(c, n, rest)| c == mark && n >= open && rest.trim().is_empty())
-            {
-                fence = None;
+/// The name of the section whose shape is read.
+const OUTCOME: &str = "Outcome";
+
+/// A body as `CommonMark` reads it.
+struct Reading {
+    /// The text of each section heading, in order.
+    sections: Vec<String>,
+    /// The shape of the first Outcome section, if there is one.
+    outcome: Option<Shape>,
+}
+
+/// The sections of `body` and the shape of its first Outcome section.
+///
+/// A section heading is an ATX or setext heading of level 1 or 2 outside any
+/// block quote or list. Its text counts only when the heading holds plain
+/// text and nothing else (no code, emphasis, link or HTML), so `## **Scope**`
+/// names no section. A level-1 heading ends a section and names none.
+fn read(body: &str) -> Reading {
+    let mut sections = Vec::new();
+    let mut outcome = None;
+    // The Outline of the Outcome section while it is open.
+    let mut open: Option<Outline> = None;
+    // A section heading being read: its level, and its text while plain.
+    let mut heading: Option<(HeadingLevel, Option<String>)> = None;
+    // The block quotes and lists open around the current event.
+    let mut depth = 0_usize;
+    for event in Parser::new(body) {
+        if let Some((level, text)) = &mut heading {
+            match event {
+                Event::End(TagEnd::Heading(_)) => {
+                    if let (HeadingLevel::H2, Some(text)) = (*level, text.take()) {
+                        if text == OUTCOME && !sections.iter().any(|s| s == OUTCOME) {
+                            open = Some(Outline::default());
+                        }
+                        sections.push(text);
+                    }
+                    heading = None;
+                }
+                Event::Text(t) => {
+                    if let Some(text) = text {
+                        text.push_str(&t);
+                    }
+                }
+                _ => *text = None,
             }
-            out.push(None);
             continue;
         }
-        if !in_comment && let Some((mark, n, _)) = fence_run(line) {
-            fence = Some((mark, n));
-            out.push(None);
-            continue;
-        }
-        let was_blank = line.trim().is_empty();
-        let text = strip_comments(line, &mut in_comment);
-        out.push((was_blank || !text.trim().is_empty()).then_some(text));
-    }
-    out
-}
-
-/// The fence character, the length of its run and the rest of the line, when
-/// the line opens or may close a fenced code block.
-fn fence_run(line: &str) -> Option<(char, usize, &str)> {
-    let text = unindent(line)?;
-    let mark = text.chars().next().filter(|c| matches!(c, '`' | '~'))?;
-    let n = text.chars().take_while(|&c| c == mark).count();
-    let rest = &text[n..];
-    // A backtick fence's info string holds no backtick (CommonMark 4.5):
-    // such a line is a paragraph with a code span, not a fence.
-    (n >= 3 && !(mark == '`' && rest.contains('`'))).then_some((mark, n, rest))
-}
-
-/// The line without up to three spaces of indent, or `None` when it is
-/// indented further (an indented code line, never a heading or a fence).
-fn unindent(line: &str) -> Option<&str> {
-    let spaces = line.bytes().take_while(|&b| b == b' ').count();
-    (spaces <= 3).then(|| &line[spaces..])
-}
-
-/// The line without the text of HTML comments, carrying whether a comment
-/// is still open at its end.
-fn strip_comments(line: &str, in_comment: &mut bool) -> String {
-    let mut out = String::new();
-    let mut rest = line;
-    loop {
-        if *in_comment {
-            let Some(end) = rest.find("-->") else {
-                return out;
-            };
-            rest = &rest[end + 3..];
-            *in_comment = false;
-        } else {
-            // A code span is literal text, so a `<!--` inside one opens no
-            // comment; the first of the two to start wins.
-            let opener = rest.find("<!--");
-            let span = code_span(rest).filter(|&(at, _)| opener.is_none_or(|o| at < o));
-            if let Some((_, end)) = span {
-                out.push_str(&rest[..end]);
-                rest = &rest[end..];
+        match &event {
+            Event::Start(Tag::Heading { level, .. })
+                if depth == 0 && *level <= HeadingLevel::H2 =>
+            {
+                outcome = outcome.or_else(|| open.take().map(Outline::shape));
+                heading = Some((*level, Some(String::new())));
                 continue;
             }
-            let Some(start) = opener else {
-                out.push_str(rest);
-                return out;
-            };
-            out.push_str(&rest[..start]);
-            rest = &rest[start + 4..];
-            *in_comment = true;
-        }
-    }
-}
-
-/// The first code span of `text` as the byte range from its opening backtick
-/// run to the end of its closing run, which is the next run of exactly the
-/// same length (`CommonMark` 6.1). An opening run with no closing run is
-/// literal text, and the search moves past it.
-fn code_span(text: &str) -> Option<(usize, usize)> {
-    let run = |from: usize| text[from..].bytes().take_while(|&b| b == b'`').count();
-    let mut at = text.find('`')?;
-    loop {
-        let n = run(at);
-        let mut i = at + n;
-        while let Some(off) = text[i..].find('`') {
-            let close = i + off;
-            let m = run(close);
-            if m == n {
-                return Some((at, close + m));
+            Event::Start(Tag::BlockQuote(_) | Tag::List(_)) => depth += 1,
+            Event::End(TagEnd::BlockQuote(_) | TagEnd::List(_)) => {
+                depth = depth.saturating_sub(1);
             }
-            i = close + m;
+            _ => {}
         }
-        at += n + text[at + n..].find('`')?;
+        if let Some(outline) = &mut open {
+            outline.take(&event);
+        }
     }
-}
-
-/// The level and text of an ATX heading line, its closing sequence removed.
-fn heading(line: &str) -> Option<(usize, &str)> {
-    let text = unindent(line)?;
-    let level = text.bytes().take_while(|&b| b == b'#').count();
-    if !(1..=6).contains(&level) {
-        return None;
+    Reading {
+        sections,
+        outcome: outcome.or_else(|| open.map(Outline::shape)),
     }
-    let rest = &text[level..];
-    if !(rest.is_empty() || rest.starts_with([' ', '\t'])) {
-        return None;
-    }
-    let rest = rest.trim();
-    let unclosed = rest.trim_end_matches('#');
-    let content = if unclosed.is_empty() || unclosed.ends_with([' ', '\t']) {
-        unclosed.trim_end()
-    } else {
-        rest
-    };
-    Some((level, content))
-}
-
-/// The lines of the first level-2 section named exactly `name`, up to the
-/// next heading of level 1 or 2; `None` when there is no such heading.
-fn section<'a>(lines: &'a [Option<String>], name: &str) -> Option<&'a [Option<String>]> {
-    let start = lines
-        .iter()
-        .position(|l| l.as_deref().and_then(heading) == Some((2, name)))?
-        + 1;
-    let len = lines[start..]
-        .iter()
-        .position(|l| {
-            l.as_deref()
-                .and_then(heading)
-                .is_some_and(|(level, _)| level <= 2)
-        })
-        .unwrap_or(lines.len() - start);
-    Some(&lines[start..start + len])
 }
 
 /// What an Outcome section holds.
 struct Shape {
-    /// The number of list items.
+    /// The number of list items, at any depth.
     items: usize,
     /// The sentences of its prose, over all paragraphs.
     prose_sentences: usize,
@@ -316,89 +248,94 @@ struct Shape {
     most_item_sentences: usize,
 }
 
-impl Shape {
-    fn of(lines: &[Option<String>]) -> Self {
-        let mut items: Vec<String> = Vec::new();
-        let mut paragraphs: Vec<String> = Vec::new();
-        // Where the next continuation line goes.
-        let mut open: Option<Unit> = None;
-        for line in lines.iter().flatten() {
-            if line.trim().is_empty() {
-                open = None;
-            } else if let Some(text) = list_item(line) {
-                items.push(text.to_owned());
-                open = Some(Unit::Item);
-            } else if line.starts_with([' ', '\t'])
-                && !items.is_empty()
-                && open != Some(Unit::Prose)
-            {
-                push_line(items.last_mut(), line);
-                open = Some(Unit::Item);
-            } else if open == Some(Unit::Item) {
-                push_line(items.last_mut(), line);
-            } else if open == Some(Unit::Prose) {
-                push_line(paragraphs.last_mut(), line);
-            } else {
-                paragraphs.push(line.trim().to_owned());
-                open = Some(Unit::Prose);
+/// An Outcome section's shape, built from its events.
+///
+/// Each list item collects the text of its own paragraphs (a nested item is
+/// an item of its own); each paragraph or lower heading outside a list is a
+/// prose paragraph. Code spans, code blocks and HTML add no text.
+#[derive(Default)]
+struct Outline {
+    items: usize,
+    prose_sentences: usize,
+    most_item_sentences: usize,
+    /// The text of each open item, innermost last.
+    open_items: Vec<String>,
+    /// The text of the open prose paragraph.
+    paragraph: Option<String>,
+    /// Whether a code block is open.
+    in_code: bool,
+}
+
+impl Outline {
+    fn take(&mut self, event: &Event<'_>) {
+        match event {
+            Event::Start(Tag::Item) => {
+                self.items += 1;
+                self.open_items.push(String::new());
             }
+            Event::End(TagEnd::Item) => {
+                if let Some(item) = self.open_items.pop() {
+                    self.most_item_sentences = self.most_item_sentences.max(sentences(&item));
+                }
+            }
+            Event::Start(Tag::Paragraph | Tag::Heading { .. }) => {
+                if self.open_items.is_empty() {
+                    self.paragraph = Some(String::new());
+                } else {
+                    self.push(" ");
+                }
+            }
+            Event::End(TagEnd::Paragraph | TagEnd::Heading(_)) => {
+                if let Some(paragraph) = self.paragraph.take() {
+                    self.prose_sentences += sentences(&paragraph);
+                }
+            }
+            Event::Start(Tag::CodeBlock(_)) => self.in_code = true,
+            Event::End(TagEnd::CodeBlock) => self.in_code = false,
+            Event::Text(text) if !self.in_code => self.push(text),
+            Event::Code(_) | Event::SoftBreak | Event::HardBreak => self.push(" "),
+            _ => {}
         }
-        Self {
-            items: items.len(),
-            prose_sentences: paragraphs.iter().map(|p| sentences(p)).sum(),
-            most_item_sentences: items.iter().map(|i| sentences(i)).max().unwrap_or(0),
+    }
+
+    fn push(&mut self, text: &str) {
+        if let Some(item) = self.open_items.last_mut() {
+            item.push_str(text);
+        } else if let Some(paragraph) = &mut self.paragraph {
+            paragraph.push_str(text);
+        }
+    }
+
+    fn shape(self) -> Shape {
+        Shape {
+            items: self.items,
+            prose_sentences: self.prose_sentences,
+            most_item_sentences: self.most_item_sentences,
         }
     }
 }
 
-/// The kind of unit a continuation line joins.
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum Unit {
-    Item,
-    Prose,
-}
-
-fn push_line(unit: Option<&mut String>, line: &str) {
-    if let Some(unit) = unit {
-        unit.push(' ');
-        unit.push_str(line.trim());
-    }
-}
-
-/// The text of a list item line, or `None` when the line is not one.
-fn list_item(line: &str) -> Option<&str> {
-    let text = line.trim_start();
-    let digits = text.bytes().take_while(u8::is_ascii_digit).count();
-    let marker = match text.as_bytes() {
-        [b'-' | b'*' | b'+', ..] => 1,
-        _ if (1..=9).contains(&digits)
-            && matches!(text.as_bytes().get(digits), Some(b'.' | b')')) =>
-        {
-            digits + 1
-        }
-        _ => return None,
-    };
-    let rest = &text[marker..];
-    (rest.is_empty() || rest.starts_with([' ', '\t'])).then(|| rest.trim())
-}
-
-/// The text without its inline code spans.
-fn without_code(text: &str) -> String {
+/// The rendered text of inline Markdown, each code span a space; code blocks
+/// and HTML add no text.
+fn plain_text(markdown: &str) -> String {
     let mut out = String::new();
-    let mut rest = text;
-    while let Some((start, end)) = code_span(rest) {
-        out.push_str(&rest[..start]);
-        out.push(' ');
-        rest = &rest[end..];
+    let mut in_code = false;
+    for event in Parser::new(markdown) {
+        match event {
+            Event::Start(Tag::CodeBlock(_)) => in_code = true,
+            Event::End(TagEnd::CodeBlock) => in_code = false,
+            Event::Text(text) if !in_code => out.push_str(&text),
+            Event::Code(_) | Event::SoftBreak | Event::HardBreak | Event::End(_) => out.push(' '),
+            _ => {}
+        }
     }
-    out.push_str(rest);
     out
 }
 
-/// The number of sentences in a paragraph or an item: zero when it has no
-/// letter or digit, otherwise one more than its sentence ends.
+/// The number of sentences in a paragraph or an item, its code already
+/// removed: zero when it has no letter or digit, otherwise one more than its
+/// sentence ends.
 fn sentences(text: &str) -> usize {
-    let text = without_code(text);
     if !text.chars().any(char::is_alphanumeric) {
         return 0;
     }
@@ -428,7 +365,7 @@ fn sentences(text: &str) -> usize {
 /// Whether a title joins two things: a `;`, or the word `and` between two
 /// other words, outside inline code.
 fn joins_two(title: &str) -> bool {
-    let title = without_code(title);
+    let title = plain_text(title);
     let words: Vec<&str> = title.split_whitespace().collect();
     title.contains(';')
         || words.len() >= 3

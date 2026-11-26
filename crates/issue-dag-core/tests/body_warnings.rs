@@ -533,3 +533,33 @@ fn a_backtick_run_with_a_backtick_after_it_opens_no_fence() {
     );
     assert_eq!(warning_codes(&body, None), Vec::<&str>::new());
 }
+
+#[test]
+fn a_code_span_across_a_line_break_hides_no_comment() {
+    // CommonMark 6.1: a code span may cross a line ending, so the `<!--`
+    // inside it is code, opens no comment, and hides no later section.
+    let body = task(
+        Some("The parser recognizes `<!--\nmarker` in ZQXMARK."),
+        Some(SCOPE),
+        Some(ACCEPTANCE),
+    );
+    assert_eq!(warning_codes(&body, None), Vec::<&str>::new());
+}
+
+#[test]
+fn a_fenced_block_between_prose_lines_separates_two_paragraphs() {
+    // A fence interrupts a paragraph and ends it, as a blank line does, so
+    // the prose on either side is two paragraphs and two sentences.
+    let body = task(
+        Some("The parser reads input\n```\nx\n```\nThe writer emits output"),
+        Some(SCOPE),
+        Some(ACCEPTANCE),
+    );
+    assert_eq!(warning_codes(&body, None), ["taskalisk.outcome-sentences"]);
+    let blank = task(
+        Some("The parser reads input\n\nThe writer emits output"),
+        Some(SCOPE),
+        Some(ACCEPTANCE),
+    );
+    assert_eq!(warning_codes(&blank, None), warning_codes(&body, None));
+}
