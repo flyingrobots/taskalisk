@@ -663,9 +663,10 @@ class Trust(Harness):
         spec = importlib.util.spec_from_file_location("taskalisk_md_cell_links", SCRIPT)
         tk = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(tk)
-        live = re.compile(r"(?i)(?<![a-z0-9])(?:https?://|www\.)|[a-z0-9]@[a-z0-9]|(?<![a-z0-9])@[a-z0-9]")
+        # a link start not broken by a zero-width space; any @ before a non-space counts, not only a letter
+        live = re.compile(r"(?i)(?<![a-z0-9])(?:https?://|www\.)|@(?=[^\s\u200b])")
         for title in ("_www.evil.invalid", "_http://evil.invalid", "\u00e9http://evil.invalid", "\u00e9www.evil.invalid",
-                      "a@evil.invalid", "mailto:a@evil.invalid", "xmpp:a@evil.invalid", "ping @someone", "(https://evil.invalid)"):
+                      "a@evil.invalid", "a@-evil.invalid", "a@_evil.invalid", "a@.evil.invalid", "mailto:a@evil.invalid", "xmpp:a@evil.invalid", "ping @someone", "(https://evil.invalid)"):
             with self.subTest(ascii(title)):
                 self.assertIsNone(live.search(tk._md_cell(title)), ascii(tk._md_cell(title)))
         for ch in ("\u202a", "\u202b", "\u202c", "\u202d", "\u202e", "\u2066", "\u2067", "\u2068", "\u2069", "\u200e", "\u200f", "\u061c"):
