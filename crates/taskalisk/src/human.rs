@@ -13,7 +13,7 @@ const fn unsafe_char(c: char) -> bool {
 }
 
 /// GitHub text made safe to print: each unsafe character as `\uXXXX`.
-fn hs(value: &Value) -> String {
+pub fn hs(value: &Value) -> String {
     let text = value
         .as_str()
         .map_or_else(|| value.to_string(), str::to_owned);

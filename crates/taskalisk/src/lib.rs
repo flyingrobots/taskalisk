@@ -9,6 +9,7 @@
 //! envelope ([`parley`]) with a receipt.
 
 pub mod cli;
+mod doctor;
 mod human;
 pub mod parley;
 pub mod render;

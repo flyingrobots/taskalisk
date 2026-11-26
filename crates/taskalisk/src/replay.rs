@@ -162,26 +162,9 @@ fn read_limited(path: &Path) -> std::io::Result<String> {
 
 /// Plans from the bundle or record at `path`, with reads disabled.
 pub fn replay(run: &mut Run<'_>, source: Source, path: &Path) {
-    let kind = source.kind();
-    let text = match read_limited(path) {
-        Ok(text) => text,
-        Err(e) => {
-            let problem = format!("{} {}: {e}", source.flag(), path.display());
-            return run.error(
-                &format!("{kind}.unreadable"),
-                &cli::one_sentence(&cli::home_as_tilde(&problem)),
-                Some("name a readable file of at most 64 MiB"),
-                Some(false),
-                Some(json!({
-                    "source": source.flag(),
-                    "error": cli::home_as_tilde(&e.to_string()),
-                    "limit": READ_LIMIT,
-                    "phase": "replay",
-                })),
-            );
-        }
+    let Some(text) = read(run, source.flag(), source.kind(), path) else {
+        return;
     };
-    run.input(&text);
     let bundle_text = match source {
         Source::Bundle => text,
         Source::Record => match retained(run, &text) {
@@ -189,16 +172,55 @@ pub fn replay(run: &mut Run<'_>, source: Source, path: &Path) {
             None => return,
         },
     };
-    let bundle = match load(&bundle_text) {
+    let Some((bundle, outcome)) = planned(run, source.flag(), &bundle_text) else {
+        return;
+    };
+    conclude(run, &bundle.parameters, &bundle.observations, &outcome);
+}
+
+/// The text of the file `flag` names, supplied as the run's declared input;
+/// `None` after reporting `<kind>.unreadable`.
+pub fn read(run: &mut Run<'_>, flag: &str, kind: &str, path: &Path) -> Option<String> {
+    match read_limited(path) {
+        Ok(text) => {
+            run.input(&text);
+            Some(text)
+        }
+        Err(e) => {
+            let problem = format!("{flag} {}: {e}", path.display());
+            run.error(
+                &format!("{kind}.unreadable"),
+                &cli::one_sentence(&cli::home_as_tilde(&problem)),
+                Some("name a readable file of at most 64 MiB"),
+                Some(false),
+                Some(json!({
+                    "source": flag,
+                    "error": cli::home_as_tilde(&e.to_string()),
+                    "limit": READ_LIMIT,
+                    "phase": "replay",
+                })),
+            );
+            None
+        }
+    }
+}
+
+/// The bundle in `text` and the outcome of planning it through a recorded
+/// forge alone, with a receipt step naming `flag`; `None` after reporting
+/// why the text is not a usable bundle (`bundle.invalid`,
+/// `bundle.incomplete`).
+pub fn planned(run: &mut Run<'_>, flag: &str, text: &str) -> Option<(Bundle, Outcome)> {
+    let bundle = match load(text) {
         Ok(bundle) => bundle,
         Err(e) => {
-            return run.error(
+            run.error(
                 "bundle.invalid",
                 &cli::one_sentence(&format!("not an issue-dag-observations/1 bundle: {e}")),
                 Some("give a bundle that plan --capture-bundle wrote, or that the bundle rules OB1 to OB17 accept"),
                 Some(false),
                 Some(json!({"at": e.at, "problem": e.problem, "phase": "replay"})),
             );
+            return None;
         }
     };
     let outcome = match plan(
@@ -207,7 +229,7 @@ pub fn replay(run: &mut Run<'_>, source: Source, path: &Path) {
     ) {
         Ok(outcome) => outcome,
         Err(missing) => {
-            return run.error(
+            run.error(
                 "bundle.incomplete",
                 &cli::one_sentence(&format!(
                     "the bundle is incomplete evidence: {missing}; a slot that was not recorded is never read as empty or unavailable (OB5)"
@@ -216,14 +238,30 @@ pub fn replay(run: &mut Run<'_>, source: Source, path: &Path) {
                 Some(false),
                 Some(json!({"missing": missing.path, "what": missing.what, "phase": "replay"})),
             );
+            return None;
         }
     };
     run.step(
         "planned from the recorded observations with reads disabled",
         "the run reads only the bundle, through a recorded forge: no gh or git call is made, and a slot the bundle does not hold is missing, never empty",
-        Some(json!({"source": source.flag(), "home": bundle.parameters.home.to_string()})),
+        Some(json!({"source": flag, "home": bundle.parameters.home.to_string()})),
     );
-    conclude(run, &bundle.parameters, &bundle.observations, &outcome);
+    Some((bundle, outcome))
+}
+
+/// The error of an incomplete run whose bundle records no cause (OB4).
+pub fn unavailable(run: &mut Run<'_>, unavailable: &str) {
+    run.error(
+        "observation.unavailable",
+        &cli::one_sentence(&format!(
+            "the bundle records an observation the run needs as unavailable: {unavailable}"
+        )),
+        Some(
+            "capture a new bundle once the read succeeds; nothing was planned from a partial read",
+        ),
+        Some(false),
+        Some(json!({"unavailable": unavailable, "source": "bundle", "phase": "replay"})),
+    );
 }
 
 /// The bundle a record retains, once [`replay_record`] has planned it
@@ -308,17 +346,9 @@ fn conclude(
             cause: Some(cause),
         } => cli::not_found(run, unavailable, *cause, "bundle"),
         Outcome::Incomplete {
-            unavailable,
+            unavailable: why,
             cause: None,
-        } => run.error(
-            "observation.unavailable",
-            &cli::one_sentence(&format!(
-                "the bundle records an observation the run needs as unavailable: {unavailable}"
-            )),
-            Some("capture a new bundle once the read succeeds; nothing was planned from a partial read"),
-            Some(false),
-            Some(json!({"unavailable": unavailable, "source": "bundle", "phase": "replay"})),
-        ),
+        } => unavailable(run, why),
         Outcome::Invalid { .. } | Outcome::Planned { .. } => {
             let titles = observations
                 .issues

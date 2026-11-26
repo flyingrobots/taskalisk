@@ -19,17 +19,22 @@ import parley_emit as pe  # noqa: E402  (the vendored writer and its bounded che
 ENVELOPE = ("event", "t", "seq", "run", "_schema")
 
 
-def tool_schemas():
-    """{(id, version): schema} for every schema under skills/taskalisk/schemas/."""
+def tool_schemas(directory=SCHEMA_DIR):
+    """{(id, version): schema} for every schema directly under `directory` (not recursive)."""
     out = {}
-    for path in sorted(SCHEMA_DIR.glob("*.schema.json")):
+    for path in sorted(directory.glob("*.schema.json")):
         doc = json.loads(path.read_text())
         props = doc["properties"]["_schema"]["properties"]
         out[(props["id"]["const"], props["version"]["const"])] = doc
     return out
 
 
+# The schemas of the lines the Python writes (and the binary, under the same contract).
 TOOL_SCHEMAS = tool_schemas()
+# Decision D22: the schemas only the Rust binary writes, in schemas/binary/, until the cutover (#32).
+BINARY_SCHEMAS = tool_schemas(SCHEMA_DIR / "binary")
+# Every Taskalisk schema: what a line from either implementation is validated against.
+ALL_SCHEMAS = {**TOOL_SCHEMAS, **BINARY_SCHEMAS}
 
 
 def parse(text, stream):

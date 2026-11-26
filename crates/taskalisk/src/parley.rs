@@ -662,14 +662,23 @@ impl<'w> Run<'w> {
     /// Closes the run and returns the exit status: 2 when an error was
     /// reported, 4 when a sink failed, else 0.
     #[must_use]
-    pub fn end(mut self) -> u8 {
+    pub fn end(self) -> u8 {
+        self.end_with(0)
+    }
+
+    /// Closes the run with `status` when nothing overrides it, as the
+    /// writer's `end(status)` does: 4 when a sink failed, 2 when an error
+    /// was reported (a run that reported one never ends 0), and 2 for 3,
+    /// which only a run that never started exits with (spec 3.4).
+    #[must_use]
+    pub fn end_with(mut self, status: u8) -> u8 {
         self.finalise_inputs();
         let status: u8 = if self.sink_failed {
             4
-        } else if self.error_reported {
+        } else if self.error_reported || status == 3 {
             2
         } else {
-            0
+            status
         };
         self.seq += 1;
         let line = json!({
@@ -1224,5 +1233,51 @@ mod tests {
         scrub(&mut value, &["tok".to_owned()], "", &mut found);
         assert_eq!(value, json!({"a/b": ["x [redacted] y"], "c": "none"}));
         assert_eq!(found, vec!["/a~1b/0".to_owned()]);
+    }
+
+    /// The status a run that started with nothing reported ends with, from
+    /// `end_with(status)`, and the end line it writes.
+    fn ended_with(status: u8, report: bool) -> (u8, serde_json::Value) {
+        let dir = parley_dir(&format!("end-with-{status}-{report}"));
+        let (mut out, mut err) = (Vec::new(), Vec::new());
+        let start = super::Start {
+            tool: "taskalisk",
+            v: "0",
+            command: "doctor",
+            cwd: &dir,
+            argv: Vec::new(),
+            resolved: json!({}),
+            inputs: Vec::new(),
+            effects: json!({"reads": [], "writes": [], "network": false, "idempotent": true}),
+            secrets: Vec::new(),
+            secret_names: Vec::new(),
+            human: None,
+            retention: 50,
+        };
+        let mut run = super::Run::start(start, &mut out, &mut err).expect("a run");
+        if report {
+            run.error("x.y", "a problem", None, None, None);
+        }
+        let ended = run.end_with(status);
+        let _ = std::fs::remove_dir_all(&dir);
+        let text = String::from_utf8(out).expect("UTF-8");
+        let end = text.lines().last().expect("an end line");
+        (ended, serde_json::from_str(end).expect("JSON"))
+    }
+
+    #[test]
+    fn a_run_may_end_with_its_own_status_but_never_3_or_0_after_an_error() {
+        for status in [0, 1, 5] {
+            let (ended, line) = ended_with(status, false);
+            assert_eq!(ended, status);
+            assert_eq!(line["status"], status);
+        }
+        // 3 is a run that never started (spec 3.4): a started run gives 2.
+        assert_eq!(ended_with(3, false).0, 2);
+        // A reported error ends the run with 2 whatever was asked.
+        for status in [0, 1] {
+            let (ended, line) = ended_with(status, true);
+            assert_eq!((ended, line["status"].as_u64()), (2, Some(2)));
+        }
     }
 }
