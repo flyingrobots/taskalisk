@@ -63,6 +63,21 @@ schema version under `Unreleased` is a draft and may change in place.
   reports one); the critical path is empty when no node is open; `unknown_capacity` and each
   skip's semaphores are in ascending order.
 
+- **The Rust plan renders to the skill's JSON lines** (flyingrobots/taskalisk#58). A new library
+  crate, `crates/taskalisk`, whose `render` module turns the outcome of a `/2` run, ranked by
+  `rank` and batched by `select`, into the `taskalisk.plan`, `frontier_node`, `batch`, `node`,
+  `wave`, `edge` and `finding` messages in the contract's line order, without the writer's
+  envelope; keys are sorted, so equal plans give identical bytes. It performs no I/O; the command
+  line that writes the lines is #31. On the 151 graph cases of the corpus where the Python and the
+  specification agree, every line equals the Python's (`tests/capture_render_parity.py`) once the
+  fields the core's result does not hold are removed, and the suite checks that list is exact:
+  each node's `title`, `url`, `type`, `workstream`, `size_hours`, `linked_open_prs` and
+  `recoverable_branches`; those of a batch member; the plan's `artifact_hash`; the CODEOWNERS
+  persons and teams of the trust in force; the titles, URLs, reasons and authors in findings; and
+  the discovery findings of a run whose graph is not reported (a cycle, an unknown
+  prerequisite). A frontmatter finding carries the core's fixed message, one per rule. Every
+  rendered line validates against its schema except for those fields.
+
 - **Repeated keys, warnings and refusal order in the specification** (flyingrobots/taskalisk#104).
   The vendored issue-dag specification now states the rulings the Rust core implements: no rule of
   sections 3 to 5 labels a repeated key, so labels never depend on line order, while its lines keep

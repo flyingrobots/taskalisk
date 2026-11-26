@@ -29,7 +29,8 @@ RUST_GAPS = {
     "taskalisk.batch": {f"/members/* is missing {f}" for f in ("title", "url", "workstream")},
 }
 FINDING_GAPS = {
-    "issue.untrusted": {f"/detail is missing {f}" for f in ("url", "state", "author", "reasons", "referenced_by")},
+    "issue.untrusted": {"/ is missing message"} | {f"/detail is missing {f}" for f in ("url", "state", "author", "reasons", "referenced_by")},
+    "pull_request.untrusted": {"/ is missing message"},
 }
 
 

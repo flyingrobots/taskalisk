@@ -13,6 +13,10 @@
 //!   removed from it: exactly those, no more and no fewer. A field in the
 //!   list is one the core's result does not hold (see the `render` module).
 //!
+//! When the Python's plan did not compile (a cycle, an unknown
+//! prerequisite), its findings about what discovery read are left out: the
+//! core reports no graph for such a run (rule F3), so it has none of them.
+//!
 //! `frontmatter.violation` and `frontmatter.warning` compare as the set of
 //! their subjects: the Python writes one line per message, with the value
 //! in the message, and the core one per rule, with fixed text.
@@ -123,9 +127,14 @@ fn gaps(line: &Value) -> Vec<&'static str> {
 fn remove(value: &mut Value, path: &[&str]) -> bool {
     match path {
         [] => false,
-        ["*", rest @ ..] => value
-            .as_array_mut()
-            .is_some_and(|items| items.iter_mut().fold(true, |all, i| remove(i, rest) && all)),
+        ["*", rest @ ..] => value.as_array_mut().is_some_and(|items| {
+            // From every item, so no short circuit.
+            let mut all = true;
+            for item in items {
+                all &= remove(item, rest);
+            }
+            all
+        }),
         [key] => value
             .as_object_mut()
             .is_some_and(|o| o.remove(*key).is_some()),
@@ -143,6 +152,24 @@ fn stripped(line: &Value, problems: &mut Vec<String>) -> Value {
         }
     }
     out
+}
+
+/// A finding about what discovery read (rule W1). A run whose edges cannot
+/// all be resolved, or form a cycle, reports no graph (rule F3), so those
+/// findings are not in the core's result; the Python lists them.
+fn is_discovery_finding(line: &Value) -> bool {
+    line["event"] == "finding"
+        && matches!(
+            line["code"].as_str(),
+            Some(
+                "container.excluded"
+                    | "issue.unmodeled"
+                    | "issue.untrusted"
+                    | "pull_request.untrusted"
+                    | "issue.opaque"
+                    | "parent.not_planned"
+            )
+        )
 }
 
 /// The lines in the form they compare in: every line but the
@@ -193,9 +220,12 @@ fn every_agreed_case_renders_as_the_python_does() {
         let python_text =
             fs::read_to_string(fixtures().join("python").join(format!("{case}.jsonl")))
                 .expect("the Python fixture");
+        let python = lines(&python_text);
+        let compiled = python[0]["outcome"] == "compiled";
         let want = comparable(
-            lines(&python_text)
+            python
                 .iter()
+                .filter(|l| compiled || !is_discovery_finding(l))
                 .map(|l| stripped(l, &mut problems))
                 .collect(),
         );
@@ -223,5 +253,24 @@ fn every_agreed_case_renders_as_the_python_does() {
         failures.len(),
         names.len(),
         failures.join("\n")
+    );
+}
+
+#[test]
+fn a_rejected_or_incomplete_run_has_no_result_lines() {
+    use taskalisk::render::NotRendered;
+    let outcome_of = |case: &str| {
+        let bundle = load(&bundle_text(case)).expect("bundle");
+        let forge = RecordedForge::new(&bundle.observations);
+        let outcome = plan(&bundle.parameters, &forge).expect("recorded");
+        render(&bundle.parameters, &outcome)
+    };
+    assert_eq!(
+        outcome_of("i2-root-not-a-reference"),
+        Err(NotRendered::Rejected)
+    );
+    assert_eq!(
+        outcome_of("i5-issue-unavailable"),
+        Err(NotRendered::Incomplete)
     );
 }
