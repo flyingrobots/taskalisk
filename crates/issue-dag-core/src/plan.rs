@@ -1442,6 +1442,25 @@ mod tests {
     }
 
     #[test]
+    fn the_graph_keeps_the_order_the_closure_read_references_in() {
+        // The root container o/r#9 names o/r#2 before o/r#1; both are plain.
+        let container = "```yaml\n.dag: issue-dag/2\n.id: o/r#9\n.kind: container\n.children: [o/r#2, o/r#1]\n```\n";
+        let observations = tasks(vec![
+            (9, container.to_owned()),
+            (1, "Plain body.".to_owned()),
+            (2, "Plain body.".to_owned()),
+        ]);
+        let outcome = plan(&parameters(&["o/r#9"]), &RecordedForge::new(&observations));
+        let Ok(Outcome::Planned { graph, .. }) = outcome else {
+            panic!("expected a plan, got {outcome:?}");
+        };
+        assert_eq!(
+            graph.visit_order,
+            vec![reference("o/r#9"), reference("o/r#2"), reference("o/r#1")]
+        );
+    }
+
+    #[test]
     fn an_opaque_node_carries_the_documents_that_name_it_in_the_order_read() {
         // The root container o/r#9 names o/r#1 and o/r#2; o/r#1 waits on o/r#2,
         // which has no frontmatter. o/r#9 is read before o/r#1.

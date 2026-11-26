@@ -92,7 +92,65 @@ def _opaque_child(bundle: dict[str, Any]) -> dict[str, Any]:
     return bundle
 
 
-VARIANTS = {"d9-container--opaque-child": ("d9-container", _opaque_child)}
+def _opaque_children(bundle: dict[str, Any]) -> dict[str, Any]:
+    """d9-container with `.children: [o/s#2, o/r#1]`, both with plain bodies: two opaque issues,
+    which 1.x lists in the order it read them (o/s#2 first, though o/r#1 sorts first)."""
+    issues = bundle["observations"]["issues"]
+    nine = issues["o/r#9"]["value"]["body"]["value"]
+    nine["text"] = nine["text"].replace(".children: [o/r#1, o/s#2]", ".children: [o/s#2, o/r#1]")
+    for ref in ("o/s#2", "o/r#1"):
+        issues[ref]["value"]["body"]["value"]["text"] = "A plain body.\n"
+    return bundle
+
+
+def _issue(bundle: dict[str, Any], ref: str, body: str, state: str = "open", reason: str | None = None) -> None:
+    """Adds an issue like the bundle's o/r#1, at another address, with this body."""
+    entry = json.loads(json.dumps(bundle["observations"]["issues"]["o/r#1"]))
+    value = entry["value"]
+    value.update({"address": ref, "state": state, "state_reason": reason})
+    value["body"]["value"]["text"] = body
+    bundle["observations"]["issues"][ref] = entry
+
+
+def _doc(ref: str, kind: str, key: str, refs: list[str]) -> str:
+    extra = ".type: feature\n" if kind == "task" else ""
+    return f"```yaml\n.dag: issue-dag/2\n.id: {ref}\n.kind: {kind}\n{extra}{key}: [{', '.join(refs)}]\n```\n"
+
+
+def _traversal(bundle: dict[str, Any]) -> dict[str, Any]:
+    """Every list 1.x writes in the order it read the issues, each read out of sorted order: the
+    root container o/r#9 names the container o/s#2 before the container o/r#1; o/s#2 names the
+    task o/r#30, o/r#1 the task o/r#4 and the plain o/r#20 and o/r#10; o/r#30 waits on o/r#7 and
+    then o/r#5, both closed as not planned."""
+    issues = bundle["observations"]["issues"]
+    issues["o/r#9"]["value"]["body"]["value"]["text"] = _doc("o/r#9", "container", ".children", ["o/s#2", "o/r#1"])
+    issues["o/s#2"]["value"]["body"]["value"]["text"] = _doc("o/s#2", "container", ".children", ["o/r#30"])
+    issues["o/r#1"]["value"]["body"]["value"]["text"] = _doc("o/r#1", "container", ".children", ["o/r#4", "o/r#20", "o/r#10"])
+    _issue(bundle, "o/r#30", _doc("o/r#30", "task", ".blocked_by", ["o/r#7", "o/r#5"]))
+    _issue(bundle, "o/r#4", _doc("o/r#4", "task", ".blocked_by", []))
+    _issue(bundle, "o/r#20", "A plain body.\n")
+    _issue(bundle, "o/r#10", "A plain body.\n")
+    for ref in ("o/r#7", "o/r#5"):
+        _issue(bundle, ref, _doc(ref, "task", ".blocked_by", []), state="closed", reason="not_planned")
+    return bundle
+
+
+def _two_strangers(bundle: dict[str, Any]) -> dict[str, Any]:
+    """trust-pull-request-by-stranger with a second stranger's pull request, number 9, listed
+    before number 8: 1.x lists untrusted pull requests in the order GitHub listed them."""
+    pulls = bundle["observations"]["home_open_pull_requests"]["value"]
+    nine = json.loads(json.dumps(pulls[0]))
+    nine["number"] = 9
+    pulls.insert(0, nine)
+    return bundle
+
+
+VARIANTS = {
+    "trust-pull-request-by-stranger--two-in-order-listed": ("trust-pull-request-by-stranger", _two_strangers),
+    "d9-container--traversal-order": ("d9-container", _traversal),
+    "d9-container--opaque-child": ("d9-container", _opaque_child),
+    "d9-container--opaque-children-in-order-read": ("d9-container", _opaque_children),
+}
 
 
 def bundle_of(name: str) -> dict[str, Any]:
