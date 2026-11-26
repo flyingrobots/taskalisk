@@ -7,25 +7,6 @@ schema version under `Unreleased` is a draft and may change in place.
 
 ## Unreleased
 
-### Fixed
-
-- **Review findings on the Rust graph core** (flyingrobots/taskalisk#105, merged before its review
-  finished). Each fix has a test that failed before it. The planner no longer stops at the first
-  lookup it cannot make. It reads every slot the rules reach, so neither the order of the roots
-  nor the order of discovery changes the result (D2), and a slot that was never recorded is never
-  hidden behind an unavailable one (OB5). That holds for roots, for discovered prerequisites, for
-  pull-request admission and for the editors of one body (AD8). When several lookups fail, a
-  missing one is reported before an unavailable one, and the least of its kind is chosen. A
-  transferred seed from the home listing that no document names gets no D5 finding: only a root
-  keeps the finding itself (F5). `Admission::trusted` checks the read scope before the allowlist,
-  so an allowlisted login is never trusted outside it (AD2). `Finding` compares, sorts and hashes
-  by subject, code and concerned reference alone, so its message and severity are not part of its
-  identity (F5). The bundle reader rejects a scope owner that is not a name of rule L1, such as one
-  with a space or a non-ASCII letter. The planner parses each body once, and skips the reduction's
-  n² descendant sets when no node has two children; test-only counters pin both. The 1 s bounds on large graphs, for planning and for ranking and selection (#29), left the default
-  suite, which they made flaky under load, for an ignored `perf_` suite that the new CI job "Rust
-  planning bounds (release)" runs.
-
 ### Added
 
 - **The Rust document core** (flyingrobots/taskalisk#27). A Cargo workspace at the repository root
@@ -64,6 +45,31 @@ schema version under `Unreleased` is a draft and may change in place.
   key repeated in an invalid document contributes nothing to its reading; a bot's `app/` prefix
   and `[bot]` suffix are matched without regard to case; a bundle with an `observations` member
   the bundle rules do not define is rejected.
+
+- **The gh adapter** (flyingrobots/taskalisk#56). A new crate, `crates/issue-dag-gh`, implements
+  the core's `Forge` port by running `gh` (an argument vector, never a shell string; `gh` on `PATH`
+  unless another program is configured). It makes the Python compiler's reads with its limits: the
+  REST issue list (`--paginate`, 1,000 issues) and issue, the body edit history in GraphQL (a page
+  that claims another without a cursor, a repeated cursor, or more than 1,000 pages is refused),
+  `gh pr list` with closing references (`--limit 500`), the collaborator permission and the first
+  CODEOWNERS file. It fails closed: a failed read, an answer in the wrong shape, or a list that
+  fills its limit is a `GhError` with the Python's code (`gh.command_failed`,
+  `gh.response_invalid`, `gh.list_limit_reached`), and its slot is answered unavailable, so the run
+  is incomplete and exits 2, never planned from an empty answer. HTTP 404 means "none" only for a
+  permission (not a collaborator) and a CODEOWNERS path; an issue that answers 404 is unavailable
+  (D10). Each slot is read once, and what was read replays through `RecordedForge`. As in the
+  Python, the body's edit history is read only after the author is trusted, so an issue a stranger
+  wrote costs no further query (threat model C15): the `Forge` port gains `body(reference)`, which
+  the planner calls only after admission, and an issue of the home listing is filled from the
+  listing, never fetched again; `Issue` has no body, and `Observations` keeps the bodies
+  read in their own map, `bodies`. The bundle format is unchanged: the loader reads an issue
+  slot's nested `body` into that map, a bundle may leave out a body the run never reads (OB14),
+  and a run that reads one not recorded finds it missing (OB5). An issue listed on two pages makes the listing unavailable
+  (OB6), and an edit-history page without a boolean `hasNextPage` is refused. `gh` runs without
+  `GH_FORCE_TTY`, `CLICOLOR_FORCE`, `GH_DEBUG` and `DEBUG`, and with `GH_PROMPT_DISABLED=1`,
+  `NO_COLOR=1`, `GH_NO_UPDATE_NOTIFIER=1` and `GH_PAGER=cat`, which no configured variable
+  overrides; text the server returns is left out of an error's reason. Unlike the Python, a pull
+  request's head repository is not observed.
 
 - **Ranking and batch selection in the Rust core** (flyingrobots/taskalisk#29). `issue-dag-core`
   gains `rank`, which scores every open node of a reported graph (K1 to K5: in-flight and parked
@@ -105,6 +111,24 @@ schema version under `Unreleased` is a draft and may change in place.
   only that copy and pin agree, and the output reference now says which check proves what.
 
 ### Fixed
+
+- **Review findings on the Rust graph core** (flyingrobots/taskalisk#105, merged before its review
+  finished). Each fix has a test that failed before it. The planner no longer stops at the first
+  lookup it cannot make. It reads every slot the rules reach, so neither the order of the roots
+  nor the order of discovery changes the result (D2), and a slot that was never recorded is never
+  hidden behind an unavailable one (OB5). That holds for roots, for discovered prerequisites, for
+  pull-request admission and for the editors of one body (AD8). When several lookups fail, a
+  missing one is reported before an unavailable one, and the least of its kind is chosen. A
+  transferred seed from the home listing that no document names gets no D5 finding: only a root
+  keeps the finding itself (F5). `Admission::trusted` checks the read scope before the allowlist,
+  so an allowlisted login is never trusted outside it (AD2). `Finding` compares, sorts and hashes
+  by subject, code and concerned reference alone, so its message and severity are not part of its
+  identity (F5). The bundle reader rejects a scope owner that is not a name of rule L1, such as one
+  with a space or a non-ASCII letter. The planner parses each body once, and skips the reduction's
+  n² descendant sets when no node has two children; test-only counters pin both. The 1 s bounds
+  on large graphs, for planning and for ranking and selection (#29), left the default suite,
+  which they made flaky under load, for an ignored `perf_` suite that the new CI job "Rust
+  planning bounds (release)" runs.
 
 - **The threat model no longer calls a failed trust check "untrusted"** (flyingrobots/taskalisk#101).
   Control C1 said a check that cannot be made is untrusted, and also that any trust lookup that
