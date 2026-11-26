@@ -87,8 +87,9 @@ INSTALLED = ROOT / ".github" / "ISSUE_TEMPLATE"
 
 
 def template_names(folder):
-    """The template files in a folder, by name."""
-    return sorted(p.name for p in folder.iterdir())
+    """The template files in a folder, by name. A hidden file (a `.DS_Store` the system writes, which
+    git ignores) is not a template, and is neither installed nor drift."""
+    return sorted(p.name for p in folder.iterdir() if p.is_file() and not p.name.startswith("."))
 
 THIS_REPO = ("flyingrobots/taskalisk", 83)
 
