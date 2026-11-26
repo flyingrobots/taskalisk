@@ -9,6 +9,22 @@ schema version under `Unreleased` is a draft and may change in place.
 
 ### Added
 
+- **Capture an observation bundle and replan from it offline** (flyingrobots/taskalisk#59). The
+  Rust binary's `plan --capture-bundle` (off by default) writes the `issue-dag-observations/1`
+  bundle a live plan was made from, and its retained `taskalisk-evaluation/1` record, to
+  `.parley/receipts/<run>/bundle.json` and `evaluation.json`, beside the receipt, gitignored and
+  retained with it, every declared secret redacted. `plan --from-bundle FILE` and
+  `plan --from-record FILE` replan with no `gh` or `git` read (the record through
+  `issue-dag-bundle::replay`, decision D14); `--offline` disables those reads, and without a
+  recorded source exits 2 (`plan.reads_disabled`). A missing slot is `bundle.incomplete` (OB5),
+  an unavailable one `observation.unavailable`; neither is read as empty. `issue-dag-bundle` gains
+  `dump`, the inverse of `load`, which writes every corpus bundle back to the same JSON. A replayed
+  node's title is `(title not recorded in the bundle)` and its URL null, because a bundle holds no
+  display (OB12); the renderer now writes `url: null` for a shown issue whose URL is unknown
+  rather than leaving the required member out. `tests/fixtures/bundles/` holds a bundle of
+  flyingrobots/taskalisk and the result it planned to. See `docs/topics/output/README.md`, *The
+  Rust binary*.
+
 - **Which part of a reference could not be found** (flyingrobots/taskalisk#126). The vendored
   issue-dag specification (flyingrobots/issue-dag#9) adds bundle rule OB17: an unavailable issue
   slot may record `not_found` (`owner`, `repository` or `number`) beside its free-text reason, and

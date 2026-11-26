@@ -276,40 +276,46 @@ fn schema(line: &Value) -> &str {
 /// branches) and without the run's envelope: the plan line's outcome,
 /// frontier and batch, and each node, edge, wave, batch and finding line.
 fn decided(lines: &[Value]) -> Vec<Value> {
-    const DISPLAY: [&str; 8] = [
-        "t",
-        "seq",
-        "run",
-        "title",
-        "url",
-        "recoverable_branches",
-        "artifact_hash",
-        "source",
-    ];
+    /// What only a display shows, at any depth.
+    fn strip(value: &mut Value) {
+        match value {
+            Value::Object(object) => {
+                for key in ["title", "url", "recoverable_branches"] {
+                    object.remove(key);
+                }
+                object.values_mut().for_each(strip);
+            }
+            Value::Array(items) => items.iter_mut().for_each(strip),
+            _ => {}
+        }
+    }
     lines
         .iter()
         .filter(|l| schema(l).starts_with("taskalisk."))
         .map(|l| {
             let mut l = l.clone();
             let object = l.as_object_mut().expect("an object");
-            for key in DISPLAY {
+            // The envelope, and the plan line's digest of the shown document.
+            for key in ["t", "seq", "run", "artifact_hash"] {
                 object.remove(key);
             }
-            for pull in object
-                .get_mut("linked_open_prs")
-                .and_then(Value::as_array_mut)
-                .into_iter()
-                .flatten()
-            {
-                pull.as_object_mut().expect("an object").remove("url");
-            }
-            if let Some(detail) = object.get_mut("detail").and_then(Value::as_object_mut) {
-                detail.remove("title");
-                detail.remove("url");
-            }
+            strip(&mut l);
             l
         })
         .collect()
+}
+
+/// Two plans decided the same, line by line.
+fn assert_same_plan(replayed: &[Value], captured: &[Value]) {
+    let (replayed, captured) = (decided(replayed), decided(captured));
+    for (r, c) in replayed.iter().zip(&captured) {
+        assert_eq!(r.to_string(), c.to_string(), "a line differs");
+    }
+    assert_eq!(
+        replayed.len(),
+        captured.len(),
+        "the number of lines differs"
+    );
 }
 
 fn validate(lines: &[Value]) {
@@ -344,7 +350,10 @@ fn a_capture_writes_the_bundle_the_plan_was_made_from() {
     let run = fixture.live("live", &["--capture-bundle"]);
     assert_eq!(run.status(), 0, "{}", run.explain());
     let detail = run.capture();
-    let run_id = run.stdout()[0]["run"].as_str().expect("a run id").to_owned();
+    let run_id = run.stdout()[0]["run"]
+        .as_str()
+        .expect("a run id")
+        .to_owned();
     // Beside the receipt, in the run's own directory, which retention
     // deletes with it, and which .parley/.gitignore keeps out of git.
     assert_eq!(detail["bundle"]["path"], format!("{run_id}/bundle.json"));
@@ -365,10 +374,9 @@ fn a_capture_writes_the_bundle_the_plan_was_made_from() {
     let record = evaluate(&text, &evaluator()).expect("every slot the run reads");
     assert_eq!(record.result()["outcome"], "planned");
     // The evaluation record retains the bundle, whole.
-    let saved: Value = serde_json::from_str(
-        &fs::read_to_string(run.captured("evaluation")).expect("the record"),
-    )
-    .expect("JSON");
+    let saved: Value =
+        serde_json::from_str(&fs::read_to_string(run.captured("evaluation")).expect("the record"))
+            .expect("JSON");
     assert_eq!(saved["record"], "taskalisk-evaluation/1");
     assert_eq!(
         saved["observations"]["value"],
@@ -381,6 +389,11 @@ fn a_capture_writes_the_bundle_the_plan_was_made_from() {
     assert!(!receipt.contains("```yaml"), "a body reached the receipt");
     // The bundle does: it is the run's whole input.
     assert!(text.contains("```yaml"));
+    // But never a stranger's body: it is not read (threat model C3, C15).
+    let value: Value = serde_json::from_str(&text).expect("JSON");
+    let stranger = &value["observations"]["issues"]["flyingrobots/geordi#77"]["value"];
+    assert_eq!(stranger["author_association"], "NONE", "{stranger}");
+    assert!(stranger.get("body").is_none(), "{stranger}");
 }
 
 #[test]
@@ -423,7 +436,7 @@ fn a_replay_with_reads_disabled_gives_the_captured_plan_after_live_state_changed
     );
     assert_eq!(replay.status(), 0, "{}", replay.explain());
     assert_eq!(fixture.reads(), "", "a replay read gh or git");
-    assert_eq!(decided(&replay.stdout()), decided(&captured.stdout()));
+    assert_same_plan(&replay.stdout(), &captured.stdout());
     let plan = &replay.stdout()[1];
     assert_eq!(schema(plan), "taskalisk.plan");
     assert_eq!(plan["frontier"], captured.stdout()[1]["frontier"]);
@@ -432,7 +445,10 @@ fn a_replay_with_reads_disabled_gives_the_captured_plan_after_live_state_changed
 #[test]
 fn a_replayed_plan_writes_lines_that_validate() {
     let fixture = Fixture::new("plan_state()");
-    let captured = fixture.live("live", &["--root", "flyingrobots/geordi#9", "--capture-bundle"]);
+    let captured = fixture.live(
+        "live",
+        &["--root", "flyingrobots/geordi#9", "--capture-bundle"],
+    );
     assert_eq!(captured.status(), 0, "{}", captured.explain());
     let bundle = captured.captured("bundle");
     let replay = fixture.replay(
@@ -465,7 +481,7 @@ fn an_evaluation_record_replays_offline() {
     );
     assert_eq!(replay.status(), 0, "{}", replay.explain());
     assert_eq!(fixture.reads(), "", "a replay read gh or git");
-    assert_eq!(decided(&replay.stdout()), decided(&captured.stdout()));
+    assert_same_plan(&replay.stdout(), &captured.stdout());
     let step = replay
         .receipt()
         .into_iter()
@@ -480,10 +496,18 @@ fn an_evaluation_record_replays_offline() {
     tampered["result"]["batch"] = json!([]);
     let path = fixture.dir.join("tampered.json");
     fs::write(&path, tampered.to_string()).expect("a record");
-    let replay = fixture.replay("tampered", &["--from-record", path.to_str().expect("UTF-8")]);
+    let replay = fixture.replay(
+        "tampered",
+        &["--from-record", path.to_str().expect("UTF-8")],
+    );
     assert_eq!(replay.status(), 2, "{}", replay.explain());
     assert_eq!(replay.errors()[0]["code"], "evaluation.differs");
-    assert!(replay.stdout().iter().all(|l| schema(l) != "taskalisk.plan"));
+    assert!(
+        replay
+            .stdout()
+            .iter()
+            .all(|l| schema(l) != "taskalisk.plan")
+    );
 }
 
 #[test]
@@ -505,7 +529,12 @@ fn a_record_that_did_not_retain_its_bundle_cannot_replay() {
     assert_eq!(replay.status(), 2, "{}", replay.explain());
     assert_eq!(fixture.reads(), "");
     assert_eq!(replay.errors()[0]["code"], "evaluation.unavailable");
-    assert!(replay.stdout().iter().all(|l| schema(l) != "taskalisk.plan"));
+    assert!(
+        replay
+            .stdout()
+            .iter()
+            .all(|l| schema(l) != "taskalisk.plan")
+    );
 }
 
 /// A captured bundle as JSON, to take apart.
@@ -538,7 +567,12 @@ fn a_missing_slot_makes_the_bundle_unusable_never_empty() {
         errors[0]["detail"]["missing"],
         json!(["issues", "flyingrobots/echo#5"])
     );
-    assert!(replay.stdout().iter().all(|l| schema(l) != "taskalisk.plan"));
+    assert!(
+        replay
+            .stdout()
+            .iter()
+            .all(|l| schema(l) != "taskalisk.plan")
+    );
 }
 
 #[test]
@@ -559,7 +593,12 @@ fn an_unavailable_slot_makes_the_run_incomplete_never_empty() {
         errors[0]["detail"]["unavailable"],
         "HTTP 502 from the issues endpoint"
     );
-    assert!(replay.stdout().iter().all(|l| schema(l) != "taskalisk.plan"));
+    assert!(
+        replay
+            .stdout()
+            .iter()
+            .all(|l| schema(l) != "taskalisk.plan")
+    );
 }
 
 #[test]
@@ -571,7 +610,10 @@ fn a_file_that_is_not_a_bundle_is_a_reported_error() {
     assert_eq!(replay.status(), 2, "{}", replay.explain());
     assert_eq!(replay.errors()[0]["code"], "bundle.invalid");
     let absent = fixture.dir.join("absent.json");
-    let replay = fixture.replay("absent", &["--from-bundle", absent.to_str().expect("UTF-8")]);
+    let replay = fixture.replay(
+        "absent",
+        &["--from-bundle", absent.to_str().expect("UTF-8")],
+    );
     assert_eq!(replay.status(), 2, "{}", replay.explain());
     assert_eq!(replay.errors()[0]["code"], "bundle.unreadable");
     assert_eq!(fixture.reads(), "");

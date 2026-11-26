@@ -53,7 +53,12 @@ fn every_corpus_bundle_dumps_to_the_bundle_it_was_read_from() {
         );
         let original: Value = serde_json::from_str(&text).expect("JSON");
         let dumped: Value = serde_json::from_str(&written).expect("JSON");
-        assert_eq!(dumped, original, "{}: the dump is not the bundle", path.display());
+        assert_eq!(
+            dumped,
+            original,
+            "{}: the dump is not the bundle",
+            path.display()
+        );
     }
 }
 
@@ -77,7 +82,10 @@ fn actor(login: &str) -> Actor {
 fn every_slot() -> Bundle {
     let home = repo("o/r");
     let mut observations = Observations {
-        home_open_issues: Some(Observed::Value(vec![reference("o/r#1"), reference("o/r#2")])),
+        home_open_issues: Some(Observed::Value(vec![
+            reference("o/r#1"),
+            reference("o/r#2"),
+        ])),
         home_open_pull_requests: Some(Observed::Value(vec![PullRequest {
             number: 7,
             repository: home.clone(),
@@ -130,7 +138,10 @@ fn every_slot() -> Bundle {
         BTreeMap::from([
             ("o".to_owned(), Observed::Value(Some("admin".to_owned()))),
             ("carol".to_owned(), Observed::Value(None)),
-            ("dave".to_owned(), Observed::Unavailable("HTTP 403".to_owned())),
+            (
+                "dave".to_owned(),
+                Observed::Unavailable("HTTP 403".to_owned()),
+            ),
         ]),
     );
     Bundle {

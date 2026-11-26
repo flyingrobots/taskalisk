@@ -150,6 +150,12 @@ a `frontmatter.violation` (the plan is not `ok`), and its line carries null; the
 | `edge.rollback_failed` | an added edge could not be removed after the run failed | true |
 | `frontmatter.invalid` | an issue in the closure has invalid frontmatter | false |
 | `issue.not_found` | Rust binary only: a reference resolves to nothing, for the cause the core recorded; `detail.rule` is `D11`, `D12` or `D13` | false |
+| `bundle.capture_failed` | Rust binary only: `--capture-bundle` could not write the bundle or its record | false |
+| `bundle.unreadable`, `bundle.invalid` | Rust binary only: the `--from-bundle` file cannot be read, or is not an `issue-dag-observations/1` bundle (`detail.at`, `detail.problem`) | false |
+| `bundle.incomplete` | Rust binary only: the bundle lacks a slot the run reads (bundle rule OB5); `detail.missing` is its path | false |
+| `observation.unavailable` | Rust binary only: a replayed bundle records a slot the run needs as unavailable (OB4); `detail.unavailable` is the recorded reason | false |
+| `evaluation.unreadable`, `evaluation.invalid`, `evaluation.unavailable`, `evaluation.differs` | Rust binary only: the `--from-record` file cannot be read, is not a `taskalisk-evaluation/1` record, does not retain a bundle this binary can plan, or plans to another result than it records | false |
+| `plan.reads_disabled` | Rust binary only: `--offline` with no `--from-bundle` or `--from-record` | false |
 | `graph.cycle`, `graph.unresolved_prerequisites` | the graph could not be ranked | false |
 | `dag_spec.unreadable`, `dag_spec.invalid` | the `--verify-dag` file cannot be read or has the wrong shape | false |
 | `uncaught.exception` | a defect: the traceback is in the receipt only, never on stderr | (writer) |
@@ -324,8 +330,9 @@ It differs from the Python in these ways, each tested in `crates/taskalisk/tests
 
 - **Commands and flags.** Only `plan`. `--repo`, `--root`, `--sem-capacity`, `--trust`,
   `--trust-owner`, `--trust-repo`, `--trust-codeowners`, `--from-github`, `--human` and `--help`
-  are accepted; every other flag and command is `startup.arguments_invalid`, exit 3, never
-  ignored. A flag's value may follow `=`. `--help` describes `plan` with the schemas of the lines
+  are accepted, with the binary's own `--capture-bundle`, `--from-bundle`, `--from-record` and
+  `--offline` (see *Capture and replay*); every other flag and command is
+  `startup.arguments_invalid`, exit 3, never ignored. A flag's value may follow `=`. `--help` describes `plan` with the schemas of the lines
   it writes and of `parley.error` and `parley.startup.failed` (copies of the writer's, held equal
   by `tests/test_binary_schemas.py`).
 - **Gaps in the lines.** An
@@ -339,9 +346,43 @@ It differs from the Python in these ways, each tested in `crates/taskalisk/tests
 - **The evaluation record.** Every plan the core answers (a plan, an invalid graph, an incomplete
   read, a rejected root) records its `taskalisk-evaluation/1` record, from
   `issue-dag-bundle::unretained`, as the receipt step `recorded the evaluation
-  (taskalisk-evaluation/1)`, in `detail.record`. A live run's observation bundle is not retained,
-  so the record's `observations` and `not_observed` are unavailable and its replay is
-  unavailable, until #59 captures the bundle. The record holds no issue body or title.
+  (taskalisk-evaluation/1)`, in `detail.record`. Without `--capture-bundle` the observation bundle
+  is not retained, so the record's `observations` and `not_observed` are unavailable and its
+  replay is unavailable. The record holds no issue body or title. With `--capture-bundle` the
+  retained record is written beside the receipt instead (it holds the bundle, and so issue
+  bodies, which a receipt never does), and the receipt step `captured the observation bundle and
+  its evaluation record` names both files.
+- **Capture and replay** (flyingrobots/taskalisk#59). The Python has no equivalent.
+  - `--capture-bundle` (off by default) writes, into the run's own directory beside its receipt,
+    `.parley/receipts/<run>/bundle.json`, the `issue-dag-observations/1` bundle of every slot the
+    `gh` adapter read, and `.parley/receipts/<run>/evaluation.json`, the run's
+    `taskalisk-evaluation/1` record made by `issue-dag-bundle::evaluate`, which retains that
+    bundle. They are where sidecars go: under `.parley/.gitignore` (`*`), created new
+    (`O_EXCL`), and deleted with their receipt by retention. They hold every read issue's body
+    and the trust observations (authors, associations, permissions, pull requests); a bundle
+    holds no title, URL, label or branch (bundle rule OB12). Every declared secret's value is
+    redacted from both before they are written, and the step lists the JSON Pointers redacted; a
+    value the redaction cannot reach (an object key) refuses the capture,
+    `bundle.capture_failed`. The step records each file's path relative to
+    `.parley/receipts/`, its SHA-256 and its size.
+  - `--from-bundle FILE` plans from a bundle, and `--from-record FILE` from an evaluation
+    record, which it first replays through `issue-dag-bundle::replay` (decision D14): the record
+    must retain its bundle and plan to the result it records, or the run is
+    `evaluation.unavailable` or `evaluation.differs`, exit 2, with no plan. Either reads no `gh`
+    and no `git`: the bundle answers through a recorded forge, `effects.network` is false, and
+    the file is the declared input (role `observations`), so `inv` covers it. The flags a
+    bundle answers (`--repo`, `--root`, `--sem-capacity`, the trust flags, `--from-github`,
+    `--capture-bundle`) are refused with them, exit 3. A slot the bundle does not hold is
+    `bundle.incomplete` (OB5), and one it records as unavailable `observation.unavailable` (or
+    `issue.not_found` when it records a cause), exit 2: never read as empty. The plan's decisions
+    are the captured run's; its display is not, because a bundle records none: each issue's
+    title is `(title not recorded in the bundle)`, its URL null and its recoverable branches
+    empty, so `artifact_hash` differs from the live run's.
+  - `--offline` disables the `gh` and `git` reads. With `--from-bundle` or `--from-record` it
+    changes nothing; without them the run is `plan.reads_disabled`, exit 2.
+  - `tests/fixtures/bundles/flyingrobots-taskalisk.bundle.json` is a bundle of this repository
+    captured this way, read-only, with the result it planned to beside it; the suite replans
+    from it offline.
 - **Refused where the Python relocates.** The binary has no state-directory fallback; each case is
   a startup failure, exit 3, with no receipt. A `.parley` that cannot be written is
   `startup.receipt_unwritable`. A receipt path that would carry a declared secret's value (the
