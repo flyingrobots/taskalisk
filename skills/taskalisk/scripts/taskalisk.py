@@ -701,6 +701,8 @@ SLUG_RE = re.compile(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+")
 BOT_TYPENAME = "Bot"
 # The body and the actor of every body edit (the first edit is the creation), in one
 # query, so the editors checked are the editors of the body that is parsed.
+# A history longer than this many pages of 100 edits is refused rather than read without end (#76).
+EDIT_HISTORY_MAX_PAGES = 1000
 EDIT_HISTORY_QUERY = (
     "query($owner:String!,$name:String!,$number:Int!,$after:String){"
     "repository(owner:$owner,name:$name){issue(number:$number){body "
@@ -734,7 +736,8 @@ def gh_issue_edit_history(repo: str, ref: IssueRef, errors: list[dict[str, str]]
     editors: list[dict[str, Any]] = []
     body: str | None = None
     after: str | None = None
-    while True:
+    seen: set[str] = set()
+    for _ in range(EDIT_HISTORY_MAX_PAGES):
         cmd = ["gh", "api", "graphql", "-f", f"query={EDIT_HISTORY_QUERY}", "-f", f"owner={owner}", "-f", f"name={name}", "-F", f"number={ref[1]}"]
         if after:
             cmd += ["-f", f"after={after}"]
@@ -765,6 +768,12 @@ def gh_issue_edit_history(repo: str, ref: IssueRef, errors: list[dict[str, str]]
             errors.append({"source": source, "error": "edit history reports another page but no cursor; refusing a partial editor list"})
             return None
         after = str(page["endCursor"])
+        if after in seen:
+            errors.append({"source": source, "error": "edit history repeated a cursor; refusing a partial editor list"})
+            return None
+        seen.add(after)
+    errors.append({"source": source, "error": f"edit history ran past {EDIT_HISTORY_MAX_PAGES} pages; refusing a partial editor list"})
+    return None
 
 
 class TrustPolicy:
@@ -1673,7 +1682,7 @@ def error_code(err: dict[str, str]) -> str:
         return "edge.rewrite_impossible"
     if src.startswith("gh api PATCH"):
         return "gh.mutation_failed"
-    if any(k in msg for k in ("Unparseable JSON", "Expected a JSON", "GraphQL response has no", "no cursor", "isDraft", "repository_url")):
+    if any(k in msg for k in ("Unparseable JSON", "Expected a JSON", "GraphQL response has no", "no cursor", "repeated a cursor", "pages; refusing", "isDraft", "repository_url")):
         return "gh.response_invalid"
     if src.startswith("git"):
         return "git.command_failed"

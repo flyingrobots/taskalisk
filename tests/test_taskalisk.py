@@ -89,11 +89,11 @@ class Harness(unittest.TestCase):
         env.update(extra)
         return env
 
-    def run_dag(self, state, *args, env=None, cwd=None):
+    def run_dag(self, state, *args, env=None, cwd=None, timeout=None):
         """Run the compiler from the temporary directory, so its receipts land there and not in the checkout."""
         self.state.write_text(json.dumps(state))
         return subprocess.run([sys.executable, str(SCRIPT), "--repo", str(self.repo), *args], capture_output=True, text=True,
-                              env=env or self.env(), cwd=str(cwd or self.tmp))
+                              env=env or self.env(), cwd=str(cwd or self.tmp), timeout=timeout)
 
     def current(self):
         return json.loads(self.state.read_text())
@@ -777,6 +777,52 @@ class Trust(Harness):
         state["issues"][f"{HOME}#1"]["editors"] = ["owner", STRANGER]
         p = self.run_dag(state, "--from-github", "--root", f"{HOME}#9")
         self.assertEqual(p.returncode, 2, p.stdout)
+
+    def test_a_repeated_cursor_ends_the_run_within_a_bounded_number_of_requests(self):
+        """F-17 (flyingrobots/taskalisk#76): a page that repeats its cursor with another page to come."""
+        state = plan_state()
+        state["edits_page_size"] = 1
+        state["graphql_repeat_cursor"] = True
+        state["issues"][f"{HOME}#1"]["editors"] = ["owner", "owner"]
+        try:
+            p = self.run_dag(state, "--from-github", "--root", f"{HOME}#9", timeout=60)
+        except subprocess.TimeoutExpired:
+            self.fail("the edit-history loop followed a repeated cursor and never ended")
+        self.assertEqual(p.returncode, 2, p.stdout[-400:])
+        errors = [json.loads(l) for l in p.stderr.splitlines() if l.strip()]
+        self.assertEqual([e.get("code") for e in errors if e.get("event") == "error"], ["gh.response_invalid"])
+        self.assertIn("repeated a cursor", p.stderr)
+        graphql_calls = [c for c in self.calls() if c[:2] == ["api", "graphql"]]
+        self.assertLessEqual(len(graphql_calls), 10)
+
+    def test_an_edit_history_past_the_page_limit_is_refused(self):
+        """Fresh cursors without end: the page bound stops the loop and refuses a partial editor list."""
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("taskalisk_edit_history", SCRIPT)
+        tk = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(tk)
+        calls = []
+
+        def endless(cmd, cwd=None):
+            calls.append(cmd)
+            if len(calls) > 10:
+                raise AssertionError("the page bound did not stop the loop")
+            page = {"hasNextPage": True, "endCursor": f"c{len(calls)}"}
+            return True, json.dumps({"data": {"repository": {"issue": {"body": "", "userContentEdits": {"pageInfo": page, "nodes": []}}}}}), ""
+
+        tk.EDIT_HISTORY_MAX_PAGES = 3
+        tk.run_cmd_checked = endless
+        errors = []
+        self.assertIsNone(tk.gh_issue_edit_history(str(self.repo), ("o/r", 1), errors))
+        self.assertEqual(len(calls), 3)
+        self.assertEqual([tk.classify(e) for e in errors], [("gh.response_invalid", False)])
+
+    def test_a_long_edit_history_is_read_in_full(self):
+        state = plan_state()
+        state["edits_page_size"] = 1
+        state["issues"][f"{HOME}#1"]["editors"] = ["owner"] * 5 + [STRANGER]  # the stranger is on the sixth page
+        r = self.out(self.run_dag(state, "--from-github", "--root", f"{HOME}#9"))
+        self.assertIn(f"{HOME}#1", self.untrusted_ids(r))
 
     def test_remove_edge_to_an_out_of_scope_parent_is_allowed(self):
         state = plan_state()

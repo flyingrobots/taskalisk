@@ -20,6 +20,9 @@ SPEC.loader.exec_module(builder)
 
 GIT = ["git", "-c", "user.name=Test", "-c", "user.email=test@example.invalid", "-c", "commit.gpgsign=false",
        "-c", "init.defaultBranch=main"]
+# The checkout's revision, resolved once: every build and every read of the checkout names it, so a
+# commit made while the suite runs cannot change what one test compares (flyingrobots/taskalisk#88).
+REV = subprocess.run(["git", "-C", str(ROOT), "rev-parse", "HEAD"], capture_output=True, text=True, check=True).stdout.strip()
 INLINE_LINK = re.compile(r"\]\(\s*<?([^)\s>]+)>?(?:\s+[\"'(][^)]*)?\)")
 REFERENCE_LINK = re.compile(r"(?m)^\s{0,3}\[[^\]]+\]:\s*<?(\S+?)>?(?:\s+[\"'(].*)?$")
 
@@ -31,8 +34,8 @@ def relative_links(markdown):
 
 
 def committed_file(path):
-    """A tracked file as the builder packages it (HEAD), not as the working tree holds it."""
-    return subprocess.run(["git", "-C", str(ROOT), "show", f"HEAD:{path}"], capture_output=True, check=True).stdout
+    """A tracked file as the builder packages it (at REV), not as the working tree holds it."""
+    return subprocess.run(["git", "-C", str(ROOT), "show", f"{REV}:{path}"], capture_output=True, check=True).stdout
 
 
 def make_repo(base, files, links=(), ignore=""):
@@ -57,10 +60,23 @@ BASIC = {"skills/taskalisk/SKILL.md": "See [model](references/model.md).\n", "do
 MODEL_LINK = ("skills/taskalisk/references/model.md", "../../../docs/model.md")
 
 
+def pinned_git(real):
+    """builder.git, refusing to list the checkout's tree at any revision but REV (flyingrobots/taskalisk#88).
+    Only `ls-tree` names a revision; `cat-file` reads blobs by content id, which a commit cannot move."""
+    def git(root, *args):
+        if pathlib.Path(root).resolve() == ROOT.resolve() and "ls-tree" in args and args[-1] != REV:
+            raise AssertionError(f"the checkout was read at {args[-1]!r}, not at the pinned revision {REV}")
+        return real(root, *args)
+    return git
+
+
 class BuildSkillReleaseTest(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.out = pathlib.Path(self.tmp.name)
+        patcher = mock.patch.object(builder, "git", pinned_git(builder.git))
+        patcher.start()
+        self.addCleanup(patcher.stop)
 
     def tearDown(self):
         self.tmp.cleanup()
@@ -72,7 +88,7 @@ class BuildSkillReleaseTest(unittest.TestCase):
 
     def test_the_archive_carries_the_license_and_notice(self):
         """flyingrobots/taskalisk#72: the bundle holds the repository's Apache-2.0 text, not a link to it."""
-        members = self.members(builder.build(ROOT, self.out / "a", "1.0.0"))
+        members = self.members(builder.build(ROOT, self.out / "a", "1.0.0", ref=REV))
         for name in ("LICENSE", "NOTICE"):
             self.assertIn(f"taskalisk/{name}", sorted(members))
             self.assertEqual(members[f"taskalisk/{name}"][0], committed_file(name))
@@ -80,28 +96,28 @@ class BuildSkillReleaseTest(unittest.TestCase):
         self.assertIn(b"Version 2.0, January 2004", members["taskalisk/LICENSE"][0])
 
     def test_two_builds_are_byte_identical(self):
-        first = builder.build(ROOT, self.out / "a", "1.0.0")
-        second = builder.build(ROOT, self.out / "b", "1.0.0")
+        first = builder.build(ROOT, self.out / "a", "1.0.0", ref=REV)
+        second = builder.build(ROOT, self.out / "b", "1.0.0", ref=REV)
         self.assertEqual(first.read_bytes(), second.read_bytes())
 
     def test_separate_processes_with_different_hash_seeds_build_identical_bytes(self):
         digests = set()
         for seed in ("1", "2", "3"):
             out = self.out / f"seed{seed}"
-            subprocess.run([sys.executable, str(ROOT / "scripts" / "build_skill_release.py"), "--version", "1.0.0",
+            subprocess.run([sys.executable, str(ROOT / "scripts" / "build_skill_release.py"), "--version", "1.0.0", "--ref", REV,
                             "--out", str(out)], check=True, capture_output=True, env=dict(os.environ, PYTHONHASHSEED=seed))
             digests.add(hashlib.sha256((out / "taskalisk-v1.0.0.zip").read_bytes()).hexdigest())
         self.assertEqual(len(digests), 1)
 
     def test_entries_carry_a_fixed_timestamp_not_the_clock_or_file_times(self):
-        for name, (_, _, stamp) in self.members(builder.build(ROOT, self.out / "a", "1.0.0")).items():
+        for name, (_, _, stamp) in self.members(builder.build(ROOT, self.out / "a", "1.0.0", ref=REV)).items():
             self.assertEqual(stamp, (1980, 1, 1, 0, 0, 0), name)
 
     def test_bundled_references_are_the_committed_repository_documents(self):
-        members = self.members(builder.build(ROOT, self.out / "a", "1.0.0"))
+        members = self.members(builder.build(ROOT, self.out / "a", "1.0.0", ref=REV))
         for doc in ("frontmatter-model.md", "threat-model.md"):
             data, mode, _ = members[f"taskalisk/references/{doc}"]
-            committed = subprocess.run(["git", "-C", str(ROOT), "show", f"HEAD:docs/{doc}"],
+            committed = subprocess.run(["git", "-C", str(ROOT), "show", f"{REV}:docs/{doc}"],
                                        capture_output=True, check=True).stdout
             self.assertEqual(data, committed)
             self.assertEqual(mode & 0o170000, 0o100000, f"{doc} must be a regular file, not a link")
@@ -111,7 +127,7 @@ class BuildSkillReleaseTest(unittest.TestCase):
         self.assertEqual(relative_links(text), ["x.md", "y.md", "z.md", "r.md"])
 
     def test_every_relative_link_in_the_packaged_skill_resolves_inside_the_package(self):
-        members = self.members(builder.build(ROOT, self.out / "a", "1.0.0"))
+        members = self.members(builder.build(ROOT, self.out / "a", "1.0.0", ref=REV))
         skill = members["taskalisk/SKILL.md"][0].decode("utf-8")
         links = relative_links(skill)
         self.assertTrue(links, "SKILL.md should link its bundled references")
@@ -120,7 +136,7 @@ class BuildSkillReleaseTest(unittest.TestCase):
             self.assertIn(resolved, members, f"SKILL.md links {target}, which the package lacks")
 
     def test_per_file_and_archive_checksums_verify(self):
-        archive = builder.build(ROOT, self.out / "a", "1.0.0")
+        archive = builder.build(ROOT, self.out / "a", "1.0.0", ref=REV)
         members = self.members(archive)
         manifest = members.pop("taskalisk/SHA256SUMS")[0].decode("utf-8").splitlines()
         listed = dict(reversed(line.split("  ", 1)) for line in manifest)
@@ -132,13 +148,13 @@ class BuildSkillReleaseTest(unittest.TestCase):
         self.assertEqual(hashlib.sha256(archive.read_bytes()).hexdigest(), expected)
 
     def test_the_compiler_keeps_its_executable_bit(self):
-        members = self.members(builder.build(ROOT, self.out / "a", "1.0.0"))
+        members = self.members(builder.build(ROOT, self.out / "a", "1.0.0", ref=REV))
         self.assertEqual(members["taskalisk/scripts/taskalisk.py"][1] & 0o777, 0o755)
         self.assertEqual(members["taskalisk/SKILL.md"][1] & 0o777, 0o644)
 
     def test_the_vendored_writer_and_the_schemas_ship_in_the_release(self):
         """OUT-17: the archive carries the pinned writer, listed in SHA256SUMS, and every schema as a regular file."""
-        members = self.members(builder.build(ROOT, self.out / "a", "1.0.0"))
+        members = self.members(builder.build(ROOT, self.out / "a", "1.0.0", ref=REV))
         pin = __import__("json").loads(committed_file("skills/taskalisk/scripts/parley_emit.pin.json"))
         data, mode, _ = members["taskalisk/scripts/parley_emit.py"]
         self.assertEqual(hashlib.sha256(data).hexdigest(), pin["sha256"])
@@ -147,7 +163,7 @@ class BuildSkillReleaseTest(unittest.TestCase):
         for name in ("parley_emit.LICENSE", "parley_emit.NOTICE", "parley_emit.pin.json"):
             self.assertIn(f"taskalisk/scripts/{name}", members)
         schemas = sorted(n for n in members if n.startswith("taskalisk/schemas/"))
-        committed = subprocess.run(["git", "-C", str(ROOT), "ls-tree", "-r", "--name-only", "HEAD", "skills/taskalisk/schemas/"],
+        committed = subprocess.run(["git", "-C", str(ROOT), "ls-tree", "-r", "--name-only", REV, "skills/taskalisk/schemas/"],
                                    capture_output=True, check=True, text=True).stdout.split()
         self.assertEqual(len(schemas), len([n for n in committed if n.endswith(".schema.json")]))
         self.assertTrue(schemas)
@@ -157,17 +173,17 @@ class BuildSkillReleaseTest(unittest.TestCase):
     def test_existing_output_is_never_overwritten(self):
         (self.out / "a").mkdir()
         with self.assertRaises(FileExistsError):
-            builder.build(ROOT, self.out / "a", "1.0.0")
+            builder.build(ROOT, self.out / "a", "1.0.0", ref=REV)
 
     def test_version_must_be_a_release_number(self):
         for bad in ("1.0", "../1.0.0", "v1.0.0", "1.0.0/x", "1.0.0\n"):
             with self.assertRaises(ValueError):
-                builder.build(ROOT, self.out / "a", bad)
+                builder.build(ROOT, self.out / "a", bad, ref=REV)
 
     def test_a_failed_build_leaves_no_output_directory(self):
         with mock.patch.object(zipfile.ZipFile, "writestr", side_effect=OSError("disk full")):
             with self.assertRaises(OSError):
-                builder.build(ROOT, self.out / "a", "1.0.0")
+                builder.build(ROOT, self.out / "a", "1.0.0", ref=REV)
         self.assertFalse((self.out / "a").exists())
 
     def test_untracked_files_in_the_skill_folder_are_not_packaged(self):
@@ -227,6 +243,32 @@ class BuildSkillReleaseTest(unittest.TestCase):
                 repo = make_repo(base, files, [MODEL_LINK, (f"skills/taskalisk/references/{name}", target)], ignore=".env\n")
                 with self.assertRaisesRegex(ValueError, "not a tracked file"):
                     builder.build(repo, base / "a", "1.0.0")
+
+
+class PinnedRevisionTest(unittest.TestCase):
+    """flyingrobots/taskalisk#88: a commit made in the checkout while the suite runs moved HEAD between
+    two builds of one test, and test_two_builds_are_byte_identical failed. The suite resolves the
+    revision once (REV) and every build or read of the checkout names it."""
+
+    def test_every_build_or_read_of_the_checkout_names_the_pinned_revision(self):
+        source = pathlib.Path(__file__).read_text().splitlines()
+        unpinned = [f"{n}: {line.strip()}" for n, line in enumerate(source, 1)
+                    if ("builder.build(ROOT" in line and "ref=REV" not in line)
+                    or ("build_skill_release.py\")" in line and "--version" in line and "--ref" not in line)
+                    or (re.search(r"[\"']HEAD[:\"']|f\"HEAD:", line) and "rev-parse" not in line)]
+        self.assertEqual(unpinned, [], "each must name REV, never HEAD")
+
+    def test_a_commit_between_two_builds_of_one_revision_changes_nothing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = pathlib.Path(tmp)
+            repo = make_repo(base, BASIC, [MODEL_LINK])
+            rev = subprocess.run(GIT + ["-C", str(repo), "rev-parse", "HEAD"], capture_output=True, text=True, check=True).stdout.strip()
+            first = builder.build(repo, base / "a", "1.0.0", ref=rev)
+            (repo / "skills" / "taskalisk" / "SKILL.md").write_text("changed by a concurrent commit\n")
+            subprocess.run(GIT + ["-C", str(repo), "commit", "-q", "-am", "concurrent"], check=True)
+            self.assertEqual(first.read_bytes(), builder.build(repo, base / "b", "1.0.0", ref=rev).read_bytes())
+            self.assertNotEqual(first.read_bytes(), builder.build(repo, base / "c", "1.0.0").read_bytes(),
+                                "HEAD moved, so an unpinned build differs: the race the pin removes")
 
 
 if __name__ == "__main__":

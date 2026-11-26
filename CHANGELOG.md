@@ -17,6 +17,10 @@ schema version under `Unreleased` is a draft and may change in place.
   key is shown as written in its code span, no longer with doubled backslashes or `\[` escapes.
   A title that needs none of this renders byte-for-byte as before.
 
+- **A repeated edit-history cursor ends the run** (flyingrobots/taskalisk#76). Reading an
+  issue's body edit history, a page that repeats an earlier cursor, or a history past 1,000 pages
+  of 100 edits, is `gh.response_invalid` (exit 2) instead of a loop without end.
+
 - **A secret in a URL query string or fragment is redacted** (flyingrobots/taskalisk#78). The
   value of a query or fragment parameter named `token`, `access_token`, `key`, `secret`,
   `password`, `sig`, `signature`, `auth` or `code`, in any case, is replaced by `[redacted]` in
