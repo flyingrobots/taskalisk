@@ -428,3 +428,65 @@ fn an_opaque_node_only_a_container_names_is_isolated() {
     ]));
     assert_eq!(isolated(&found), [r(5)]);
 }
+
+/// #64: an open task without `.size_hours` gives one warning naming it, with
+/// no detail; the same task with the key gives none.
+#[test]
+fn an_open_task_without_an_estimate_gives_one_warning() {
+    let found = shape_warnings(&graph(&[
+        (1, task(1, &[], ".size_hours: 2\n")),
+        (2, task(2, &[1], "")),
+    ]));
+    let missing = of(&found, ShapeWarning::EstimateMissing);
+    assert_eq!(missing.len(), 1, "{found:?}");
+    let warning = missing[0];
+    assert_eq!(warning.finding.subject, r(2));
+    assert_eq!(warning.finding.concerns, None);
+    assert_eq!(warning.finding.severity(), Severity::Warning);
+    assert_eq!(warning.detail, None);
+
+    let found = shape_warnings(&graph(&[
+        (1, task(1, &[], ".size_hours: 2\n")),
+        (2, task(2, &[1], ".size_hours: 3\n")),
+    ]));
+    assert!(
+        of(&found, ShapeWarning::EstimateMissing).is_empty(),
+        "{found:?}"
+    );
+}
+
+/// #64: a closed task without `.size_hours`, read because an open task
+/// names it, and a container draw no warning. The container half holds
+/// whatever the code does: a container is never a node of the graph, so
+/// `estimates_missing` never sees it; it documents the expectation only.
+#[test]
+fn a_closed_task_and_a_container_give_no_estimate_warning() {
+    let found = shape_warnings(&graph_closing(
+        &[
+            (1, task(1, &[], "")),
+            (2, task(2, &[1], ".size_hours: 3\n")),
+            (3, task(3, &[], ".size_hours: 1\n")),
+            (9, container(9, &[2, 3])),
+        ],
+        &[1],
+    ));
+    assert!(
+        of(&found, ShapeWarning::EstimateMissing).is_empty(),
+        "{found:?}"
+    );
+}
+
+/// #64: open o/r#2 is blocked by open o/r#1, an issue with no document. o/r#1
+/// is an opaque node: it has no frontmatter to hold `.size_hours`, so it
+/// draws no warning.
+#[test]
+fn an_opaque_node_gives_no_estimate_warning() {
+    let found = shape_warnings(&graph(&[
+        (1, "Plain body.".to_owned()),
+        (2, task(2, &[1], ".size_hours: 2\n")),
+    ]));
+    assert!(
+        of(&found, ShapeWarning::EstimateMissing).is_empty(),
+        "{found:?}"
+    );
+}

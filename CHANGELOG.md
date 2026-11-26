@@ -288,6 +288,7 @@ schema version under `Unreleased` is a draft and may change in place.
   `taskalisk.isolated-task`, given once per open node with no edge in or out, when the plan has at
   least two open nodes; a plan of a single task draws none. Edges are those between open nodes, as
   for the Python compiler's `isolated_open_nodes` metric. `ShapeFinding::detail` becomes an
+  `Option<Detail>`: `None` for a warning that measures nothing beyond its finding.
 - **A warning for a container with one child or none** (flyingrobots/taskalisk#63).
   `shape_warnings` gains `taskalisk.small-container`, given once per open container whose
   `.children` names fewer than two distinct issues. `Graph` gains `closed_containers`, the
@@ -303,6 +304,10 @@ schema version under `Unreleased` is a draft and may change in place.
   places with ties to even (as Python's `round`, and now also the renderer's metric), is outside
   `DENSITY_BAND`, `0.01` to `0.50` inclusive; the detail gives the reduced edges, the open nodes,
   the density and the band. The Python compiler's `edge_density` and band are the same.
+- **A warning for an open task with no estimate** (flyingrobots/taskalisk#64). `shape_warnings`
+  gains `taskalisk.estimate-missing`, given once per open task with a document whose
+  `Node::size_hours` (#114) is absent; closed tasks, opaque nodes and containers draw none. Its
+  detail is `None`.
 
 - **Why a reference could not be read, in part** (flyingrobots/taskalisk#45). The test
   `unreadable_references` pins the three causes today's observations tell apart: outside the read
