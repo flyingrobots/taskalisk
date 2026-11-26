@@ -222,6 +222,56 @@ class CommandWords(Harness):
         self.assertEqual(pl.one(self.streams(p)[0], "taskalisk.edge_edit")["reason"], "edit")
 
 
+class ModeFlags(Harness):
+    """F-8 (flyingrobots/taskalisk#73): a prefix of a flag, or a mode flag that contradicts an explicit
+    command, is a usage error; it never runs a different command."""
+
+    def assert_usage_error(self, p, label):
+        self.assertEqual(p.returncode, 3, f"{label}: {p.stdout[-300:]}{p.stderr[-300:]}")
+        self.assertEqual(p.stdout, "", label)
+        err = pl.parse(p.stderr, "stderr")
+        self.assertEqual([l["event"] for l in err], ["startup.failed"], label)
+        self.assertEqual(err[0]["code"], "startup.arguments_invalid", label)
+        self.assertEqual(pl.problems(err), [], label)
+        self.assertEqual(self.calls(), [], f"{label}: gh was called")
+
+    def test_a_prefix_of_any_flag_is_a_usage_error(self):
+        spec = self.tmp / "dag.json"
+        spec.write_text(json.dumps({"nodes": {"a": {"title": "a"}}}))
+        for args in (["--from"], ["--from-git"], ["--verify", str(spec)], ["--from-github", "--add", f"{ECHO}#6->{HOME}#2"],
+                     ["--from-github", "--remove", f"{ECHO}#6->{HOME}#2"], ["--from-github", "--emit-road"],
+                     ["--from-github", "--since"], ["--from-github", "--trust-own", "x"], ["--mile", "v1"]):
+            with self.subTest(args):
+                self.assert_usage_error(self.run_dag(plan_state(), *args), " ".join(args))
+
+    def test_a_mode_flag_that_names_another_command_is_a_usage_error(self):
+        spec = self.tmp / "dag.json"
+        spec.write_text(json.dumps({"nodes": {"a": {"title": "a"}}}))
+        for args in (["verify", "--verify-dag", str(spec), "--from-github"], ["inventory", "--from-github"],
+                     ["inventory", "--verify-dag", str(spec)], ["plan", "--verify-dag", str(spec)],
+                     ["edit", "--verify-dag", str(spec), "--add-edge", f"{ECHO}#6->{HOME}#2"]):
+            with self.subTest(args):
+                self.assert_usage_error(self.run_dag(plan_state(), *args), " ".join(args))
+
+    def test_every_documented_spelling_selects_the_same_command(self):
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("taskalisk_infer", SCRIPT)
+        tk = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(tk)
+        edge = f"{ECHO}#6->{HOME}#2"
+        cases = {
+            ("--from-github",): "plan", ("--from-github", "--root", f"{HOME}#9"): "plan",
+            ("--from-github", "--add-edge", edge): "edit", ("--from-github", "--remove-edge", edge): "edit",
+            ("--from-github", f"--add-edge={edge}"): "edit", ("--verify-dag", "dag.json"): "verify",
+            ("--verify-dag=dag.json",): "verify", ("--repo", "."): "inventory", (): "inventory",
+            ("--repo", ".", "--milestone", "v1"): "inventory", ("plan", "--from-github"): "plan",
+            ("--repo", ".", "plan"): "plan", ("verify", "--verify-dag", "dag.json"): "verify",
+        }
+        for args, command in cases.items():
+            with self.subTest(args):
+                self.assertEqual(tk.infer_command(list(args))[0], command)
+
+
 class Discovery(Harness):
     def test_schema_lists_every_command_and_schema(self):
         """OUT-07."""
