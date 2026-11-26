@@ -52,9 +52,10 @@ impl Severity {
 /// text for its code: it may name a key or a rule, and never carries a
 /// value, a reference or a line of the body; the one reference a finding
 /// publishes is `concerns`, which profile rule T1 allows.
-/// The fields are in sort order: findings sort by subject, then code, then
-/// the reference concerned, so two runs give the same report.
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+/// Equality, order and hash follow that identity alone: findings sort by
+/// subject, then code, then the reference concerned, so two runs give the
+/// same report, and a finding with other wording is the same finding.
+#[derive(Clone, Debug)]
 pub struct Finding {
     /// The issue that receives it.
     pub subject: IssueRef,
@@ -66,6 +67,39 @@ pub struct Finding {
     pub severity: Severity,
     /// Fixed text for the code. It may name a key, never a value or a line.
     pub message: &'static str,
+}
+
+impl Finding {
+    /// Its identity under profile rule F5.
+    const fn identity(&self) -> (&IssueRef, &'static str, Option<&IssueRef>) {
+        (&self.subject, self.code, self.concerns.as_ref())
+    }
+}
+
+impl PartialEq for Finding {
+    fn eq(&self, other: &Self) -> bool {
+        self.identity() == other.identity()
+    }
+}
+
+impl Eq for Finding {}
+
+impl PartialOrd for Finding {
+    fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for Finding {
+    fn cmp(&self, other: &Self) -> core::cmp::Ordering {
+        self.identity().cmp(&other.identity())
+    }
+}
+
+impl core::hash::Hash for Finding {
+    fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+        self.identity().hash(state);
+    }
 }
 
 impl Finding {
@@ -325,6 +359,34 @@ mod tests {
     use crate::LABELS;
     use crate::label::Label;
     use crate::reference::IssueRef;
+
+    /// F5: a finding is its subject, its rule and the reference it concerns.
+    /// Wording and severity are not part of its identity.
+    #[test]
+    fn f5_wording_and_severity_are_not_part_of_a_findings_identity() {
+        use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
+
+        let subject = IssueRef::parse("o/r#1").expect("a reference");
+        let concerns = IssueRef::parse("o/r#2").expect("a reference");
+        let a = Finding::new(subject, Rule::D5, Some(concerns));
+        let mut b = a.clone();
+        b.message = "other wording";
+        b.severity = Severity::Warning;
+        assert_eq!(a, b);
+        assert_eq!(a.cmp(&b), core::cmp::Ordering::Equal);
+        let hash = |f: &Finding| {
+            let mut h = DefaultHasher::new();
+            f.hash(&mut h);
+            h.finish()
+        };
+        assert_eq!(hash(&a), hash(&b));
+        assert_eq!(BTreeSet::from([a.clone(), b]).len(), 1);
+        // A different reference concerned is a different finding (X3).
+        let mut c = a.clone();
+        c.concerns = IssueRef::parse("o/r#3");
+        assert_ne!(a, c);
+    }
 
     /// Label order is not code order: `version.P3` sits between `format.L4`
     /// and `format.V1` as a label, after every `format.` code as a code.

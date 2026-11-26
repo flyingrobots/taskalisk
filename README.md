@@ -101,6 +101,13 @@ cargo clippy --workspace --all-targets --locked -- -D warnings
 cargo test --workspace --locked
 ```
 
+The wall-clock bounds of large graphs are not in the default suite, because a loaded machine would
+fail them. CI runs them in a job of their own, in a release build:
+
+```sh
+cargo test --workspace --locked --release -- --ignored perf_
+```
+
 ## License
 
 Apache-2.0. See [LICENSE](LICENSE) and [NOTICE](NOTICE). The vendored Parley
