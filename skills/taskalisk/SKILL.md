@@ -148,7 +148,9 @@ exists, and pass the body with `--body-file`.
      dependencies have not been recorded yet, not that the work is independent.
    - **Fail closed.** Any `gh`/`git` failure, unparseable JSON, or a list
      result that fills its query limit is a `parley.error` on stderr whose
-     code starts `gh.` or `git.` (`retryable: true` except a list limit).
+     code starts `gh.` or `git.` (`retryable: true` except
+     `gh.list_limit_reached` and `gh.response_invalid`, which a rerun does
+     not fix).
      Invalid frontmatter in the closure, an unknown reference, or a cycle is
      a `parley.error` coded `frontmatter.invalid`, `graph.unresolved_prerequisites`
      or `graph.cycle`. Both exit `2`; the code tells them apart (1.x exited `1`

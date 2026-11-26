@@ -545,6 +545,75 @@ THREAT_MODEL = ROOT / "docs" / "threat-model.md"
 INVENTORY_SCOPE = "Inventory applies no trust gate"
 
 
+def load_compiler():
+    """The compiler as a module, for the tests that read its tables."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("taskalisk_tables", SCRIPT)
+    tk = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(tk)
+    return tk
+
+
+def readme_retryable():
+    """Each error code in the reference's Errors table, with its documented `retryable`."""
+    rows = {}
+    section = OUTPUT_README.read_text().split("## Errors and exit status", 1)[1]
+    for line in section.splitlines():
+        cells = [c.strip() for c in line.strip().strip("|").split("|")]
+        if len(cells) != 3 or cells[2] not in ("true", "false"):
+            continue
+        for code in re.findall(r"`([a-z_]+\.[a-z_]+)`", cells[0]):
+            rows[code] = cells[2] == "true"
+    return rows
+
+
+class RetryableTable(unittest.TestCase):
+    """OUT-30 (F-21): the code, the reference and SKILL.md give one `retryable` for every gh. and git. code."""
+
+    def setUp(self):
+        self.tk = load_compiler()
+        self.documented = readme_retryable()
+        self.calls = {c: r for c, r in self.documented.items() if c.startswith(("gh.", "git."))}
+
+    def test_every_remedy_that_says_rerun_belongs_to_a_retryable_code(self):
+        for code, remedy in self.tk.REMEDIES.items():
+            with self.subTest(code):
+                self.assertIn(code, self.documented, "a code with a remedy has no row in the Errors table")
+                if re.search(r"(?i)\b(re-?run|retry|run (it )?again)\b", remedy):
+                    self.assertTrue(self.documented[code], f"{code} is not retryable, yet its remedy says rerun: {remedy!r}")
+
+    def test_every_code_error_code_returns_has_a_flag(self):
+        """A code `error_code` can return without a RETRYABLE entry would end the run in uncaught.exception."""
+        import ast
+        import inspect
+        def results(node):
+            """The strings an expression can evaluate to: a constant, or either arm of `a if c else b`."""
+            if isinstance(node, ast.Constant) and isinstance(node.value, str):
+                return {node.value}
+            if isinstance(node, ast.IfExp):
+                return results(node.body) | results(node.orelse)
+            self.fail(f"error_code returns an expression this test cannot read: {ast.dump(node)}")
+
+        tree = ast.parse(inspect.getsource(self.tk.error_code))
+        returned = set().union(*(results(r.value) for r in ast.walk(tree) if isinstance(r, ast.Return)))
+        self.assertTrue(returned)
+        self.assertEqual(returned - set(self.tk.RETRYABLE), set())
+        self.assertEqual(set(self.tk.REMEDIES), set(self.tk.RETRYABLE))
+
+    def test_the_code_and_the_reference_agree(self):
+        self.assertEqual({c: r for c, r in self.tk.RETRYABLE.items() if c.startswith(("gh.", "git."))}, self.calls)
+        for code, retryable in self.tk.RETRYABLE.items():
+            with self.subTest(code):
+                self.assertEqual(retryable, self.documented.get(code), f"{code} has no row, or a different flag, in the Errors table")
+
+    def test_skill_md_names_every_exception(self):
+        text = " ".join(SKILL_MD.read_text().split())
+        clause = re.search(r"\(`retryable: true` except ([^)]*)\)", text)
+        self.assertIsNotNone(clause, "SKILL.md no longer states the retryable rule")
+        named = set(re.findall(r"`([a-z_]+\.[a-z_]+)`", clause.group(1)))
+        self.assertEqual(named, {c for c, r in self.calls.items() if not r})
+
+
 class SecretsEveryTokenVariable(Harness):
     def test_every_token_variable_gh_reads_is_declared_and_scrubbed(self):
         """OUT-10 (R-3): each variable `gh help environment` names as a token is a declared secret."""
