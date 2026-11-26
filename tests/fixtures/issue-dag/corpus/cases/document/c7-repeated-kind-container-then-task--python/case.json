@@ -9,7 +9,7 @@
   "disagreement": {
     "classification": "compatibility-exception",
     "difference": 20,
-    "note": "the compiler judges the first `.kind` and reports V6 for the container's `.blocked_by`"
+    "note": "the compiler judges the first `.kind`, container, and reports V6 because the container has no `.children` (its truthiness check accepts the empty `.blocked_by`)"
   },
   "id": "document/c7-repeated-kind-container-then-task--python",
   "kind": "characterisation",

@@ -45,8 +45,8 @@ specification and the Python accept the same 282 documents.
 | 7 | A list as the value of `.dag`, `.kind`, `.type` or `.status`, such as `.type: [bug]` | Invalid | The validator raises `TypeError`; the run ends with a traceback and no outcome | V1, V4, V5, V8 | defect |
 | 8 | An item of `.blocked_by` or `.children` equal to the issue's address but not to its `.id`, or the reverse | V7 compares with `.id`; X1 reports the address mismatch | The self-reference check compares with the address | V7, X1 | compatibility-exception |
 | 19 | A key given twice, where one or both of the lines open a list without closing it, such as `.size_hours: [3` and `.size_hours: 3` | Invalid under C7 and C8: the unterminated line is still an entry line | Invalid under one of them: an unterminated line sets no field, so a later line with the key is no duplicate; a duplicate line is skipped before its list is judged | C7, C8 | compatibility-exception |
-| 20 | A key other than `.dag` given twice, such as `.kind: container` then `.kind: task`, `.children` twice on a task, an unknown format key twice, or `.id` twice | The key is judged by C7 alone: no V2, V5, V6 or V7 from it, and a repeated `.kind` or `.id` leaves V5, V6, V7 and X1 unapplied | The first line sets the key and later lines are skipped, so the first value is judged under sections 3 to 5 as well: the labels depend on line order | C7, V12 | compatibility-exception |
-| 21 | `.dag` given twice, with another violation in the document | C7 is the document's only violation | The first `.dag` sets the version and the document is judged under it: the other violations, including C6, C8 and P3, are reported beside C7 | C7, V1, V12 | compatibility-exception |
+| 20 | A key other than `.dag` given twice, such as `.kind: container` then `.kind: task`, `.children` twice on a task, an unknown format key twice, or `.id` twice | No rule of sections 3 to 5 judges the key: no V2, V5, V6 or V7 from it, and a repeated `.kind` or `.id` leaves V5, V6, V7 and X1 unapplied (its lines are still judged under C6 and C8, as difference 19 shows) | The first line sets the key and later lines are skipped, so the first value is judged under sections 3 to 5 as well: the labels depend on line order | C7, V12 | compatibility-exception |
+| 21 | `.dag` given twice, with another violation in the document | C7 is the document's only violation, unless C4 applies, when C4 is (C4 comes first) | The first `.dag` sets the version and the document is judged under it: the other violations, including C6, C8 and P3, are reported beside C7 | C7, V1, V12 | compatibility-exception |
 | 22 | An invalid document, including one whose only violation is X1, with a `.size_hours` above 8 | Violations only, no warning | The V10 warning is reported beside the violations | V10 | compatibility-exception |
 
 Difference 1 is the one Decision 7 of the Taskalisk decision record names:
@@ -65,10 +65,12 @@ the key appears once, the Python does what C8 states: the key is absent for
 the other rules.
 
 Differences 20 and 21 are compatibility exceptions with the same scope as
-difference 19: the document is invalid in both, under C7 in both, and only
-its set of labels differs. The specification makes the labels independent of
-line order; the Python's depend on it, so `.kind: task` then
-`.kind: container` agrees with the specification and the reverse does not.
+difference 19: the document is invalid in both, under C7 in both (except a body
+that also fails C4, which is invalid under C4 alone in the specification; that
+case is difference 4), and only its set of labels differs. The specification
+makes the labels independent of line order; the Python's depend on it, so
+`.kind: task` then `.kind: container` agrees with the specification and the
+reverse does not.
 
 Difference 22 is a compatibility exception. Its scope: the warnings of an
 invalid document. Validity and the violations are the same. The normative

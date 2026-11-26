@@ -155,7 +155,7 @@ NORMATIVE_DOCUMENTS: list[Doc] = [
     D("c7-repeated-kind-container-then-task", "A repeated `.kind` in the other order gives the same labels",
       block([".dag: issue-dag/2", ".id: o/r#1", ".kind: container", ".type: feature", ".blocked_by: []", ".kind: task", ".status: done"]),
       invalid("C7", "V8"), ["C7", "V5", "V6", "V8", "V12"],
-      disagreement=exception(20, "the compiler judges the first `.kind` and reports V6 for the container's `.blocked_by`")),
+      disagreement=exception(20, "the compiler judges the first `.kind`, container, and reports V6 because the container has no `.children` (its truthiness check accepts the empty `.blocked_by`)")),
     D("c7-repeated-unknown-format-key", "A repeated format key outside M2 is labelled C7, not V2",
       block(with_(BASE, ".blockedby: [o/r#2]", ".blockedby: [o/r#3]")), invalid("C7"), ["C7", "V2", "V12"],
       disagreement=exception(20, "the compiler judges the first line and also reports V2")),
