@@ -4,7 +4,7 @@ Reference for every code that `issue-dag-core` gives a finding: every code of
 its public catalogue `CODES`. A finding is one violation or warning. It
 carries a code, a severity, the issue that receives it as its subject, for
 some codes the reference it concerns, and a fixed message that names keys and
-rules but never a value or a line of the body. Three families of findings
+rules but never a value or a line of the body. Four families of findings
 share the catalogue:
 
 - **document findings** (function `findings`): the frontmatter document in an
@@ -13,6 +13,9 @@ share the catalogue:
   discovery and the graph apply to a whole run;
 - **body warnings** (function `body_warnings`): Taskalisk's own writing
   convention for a task body, not a rule of any specification.
+- **shape warnings** (function `shape_warnings`): Taskalisk's own advisories
+  on the shape of a plan's graph, from the skill's doctrine on graph health,
+  not a rule of any specification.
 
 These are the Rust crate's codes. The Python compiler reports frontmatter
 problems as `frontmatter.violation` and `frontmatter.warning` lines; their
@@ -28,7 +31,7 @@ V12 assigns it; the prefix names the specification that states the rule:
 | `format.` | the format [`issue-dag/2`](../../../tests/fixtures/issue-dag/formats/issue-dag-2.md): carrier rules C, value rules L, validity rules V |
 | `version.` | the [version policy](../../../tests/fixtures/issue-dag/versions.md) |
 | `profile.` | the planning profile [`issue-dag-planning/2`](../../../tests/fixtures/issue-dag/profiles/issue-dag-planning-2.md) |
-| `taskalisk.` | Taskalisk's convention, [Writing a task](../../../skills/taskalisk/WRITING-TASKS.md); the suffix is a name, not a label |
+| `taskalisk.` | Taskalisk's convention, [Writing a task](../../../skills/taskalisk/WRITING-TASKS.md) for a body warning, or its doctrine, [Core Doctrine](../../../skills/taskalisk/SKILL.md#core-doctrine), for a shape warning; the suffix is a name, not a label |
 
 The links go to the copy of the specification vendored in this repository
 under `tests/fixtures/issue-dag/`. A code never changes meaning; a rule that
@@ -37,9 +40,11 @@ once, in the catalogue:
 
 - **error**: a violation. The document is invalid, or for a run finding the
   run is.
-- **warning**: the V10 advisory, or a body warning. The document stays valid.
-  A V10 warning is reported only for a document with no violations, and body
-  warnings only for a valid task document.
+- **warning**: the V10 advisory, a body warning or a shape warning. The
+  document stays valid, and a shape warning never makes a run invalid. A V10
+  warning is reported only for a document with no violations, body warnings
+  only for a valid task document, and shape warnings only for the graph of a
+  run.
 
 A body with no frontmatter block (rules C1 to C3) is not a document and has
 no findings. A document gets one finding per rule it breaks, however many of
@@ -57,7 +62,7 @@ are `o/r#1`, `o/r#2` and so on.
 
 The entries are in the catalogue's order (`CODES`): the document codes in the
 order of the labels' text, so `V10` comes before `V2`; then the planning
-profile's codes; then the body warnings. The test
+profile's codes; then the body warnings; then the shape warnings. The test
 `crates/issue-dag-core/tests/finding_reference.rs` fails when a code has no
 entry here, an entry names no code, or a link or anchor here does not
 resolve.
@@ -642,3 +647,19 @@ observation bundle records none.
 
 To fix: if the title names two outcomes, split the task. If `and` is part of
 one name, rephrase the title or put the name in a code span.
+
+### `taskalisk.small-container`
+
+**Severity:** warning. **Rule:** [Containers](../../../skills/taskalisk/SKILL.md#core-doctrine), Core Doctrine 2 of the skill.
+
+A container's `.children` names fewer than two distinct issues: none, or one.
+A container exists to group the tasks a split produced, so with one child or
+none it groups nothing. A reference to the container itself is not counted,
+and a child named twice counts once. Every container the plan reads receives
+the check.
+
+In a plan where `o/r#9` is a container with `.children: [o/r#1]`, `o/r#9`
+receives `taskalisk.small-container`.
+
+To fix: add the missing children to `.children`, or, if the container groups
+only one task, drop the container and keep the task.
