@@ -307,6 +307,46 @@ it.
 - `gh` is run with its output captured, so nothing it prints reaches the streams directly; its
   stderr text reaches a line only inside an error's `detail`, after the sanitising above.
 
+## The Rust binary
+
+`crates/taskalisk` builds a binary, `taskalisk`, whose `plan` command writes this contract
+(flyingrobots/taskalisk#31). It is named as the tool is named: the receipts of both
+implementations say `tool: taskalisk`, because they are one tool under one contract and the binary
+replaces the script at the cutover (#32); `v` is the crate's version, so a receipt says which one
+ran. The envelope is a port of the vendored writer's, not a call to it, and keeps its rules:
+the bootstrap line, one sequence across the streams and the receipt, the receipt under
+`.parley/receipts/` of the working directory, `inv` over the declared input `github:issues`, the
+`gh` token variables redacted, sidecars past 65,536 bytes, retention of 50 receipts, `--human`.
+Every line is written with its keys in sorted order, the envelope's included.
+
+It differs from the Python in these ways, each tested in `crates/taskalisk/tests/cli.rs`:
+
+- **Commands and flags.** Only `plan`. `--repo`, `--root`, `--sem-capacity`, `--trust`,
+  `--trust-owner`, `--trust-repo`, `--trust-codeowners`, `--from-github`, `--human` and `--help`
+  are accepted; every other flag and command is `startup.arguments_invalid`, exit 3, never
+  ignored. A flag's value may follow `=`. `--help` describes `plan` with the schemas of the lines
+  it writes and of `parley.error` and `parley.startup.failed` (copies of the writer's, held equal
+  by `tests/test_binary_schemas.py`).
+- **Gaps in the lines.** A linked pull request has no `url`: the gh adapter does not ask
+  `gh pr list` for it, and the renderer never makes one up (the schema allows its absence). An
+  `issue.untrusted` or `pull_request.untrusted` finding lacks its message and the trust gate's
+  reasons, which the core does not keep yet (#46); those lines do not validate until it does. A
+  frontmatter finding's message is the core's fixed text (see `artifact_hash` above).
+- **The receipt.** The steps are fewer: the home repository, the branches, the pull requests,
+  `observed N issue(s)`, the evaluation record and retention, and no step per trust decision. In
+  the observed list a body that was not read (an untrusted author's, a pull request's) has a null
+  `body_sha256`, so `inv` differs from the Python's for the same backlog.
+- **The evaluation record.** Every plan the core answers (a plan, an invalid graph, an incomplete
+  read, a rejected root) records its `taskalisk-evaluation/1` record, from
+  `issue-dag-bundle::unretained`, as the receipt step `recorded the evaluation
+  (taskalisk-evaluation/1)`, in `detail.record`. A live run's observation bundle is not retained,
+  so the record's `observations` and `not_observed` are unavailable and its replay is
+  unavailable, until #59 captures the bundle. The record holds no issue body or title.
+- **Not ported from the writer.** The state-directory fallback (a `.parley` that cannot be written
+  is `startup.receipt_unwritable`, exit 3), the relocation when `.parley/.gitignore` is a user's
+  file (it is created when absent and otherwise left alone), the capture of stray output, the
+  redaction of a secret inside an object key, `--dry-run` and `--schema`.
+
 ## Conformance
 
 The Parley doctor cannot run in this repository's CI. It was run locally on captured real runs

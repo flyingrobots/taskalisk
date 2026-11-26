@@ -27,6 +27,23 @@ for a table, `--schema` for every message's schema. Each run leaves a receipt
 in `.parley/receipts/` (ignored by git). The contract is
 `docs/topics/output/README.md`; what changed from 1.x is in `CHANGELOG.md`.
 
+## The Rust binary
+
+The Rust rebuild has a binary beside the Python compiler; the skill still runs the Python.
+Build it and plan a checkout's backlog:
+
+```sh
+cargo build --release --locked
+target/release/taskalisk plan --repo ~/git/taskalisk
+```
+
+`plan` reads through `gh` and `git` as the Python does and writes the same lines under the same
+contract, with a receipt in `.parley/receipts/` of the working directory. It takes `--repo`,
+`--root`, `--sem-capacity`, `--trust`, `--trust-owner`, `--trust-repo`, `--trust-codeowners`,
+`--human` and `--help`; any other flag, and the `edit`, `verify` and `inventory` commands, exits 3
+until the binary supports it. Its differences from the Python are listed under *The Rust binary*
+in `docs/topics/output/README.md`.
+
 ## Install a release
 
 Each release has `taskalisk-v<version>.zip` and `SHA256SUMS`. The ZIP holds one
@@ -92,6 +109,11 @@ repository's top level, or a `git` call that fails, is an error, never an empty 
 adapter only reads, and turns off a configured `core.fsmonitor` command; a clean filter
 (`filter.<driver>.clean`) the user configured can still run during `status` when a file's stat
 data changed, with the same trust as the user's own `git status`, because a clone cannot set one.
+`crates/taskalisk` renders a plan to the skill's lines and is the `taskalisk` binary; its tests run
+the binary against `tests/fake_gh.py` and temporary repositories, plan the same backlog with the
+Python for comparison, and validate every line with the vendored writer's checker, so they need
+`python3` as well. `crates/taskalisk/tests/live.rs` plans a real checkout (opt-in, read-only:
+`TASKALISK_LIVE_CHECKOUT=<checkout> cargo test -p taskalisk --test live -- --ignored`).
 The toolchain is pinned in `rust-toolchain.toml`, and CI runs the same three
 checks:
 

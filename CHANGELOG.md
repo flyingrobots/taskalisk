@@ -303,6 +303,34 @@ schema version under `Unreleased` is a draft and may change in place.
   commit and requires it to equal the pin and the copy; CI runs it. The offline pin test proves
   only that copy and pin agree, and the output reference now says which check proves what.
 
+- **The Rust binary plans a live backlog** (flyingrobots/taskalisk#31). `crates/taskalisk` gains a
+  binary, `taskalisk`, with one command, `plan` (`taskalisk plan --repo <checkout>`, or the 1.x
+  `--from-github`). It resolves the home repository with `gh repo view`, reads the branches through
+  `issue-dag-git` and the backlog through `issue-dag-gh`, plans with the core, and writes the
+  renderer's lines with the display input filled from the adapters (decision D13): issue titles and
+  URLs, recoverable branches, and the CODEOWNERS persons and teams. It accepts `--repo`, `--root`,
+  `--sem-capacity`, `--trust`, `--trust-owner`, `--trust-repo`, `--trust-codeowners`, `--human`
+  and `--help`; every other flag of the Python's (`--emit-roadmap`, `--emit-mermaid`,
+  `--since-last`, `--compare-relationships`, `--min-confidence`, `--milestone`, `--dry-run`,
+  `--schema`, the edge flags) and the `edit`, `verify` and `inventory` commands are a startup
+  failure, exit 3, never ignored. The Parley envelope is a Rust port of the vendored writer's, not
+  a call to it: the bootstrap line, one sequence across stdout, stderr and the receipt,
+  `.parley/receipts/<run>.jsonl` with the head, steps, a copy of every result and error, the
+  declared input `github:issues` and `inv`, and `end`; the `gh` token variables redacted; sidecars;
+  retention by count (50); `--human`. A failed `gh` or `git` read exits 2 with `parley.error` lines
+  and no plan; a cycle, an unresolved prerequisite or invalid frontmatter exits 2 after the plan's
+  lines; a sink failure exits 4. Every plan records its evaluation (`taskalisk-evaluation/1`, from
+  `issue-dag-bundle`'s `unretained`) as a receipt step; the live bundle is not retained, so its
+  replay is unavailable until #59. Against `tests/fake_gh.py` its result lines equal the Python's
+  on the same backlog but for two gaps: a linked pull request carries no `url`, because the gh
+  adapter does not ask `gh pr list` for one, and an untrusted issue's or pull request's finding
+  lacks the trust gate's reasons (#46), so those lines do not validate yet. A live run on this
+  repository's backlog (`crates/taskalisk/tests/live.rs`, opt-in) gives the Python's outcome,
+  frontier, batch and metrics, with no untrusted issue. `issue-dag-gh` now keeps each issue's title
+  and URL from the answers it already has (`GhForge::shown`), runs `gh` in a given directory
+  (`current_dir`), and resolves a directory's repository (`repository_of`). The skill still runs
+  the Python.
+
 ### Changed
 
 - **One crate per port adapter** (flyingrobots/taskalisk#57). Decision 0001, section 2, is amended:
