@@ -705,7 +705,9 @@ subject. The plan's edge density is outside the band the skill states,
 the reduced graph (its edges less those the reduction removes, profile rule
 [G5](../../../tests/fixtures/issue-dag/profiles/issue-dag-planning-2.md#5-the-graph))
 over the number of pairs of open nodes, `n(n-1)/2`, rounded to four decimal
-places, as the Python compiler computes `edge_density`. A plan with one open
+places on its exact decimal value, ties to even, as the Python compiler
+computes `edge_density`: 63 edges over 64 open nodes, exactly `0.03125`, is
+`0.0312`. The renderer's `edge_density` metric is the same function. A plan with one open
 node or none has no pairs and draws no warning. The warning's detail gives
 the reduced edges, the open nodes, the density and the band.
 

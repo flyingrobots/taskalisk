@@ -274,7 +274,8 @@ schema version under `Unreleased` is a draft and may change in place.
   `Finding`, since it concerns no single issue: it has a catalogued `Code` (registered in `CODES`
   after the shape warnings, listed in `PLAN_WARNINGS`), its code's severity, a fixed message and a
   `PlanDetail`. Its first code, `taskalisk.edge-density`, is given once when the plan has more than
-  one open node and its density, reduced edges over `n(n-1)/2` rounded to four places, is outside
+  one open node and its density, `edge_density`, reduced edges over `n(n-1)/2` rounded to four
+  places with ties to even (as Python's `round`, and now also the renderer's metric), is outside
   `DENSITY_BAND`, `0.01` to `0.50` inclusive; the detail gives the reduced edges, the open nodes,
   the density and the band. The Python compiler's `edge_density` and band are the same.
 

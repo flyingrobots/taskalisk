@@ -39,7 +39,8 @@ pub enum PlanDetail {
         /// The open nodes.
         open_nodes: usize,
         /// `reduced_edges / (open_nodes * (open_nodes - 1) / 2)`, rounded
-        /// to four decimal places, as the Python compiler rounds it.
+        /// to four decimal places on its exact decimal value, ties to even, as
+        /// Python's `round(x, 4)` rounds it: [`edge_density`].
         density: f64,
         /// The band, [`DENSITY_BAND`].
         band: (f64, f64),
@@ -103,12 +104,13 @@ pub fn plan_warnings(graph: &Graph) -> Vec<PlanWarning> {
     }]
 }
 
-/// A plan's edge density: the edges of its reduced graph (its edges less
-/// the redundant ones, G5) over the pairs of its open nodes,
-/// `n(n-1)/2`, rounded to four decimal places. `None` with fewer than two
-/// open nodes, which have no pairs. Both [`plan_warnings`] and the
-/// renderer's `edge_density` metric read it, as the Python compiler's
-/// `edge_density`.
+/// A plan's edge density, as the Python compiler's `edge_density`.
+///
+/// The edges of its reduced graph (its edges less the redundant ones, G5)
+/// over the pairs of its open nodes, `n(n-1)/2`, rounded to four decimal
+/// places, ties to even. `None` with fewer than two open nodes, which have
+/// no pairs. Both [`plan_warnings`] and the renderer's `edge_density`
+/// metric read it.
 #[must_use]
 pub fn edge_density(graph: &Graph) -> Option<f64> {
     let open_nodes = open_nodes(graph);
@@ -136,7 +138,10 @@ fn ratio(a: usize, b: usize) -> f64 {
     a as f64 / b as f64
 }
 
-/// `x` rounded to four decimal places.
+/// `x` rounded to four decimal places as Python's `round(x, 4)` rounds it:
+/// correctly, on the exact decimal value of the float, ties to even. Rust's
+/// `{:.4}` formatting rounds the same way, and the nearest float to that
+/// text is Python's result.
 fn round4(x: f64) -> f64 {
-    (x * 10_000.0).round() / 10_000.0
+    format!("{x:.4}").parse().unwrap_or(x)
 }
