@@ -28,6 +28,17 @@ schema version under `Unreleased` is a draft and may change in place.
   Findings sort by subject, then code text. A message is fixed text that names keys and rules only,
   never a value or a line of the body; a body without a document has no findings.
 
+- **Body warnings for a task** (flyingrobots/taskalisk#48). `issue-dag-core`'s `body_warnings`
+  checks a valid task document's body against Taskalisk's writing convention
+  (`skills/taskalisk/WRITING-TASKS.md`), not the format, so its codes carry the prefix `taskalisk.`:
+  `taskalisk.outcome-missing`, `taskalisk.scope-missing` and `taskalisk.acceptance-missing` for a
+  missing level-2 heading, matched exactly and case-sensitively outside code blocks and comments;
+  `taskalisk.outcome-sentences` and `taskalisk.outcome-items` for an Outcome of more than one
+  sentence or list item; `taskalisk.title-joins` for a title that joins two things with "and" or a
+  semicolon. The title is an optional input, since the observation bundle records none; without
+  it that check is skipped. Each is a warning with fixed text, tabled with the document codes and
+  sorted the same way; a body filled minimally from each canonical template has none.
+
 - **A provenance check for the vendored Parley writer** (flyingrobots/taskalisk#77).
   `scripts/check_vendored_writer.py` fetches the writer from flyingrobots/parley at the pinned
   commit and requires it to equal the pin and the copy; CI runs it. The offline pin test proves
