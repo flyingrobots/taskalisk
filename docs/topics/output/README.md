@@ -205,6 +205,18 @@ the same backlog gives the same hash in both. `inv` names the question and its i
 `artifact_hash` names the answer. The same `inv` with a different `artifact_hash` means live
 context outside the declared inputs changed.
 
+**The Rust renderer's `artifact_hash` (a permanent exception).** The Rust binary hashes the artifact
+it emits: the result document in the 1.x shape, built from its own lines, written as Python's
+`json.dumps` writes it (every character outside U+0020 to U+007E escaped, astral characters as
+surrogate pairs). The schema requires the field, so it is always present. It equals the Python's
+hash only when that document holds no intended difference and no gap: no frontmatter finding (whose
+message is prose the core writes as fixed text, one per rule), no untrusted issue or pull request
+(whose trust reasons the core does not keep), and a compiled graph (a cycle or an unknown
+prerequisite leaves out what discovery read). Otherwise it is a different, equally deterministic
+hash of a different document. Compare `artifact_hash` values from one implementation only. The
+parity tests (`crates/taskalisk/tests/parity.rs`) assert equality where it holds and, elsewhere,
+that the hash is 64 hexadecimal digits and the same on every run.
+
 ## `--since-last`
 
 With `--since-last`, a plan compares its frontier with the most recent other completed receipt

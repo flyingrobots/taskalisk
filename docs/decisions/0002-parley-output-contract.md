@@ -25,6 +25,9 @@ the Python, so that the contract exists before the Rust binary that must emit it
    (#58). The Rust binary emits the same message ids at the same versions, with the same line
    order, error codes and exit statuses, and is checked against the same captured runs. A change
    to a message after its first release is a new schema version, never an edit in place.
+   One field is a permanent exception: the Rust binary's `artifact_hash` digests the document it
+   emits, and equals the Python's only where that document holds no intended difference and no
+   gap (decided on flyingrobots/taskalisk#58; see `docs/topics/output/README.md`).
 3. **Line order puts the answer first**: the plan summary, then the frontier in rank order with
    each score term, then the batch, then the detail.
 4. **1.x exit 1 becomes 2.** Parley assigns 2 to any reported error; the error's code carries what

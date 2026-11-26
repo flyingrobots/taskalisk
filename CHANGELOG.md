@@ -72,18 +72,21 @@ schema version under `Unreleased` is a draft and may change in place.
   record's `.type` and a valid `.size_hours`, and the admitted pull requests S2 reads (number and
   draft flag), and `Ranking` exposes each node's score terms (`Terms`, with their weights and
   points). An optional `Display` input supplies what only the adapters read: issue and pull request
-  titles and URLs, recoverable branches, and the CODEOWNERS persons and teams. With it the plan
-  line carries `artifact_hash`, the SHA-256 (by the RustCrypto `sha2` crate, MIT or Apache-2.0) of the 1.x result
-  document, whenever that document holds nothing the core lacks. On the 151 graph cases of the
-  corpus where the Python and the specification agree, every line equals the Python's
-  (`tests/capture_render_parity.py`), `artifact_hash` included in 71, once these fields are
+  titles and URLs, recoverable branches, and the CODEOWNERS persons and teams. The plan line always
+  carries `artifact_hash`: the SHA-256 (by the RustCrypto `sha2` crate, MIT or Apache-2.0) of the
+  result document the renderer emits, in the 1.x shape, written as Python's `json.dumps` writes it,
+  DEL, controls and astral characters included. It equals the Python's hash only where that
+  document holds no intended difference and no gap; elsewhere it is a different, deterministic
+  hash, a permanent exception recorded in `docs/topics/output/README.md`. On the 151 graph cases of
+  the corpus where the Python and the specification agree, and on one planned again with titles
+  that hold control, Latin-1, astral and line-separator characters, every line equals the Python's
+  (`tests/capture_render_parity.py`), `artifact_hash` in 72 of the 152, once these gaps are
   removed, and the suite checks the list is exact: the trust gate's reasons in `issue.untrusted`
-  and `pull_request.untrusted` (#46); the discovery findings of a run whose graph is not reported,
-  a cycle or an unknown prerequisite (#44); and `artifact_hash` where the document holds any of
-  those or a frontmatter finding's message. Every rendered line validates against its schema
-  except for those fields. One difference is intended, not a gap: a frontmatter finding compares
-  by `code` and `subject`, which the skill reads; its message is prose the schema does not fix,
-  and the core writes fixed text, one line per rule.
+  and `pull_request.untrusted` (#46), and the discovery findings of a run whose graph is not
+  reported, a cycle or an unknown prerequisite (#44). Every rendered line validates against its
+  schema except for those fields. One difference is intended, not a gap: a frontmatter finding
+  compares by `code` and `subject`, which the skill reads; its message is prose the schema does
+  not fix, and the core writes fixed text, one line per rule.
 
 - **Repeated keys, warnings and refusal order in the specification** (flyingrobots/taskalisk#104).
   The vendored issue-dag specification now states the rulings the Rust core implements: no rule of

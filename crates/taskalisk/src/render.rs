@@ -19,9 +19,8 @@
 //! field but those a [`Display`] input carries: the titles and URLs of
 //! issues and pull requests, the recoverable branches, and the persons and
 //! teams the CODEOWNERS files named. Without a display input those fields
-//! are left out, never made up. With one, the plan line also carries
-//! `artifact_hash`, the SHA-256 of the 1.x result document, when that
-//! document is within the core's reach (see [`lines`]).
+//! are left out, never made up. The plan line's `artifact_hash` digests
+//! the document the renderer emits (see [`lines`]).
 //!
 //! These are not rendered with or without a display input:
 //!
@@ -35,7 +34,6 @@
 //! A `frontmatter.violation` or `frontmatter.warning` carries the core's
 //! fixed message for its rule, one line per rule.
 
-use std::cell::Cell;
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::fmt::Write as _;
 
@@ -109,11 +107,10 @@ pub fn render(
 
 /// The result lines of a plan, in the order they are written.
 ///
-/// `artifact_hash` is written when a display input is given, the plan
-/// compiled, it has no frontmatter finding (whose 1.x text the core does
-/// not keep) and no untrusted issue or pull request (whose reasons it does
-/// not keep), and the display input holds every title and URL the document
-/// names.
+/// The plan line's `artifact_hash` is always written: the SHA-256 of the
+/// result document the renderer emits, in the 1.x shape. It equals the
+/// Python's when that document holds no intended difference and no gap
+/// (`docs/topics/output/README.md`).
 ///
 /// # Errors
 ///
@@ -130,10 +127,7 @@ pub fn lines(
         Outcome::Planned { findings, graph } => (findings, Some(graph)),
     };
     let report = Report::of(findings);
-    let shown = Shown {
-        display,
-        unshown: Cell::new(false),
-    };
+    let shown = Shown { display };
     let compiled = match graph {
         Some(graph) => {
             let ranking = rank(graph).ok_or(NotRendered::Unranked)?;
@@ -159,14 +153,8 @@ pub fn lines(
         compiled.as_ref(),
     ));
 
-    let in_reach = report.violations.is_empty()
-        && report.warnings.is_empty()
-        && graph.is_some_and(|g| g.untrusted.is_empty() && g.untrusted_pull_requests.is_empty())
-        && !shown.unshown.get();
-    if let (Some(_), Some(c), Some(d), true) = (display, &compiled, &discovery, in_reach) {
-        let document = c.document(&plan, d);
-        plan["artifact_hash"] = json!(sha256::hex(canonical(&document).as_bytes()));
-    }
+    let document = document(&plan, &report, discovery.as_ref(), compiled.as_ref());
+    plan["artifact_hash"] = json!(sha256::hex(canonical(&document).as_bytes()));
     out.insert(0, plan);
     Ok(out)
 }
@@ -175,8 +163,10 @@ pub fn lines(
 /// past ASCII escaped as `\uXXXX`, and a line feed.
 fn canonical(value: &Value) -> String {
     let mut out = String::new();
+    // serde_json already escapes `"`, `\\` and the C0 controls as Python
+    // does; every other character outside 0x20 to 0x7E is escaped here.
     for c in value.to_string().chars() {
-        if c.is_ascii() {
+        if (' '..='~').contains(&c) {
             out.push(c);
         } else {
             let mut units = [0_u16; 2];
@@ -189,24 +179,19 @@ fn canonical(value: &Value) -> String {
     out
 }
 
-/// The display input, and whether a lookup in it found nothing.
+/// The display input, when given.
 struct Shown<'a> {
     display: Option<&'a Display>,
-    unshown: Cell<bool>,
 }
 
 impl Shown<'_> {
-    /// Looks one value up, noting an absent one.
+    /// Looks one value up.
     fn get<K: Ord, V: Clone>(
         &self,
         map: impl Fn(&Display) -> &BTreeMap<K, V>,
         key: &K,
     ) -> Option<V> {
-        let found = self.display.and_then(|d| map(d).get(key).cloned());
-        if self.display.is_some() && found.is_none() {
-            self.unshown.set(true);
-        }
-        found
+        self.display.and_then(|d| map(d).get(key).cloned())
     }
 
     /// Adds an issue's title to an object, when shown; an untrusted
@@ -746,9 +731,9 @@ impl<'a> Compiled<'a> {
         out
     }
 
-    /// The 1.x result document of a compiled plan with no finding the core
-    /// lacks the text of, which `artifact_hash` digests.
-    fn document(&self, plan: &Value, discovery: &Discovery) -> Value {
+    /// The result document of a compiled plan, in the 1.x shape, as the
+    /// renderer emits it.
+    fn document(&self, plan: &Value, source: &Value, frontmatter: &Value) -> Value {
         let ranked = |ids: &[IssueRef]| -> Vec<Value> {
             ids.iter()
                 .filter_map(|id| self.docs.get(id).cloned().map(Value::Object))
@@ -761,13 +746,6 @@ impl<'a> Compiled<'a> {
             .enumerate()
             .map(|(k, ids)| (format!("Wave {k}"), json!(ranked(ids))))
             .collect();
-        let mut source = object(plan["source"].clone());
-        source.insert("containers_excluded".into(), json!(discovery.containers));
-        source.insert("unmodeled_open_issues".into(), json!(discovery.unmodeled));
-        source.insert("untrusted_issues".into(), json!([]));
-        source.insert("untrusted_linked_prs".into(), json!([]));
-        source.insert("opaque_nodes".into(), json!(discovery.opaque));
-        source.insert("not_planned_parents".into(), json!(discovery.not_planned));
         json!({
             "ok": plan["ok"],
             "metrics": plan["metrics"],
@@ -783,7 +761,97 @@ impl<'a> Compiled<'a> {
             "semaphores_with_unknown_capacity_treated_as_1": self.batch.unknown_capacity,
             "waves": waves,
             "source": source,
-            "frontmatter": {"violating_issues": 0, "violations": {}, "warnings": {}},
+            "frontmatter": frontmatter,
+        })
+    }
+}
+
+/// The 1.x result's `source`: the plan line's, and what discovery read
+/// (none when the run reports no graph).
+fn document_source(plan: &Value, discovery: Option<&Discovery>) -> Value {
+    let mut source = object(plan["source"].clone());
+    let list = |pick: fn(&Discovery) -> &Vec<Value>| json!(discovery.map_or(&Vec::new(), pick));
+    source.insert("containers_excluded".into(), list(|d| &d.containers));
+    source.insert("unmodeled_open_issues".into(), list(|d| &d.unmodeled));
+    source.insert("untrusted_issues".into(), list(|d| &d.untrusted));
+    source.insert(
+        "untrusted_linked_prs".into(),
+        list(|d| &d.untrusted_pull_requests),
+    );
+    source.insert("opaque_nodes".into(), list(|d| &d.opaque));
+    source.insert("not_planned_parents".into(), list(|d| &d.not_planned));
+    Value::Object(source)
+}
+
+/// The 1.x result's `frontmatter`: each issue's violation and warning
+/// messages, as the core writes them.
+fn document_frontmatter(report: &Report) -> Value {
+    let by_subject = |list: &[&Finding]| -> BTreeMap<String, Vec<&'static str>> {
+        let mut out: BTreeMap<String, Vec<&'static str>> = BTreeMap::new();
+        for f in list {
+            out.entry(f.subject.to_string())
+                .or_default()
+                .push(f.message);
+        }
+        out
+    };
+    let violations = by_subject(&report.violations);
+    json!({
+        "violating_issues": violations.len(),
+        "violations": violations,
+        "warnings": by_subject(&report.warnings),
+    })
+}
+
+/// The result document `artifact_hash` digests: the 1.x document's shape,
+/// with what the renderer emits. It is the Python's document exactly when
+/// it holds no intended difference and no gap (docs/topics/output).
+fn document(
+    plan: &Value,
+    report: &Report,
+    discovery: Option<&Discovery>,
+    compiled: Option<&Compiled>,
+) -> Value {
+    let source = document_source(plan, discovery);
+    let frontmatter = document_frontmatter(report);
+    if let Some(c) = compiled {
+        let mut doc = c.document(plan, &source, &frontmatter);
+        if !report.violations.is_empty() {
+            doc["error"] = json!(format!(
+                "{} issue(s) have invalid frontmatter",
+                doc["frontmatter"]["violating_issues"]
+            ));
+        }
+        return doc;
+    }
+    if report.cyclic.is_empty() {
+        let unknown: Vec<Value> = report
+            .unknown
+            .iter()
+            .filter_map(|f| {
+                f.concerns.as_ref().map(|p| {
+                    json!({"node": f.subject.to_string(), "unknown_prerequisite": p.to_string()})
+                })
+            })
+            .collect();
+        json!({
+            "ok": false,
+            "error": "Unresolved prerequisites: unknown references and/or stale (merged) hints",
+            "unknown_dependencies": unknown,
+            "stale_merged_hints": [],
+            "soft_or_low_confidence_edges": [],
+            "source": source,
+            "frontmatter": frontmatter,
+        })
+    } else {
+        json!({
+            "ok": false,
+            "error": "Cycle detected in hard structural edges",
+            "cyclic_nodes": sorted_texts(report.cyclic.iter().map(|f| &f.subject)),
+            "unknown_dependencies": [],
+            "stale_merged_hints": [],
+            "source": source,
+            "frontmatter": frontmatter,
         })
     }
 }
@@ -1064,13 +1132,13 @@ mod tests {
                 r#"{"k":"\u0000\u0001\u0002\u0003\u0004\u0005\u0006\u0007\b\t\n\u000b\f\r\u000e\u000f\u0010\u0011\u0012\u0013\u0014\u0015\u0016\u0017\u0018\u0019\u001a\u001b\u001c\u001d\u001e\u001f"}"#,
             ),
             (json!({"k": "\u{7f}"}), r#"{"k":"\u007f"}"#),
-            (json!({"k": "é"}), r#"{"k":"é"}"#),
-            (json!({"k": "😀"}), r#"{"k":"😀"}"#),
-            (json!({"k": "\u{2028}"}), r#"{"k":" "}"#),
+            (json!({"k": "\u{e9}"}), r#"{"k":"\u00e9"}"#),
+            (json!({"k": "\u{1f600}"}), r#"{"k":"\ud83d\ude00"}"#),
+            (json!({"k": "\u{2028}"}), r#"{"k":"\u2028"}"#),
             (json!({"k": "\" \\ / ~"}), r#"{"k":"\" \\ / ~"}"#),
             (
-                json!({"b": [1, 0.1786, 0.0, null, true], "a\u{7f}": {"é": "x"}}),
-                r#"{"a\u007f":{"é":"x"},"b":[1,0.1786,0.0,null,true]}"#,
+                json!({"b": [1, 0.1786, 0.0, null, true], "a\u{7f}": {"\u{e9}": "x"}}),
+                r#"{"a\u007f":{"\u00e9":"x"},"b":[1,0.1786,0.0,null,true]}"#,
             ),
         ];
         for (value, python) in cases {
