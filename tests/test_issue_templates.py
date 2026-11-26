@@ -102,6 +102,13 @@ class InstalledTemplatesTest(unittest.TestCase):
         self.assertTrue(INSTALLED.is_dir(), ".github/ISSUE_TEMPLATE/ is missing")
         self.assertEqual(template_names(INSTALLED), template_names(TEMPLATES))
 
+    def test_every_listing_of_a_template_folder_skips_hidden_files(self):
+        """Only template_names lists a folder, so no test reads a `.DS_Store` as a template."""
+        source = pathlib.Path(__file__).read_text(encoding="utf-8").splitlines()
+        listings = [n for n, line in enumerate(source, 1) if re.search(r"[\w)]\.(?:iterdir\(\)|glob\()", line)]
+        inside = [n for n in listings if "if p.is_file() and not p.name.startswith(\".\")" in source[n - 1]]
+        self.assertEqual(listings, inside, "list a template folder only through template_names")
+
     def test_a_hidden_file_left_by_the_system_is_not_drift(self):
         """A `.DS_Store` that macOS writes into either folder is not a template; it must not fail the suite."""
         import tempfile
