@@ -126,6 +126,143 @@ fn every_shape_warning_is_a_catalogued_warning() {
     }
 }
 
+/// The detail of a redundant-edge warning: the node it is implied via.
+fn via(warning: &ShapeFinding) -> &IssueRef {
+    match &warning.detail {
+        Some(Detail::ImpliedVia(node)) => node,
+        other => panic!("not a redundant edge's detail: {other:?}"),
+    }
+}
+
+/// The redundant-edge warnings as `(prerequisite, dependent, implied via)`,
+/// in the order given.
+fn redundant(found: &[ShapeFinding]) -> Vec<(IssueRef, IssueRef, IssueRef)> {
+    of(found, ShapeWarning::RedundantEdge)
+        .into_iter()
+        .map(|f| {
+            (
+                f.finding.concerns.clone().expect("a prerequisite"),
+                f.finding.subject.clone(),
+                via(f).clone(),
+            )
+        })
+        .collect()
+}
+
+/// `count` open tasks numbered from 1, each blocked by the tasks `edges`
+/// name for it, as `(prerequisite, dependent)`.
+fn tasks(count: u32, edges: &[(u32, u32)]) -> Graph {
+    let bodies: Vec<(u32, String)> = (1..=count)
+        .map(|id| {
+            let prerequisites: Vec<u32> = edges
+                .iter()
+                .filter(|(_, to)| *to == id)
+                .map(|(from, _)| *from)
+                .collect();
+            (id, task(id, &prerequisites, ""))
+        })
+        .collect();
+    graph(&bodies)
+}
+
+fn r(n: u32) -> IssueRef {
+    reference(&format!("o/r#{n}"))
+}
+
+/// #62: `o/r#3` is blocked by `o/r#1` directly and through `o/r#2`, so the
+/// edge `o/r#1 -> o/r#3` is redundant (G5). One warning names it: its
+/// subject is the dependent, it concerns the prerequisite, and its detail is
+/// the node it is implied via.
+#[test]
+fn a_redundant_edge_gives_one_warning_naming_it_and_its_implied_via() {
+    let found = shape_warnings(&tasks(3, &[(1, 2), (2, 3), (1, 3)]));
+    let warnings = of(&found, ShapeWarning::RedundantEdge);
+    assert_eq!(warnings.len(), 1, "{found:?}");
+    let warning = warnings[0];
+    assert_eq!(warning.finding.subject, r(3));
+    assert_eq!(warning.finding.concerns, Some(r(1)));
+    assert_eq!(warning.finding.severity(), Severity::Warning);
+    assert_eq!(warning.detail, Some(Detail::ImpliedVia(r(2))));
+}
+
+/// #62: the same plan, reduced, gives no redundant-edge warning.
+#[test]
+fn the_reduced_plan_gives_no_redundant_edge_warning() {
+    let found = shape_warnings(&tasks(3, &[(1, 2), (2, 3)]));
+    assert!(
+        of(&found, ShapeWarning::RedundantEdge).is_empty(),
+        "{found:?}"
+    );
+}
+
+/// #62: a diamond, 1 -> 2 -> 4 and 1 -> 3 -> 4, with 1 -> 4: both 2 and 3
+/// imply the edge, and the first child of 1 in reference text order is 2,
+/// as the Python compiler's `implied_via` picks it.
+#[test]
+fn implied_via_is_the_first_child_that_reaches_the_dependent() {
+    let found = shape_warnings(&tasks(4, &[(1, 2), (2, 4), (1, 3), (3, 4), (1, 4)]));
+    assert_eq!(redundant(&found), [(r(1), r(4), r(2))]);
+}
+
+/// #62: the children are taken in the text order of their references, as
+/// the Python compiler sorts its ids: `o/r#10` comes before `o/r#2`, and a
+/// child joined by an edge that is itself redundant still counts.
+#[test]
+fn implied_via_takes_children_in_reference_text_order() {
+    // 1 -> 2 -> 10 -> 11, with 1 -> 10 and 1 -> 11 both redundant. For
+    // 1 -> 11, the children of 1 are o/r#10 and o/r#2; o/r#10 comes first.
+    let found = shape_warnings(&tasks(11, &[(1, 2), (2, 10), (10, 11), (1, 10), (1, 11)]));
+    assert_eq!(
+        redundant(&found),
+        [(r(1), r(10), r(2)), (r(1), r(11), r(10))]
+    );
+}
+
+/// #62: the warnings sort by their findings (subject first), not by edge:
+/// the edge 1 -> 5 comes before 2 -> 4, but its warning, whose subject is
+/// o/r#5, comes after that of 2 -> 4, whose subject is o/r#4.
+#[test]
+fn redundant_edge_warnings_sort_by_subject_not_by_edge() {
+    let found = shape_warnings(&tasks(6, &[(1, 3), (3, 5), (1, 5), (2, 6), (6, 4), (2, 4)]));
+    assert_eq!(redundant(&found), [(r(2), r(4), r(6)), (r(1), r(5), r(3))]);
+}
+
+/// The reviewer's graph (#124): a chain of 5,000 tasks, each also blocked by
+/// o/r#1, so 4,998 edges are redundant. Each is implied via o/r#2 (for a
+/// dependent up to o/r#10) or o/r#10 (beyond), the first child of o/r#1 in
+/// text order that reaches it.
+fn chain_with_a_hub() -> Graph {
+    let mut edges: Vec<(u32, u32)> = (1..5_000).map(|n| (n, n + 1)).collect();
+    edges.extend((3..=5_000).map(|n| (1, n)));
+    tasks(5_000, &edges)
+}
+
+fn check_chain_with_a_hub(found: &[ShapeFinding]) {
+    let found = redundant(found);
+    assert_eq!(found.len(), 4_998);
+    for (from, to, through) in found {
+        assert_eq!(from, r(1));
+        let expected = if to.number() <= 10 { r(2) } else { r(10) };
+        assert_eq!(through, expected, "{to}");
+    }
+}
+
+#[test]
+fn a_chain_with_a_hub_gives_one_warning_per_redundant_edge() {
+    check_chain_with_a_hub(&shape_warnings(&chain_with_a_hub()));
+}
+
+#[test]
+#[ignore = "wall-clock bound; run with --release --ignored"]
+fn perf_redundant_edge_warnings_of_a_chain_with_a_hub_take_under_a_second() {
+    let graph = chain_with_a_hub();
+    let start = std::time::Instant::now();
+    let found = shape_warnings(&graph);
+    let took = start.elapsed();
+    assert!(took < std::time::Duration::from_secs(1), "took {took:?}");
+    check_chain_with_a_hub(&found);
+}
+
 /// #63: containers with no child and with one child each give the warning,
 /// naming the container; one with two children does not. The run is still
 /// a plan: the warning leaves it valid.
@@ -144,7 +281,7 @@ fn a_container_with_fewer_than_two_children_gives_one_warning() {
     for warning in small {
         assert_eq!(warning.finding.concerns, None);
         assert_eq!(warning.finding.severity(), Severity::Warning);
-        assert_eq!(warning.detail, Detail::None);
+        assert_eq!(warning.detail, None);
     }
 }
 
