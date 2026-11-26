@@ -41,7 +41,9 @@ pub const TRUST_CODES: [(&str, Severity); TRUST_WARNINGS.len()] = [
 ];
 
 /// What a trust finding is about: an issue, or a pull request of the home
-/// repository. A pull request's number is any number GitHub gives, so it is
+/// repository.
+///
+/// A pull request's number is any number GitHub gives, so it is
 /// held as observed, never parsed into a reference (rule L1 bounds those).
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum TrustSubject {
@@ -66,9 +68,10 @@ impl fmt::Display for TrustSubject {
     }
 }
 
-/// One issue or pull request the trust gate kept out, for one actor: a
-/// catalogued code, its severity, a fixed message, the subject, the login
-/// and the rule. It is not a [`crate::Finding`], whose subject is always a
+/// One issue or pull request the trust gate kept out, for one actor.
+///
+/// It holds a catalogued code, its severity, a fixed message, the subject,
+/// the login and the rule. It is not a [`crate::Finding`], whose subject is always a
 /// reference: a pull request's number need not fit one, and its finding is
 /// never dropped for that.
 #[derive(Clone, Debug, PartialEq, Eq)]
