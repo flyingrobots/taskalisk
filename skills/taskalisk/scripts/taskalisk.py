@@ -63,6 +63,7 @@ import argparse
 from collections import defaultdict, deque
 import hashlib
 import json
+import math
 import os
 from pathlib import Path
 import re
@@ -2091,6 +2092,17 @@ def run_plan(run: Any, ns: argparse.Namespace, command: str) -> None:
     emit_plan(run, outcome.result, "github", outcome.failures, since, ns.emit, outcome.rel_failed)
 
 
+def finite_number(value: Any) -> bool:
+    """A JSON number a float can hold: not a bool, a string, null, NaN, an infinity, or an integer
+    beyond the float range."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return False
+    try:
+        return math.isfinite(value)
+    except OverflowError:
+        return False
+
+
 def check_spec(data: Any) -> str | None:
     """Why a --verify-dag spec cannot be compiled, or None. Each line it yields must validate."""
     if not isinstance(data, dict) or not isinstance(data.get("nodes", {}), dict):
@@ -2120,6 +2132,13 @@ def check_spec(data: Any) -> str | None:
         deps = meta.get("depends_on", meta.get("prerequisites", []))
         if not isinstance(deps, list) or not all(isinstance(d, (str, dict)) for d in deps):
             return f"DAG spec node {nid!r}: depends_on must be a list of ids or edge objects"
+        for dep in deps:
+            if not isinstance(dep, dict):
+                continue
+            if "isHard" in dep and not isinstance(dep["isHard"], bool):
+                return f"DAG spec node {nid!r}: an edge's isHard must be true or false"
+            if not finite_number(dep.get("confidence", 1.0)):
+                return f"DAG spec node {nid!r}: an edge's confidence must be a finite number"
         branches = meta.get("recoverable_branches", [])
         if not isinstance(branches, list) or not all(isinstance(b, str) for b in branches):
             return f"DAG spec node {nid!r}: recoverable_branches must be a list of strings"
@@ -2137,7 +2156,7 @@ def run_verify(run: Any, ns: argparse.Namespace, command: str) -> None:
     try:
         raw = Path(ns.verify_dag).read_bytes()
         data = json.loads(raw.decode("utf-8"))
-    except (OSError, ValueError) as exc:
+    except (OSError, ValueError, RecursionError) as exc:  # RecursionError: JSON nested too deeply to parse
         # The receipt names the bytes this run saw: the ones read, or none. Never a later reading.
         if raw is None:
             run.input_unreadable(label, "dag_spec.unreadable")
