@@ -5,6 +5,7 @@
 //! the `.blocked_by` rewrite of the edge-edit contract ([`rewrite_blocked_by`]).
 //! The crate performs no I/O and has no dependencies.
 mod carrier;
+mod finding;
 mod label;
 mod record;
 mod reference;
@@ -14,6 +15,7 @@ mod validate;
 use std::collections::BTreeSet;
 
 pub use carrier::{Block, Entry, Integer, Parse, Slot, Value, parse, trim};
+pub use finding::{Finding, LABELS, Severity, code, findings};
 pub use label::Label;
 pub use record::{Kind, MeterClaim, Record, Status, TaskType, VERSION};
 pub use reference::{IssueRef, MAX_NUMBER};
