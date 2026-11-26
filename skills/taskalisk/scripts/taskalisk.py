@@ -1372,14 +1372,66 @@ def _issue_link(nid: str, url: str | None) -> str:
     return f"[{nid}]({url})" if url else nid
 
 
-def _resources_cell(holds: list[str], meters: list[dict[str, Any]], empty: str) -> str:
-    cells = [f"`{_md_cell(k)}`" for k in holds] + ["`" + _md_cell(str(m["name"])) + "*" + str(m["slots"]) + "`" for m in meters]
+def _resources_cell(holds: list[str], meters: list[dict[str, Any]], empty: str, in_table: bool) -> str:
+    """Each hold and meter as a code span, shown as written (`_md_code`)."""
+    cells = [_md_code(k, in_table) for k in holds] + [_md_code(f"{m['name']}*{m['slots']}", in_table) for m in meters]
     return ", ".join(cells) or empty
 
 
+def _md_code(text: str, in_table: bool) -> str:
+    """Text as a code span, which shows its characters literally and never links: line breaks fold
+    to a space, controls are dropped, and the fence is one backtick longer than the longest run of
+    backticks inside (padded with a space when the text starts or ends with a backtick or a space;
+    an empty result is shown as an em dash). In a table, `|`
+    must still be written `\\|`, the one escape GFM reads inside a code span there."""
+    text = MD_CONTROL_RE.sub("", MD_LINE_BREAK_RE.sub(" ", str(text)))
+    if in_table:
+        text = text.replace("|", "\\|")
+    if not text:
+        return "\u2014"  # nothing left to show
+    fence = "`" * (max((len(r) for r in re.findall("`+", text)), default=0) + 1)
+    # GFM strips one space from each end when both are spaces, and a backtick at an end would join
+    # the fence: padding either keeps the text as written. An all-space span is never stripped.
+    pad = " " if (text[0] in "` " or text[-1] in "` ") and text.strip(" ") else ""
+    return f"{fence}{pad}{text}{pad}{fence}"
+
+
+MD_LINE_BREAK_RE = re.compile("\r\n|[\n\r\x0b\x0c\x85\u2028\u2029]")
+# C0 and C1 controls and the bidirectional controls (embeddings, overrides, isolates, marks).
+MD_CONTROL_RE = re.compile(r"[\x00-\x1f\x7f-\x9f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]")
+# Where GFM can start a link: every scheme's `://` and every `www.`, whatever comes before them
+# (a letter, a digit, `_` or punctuation is no guard GitHub's renderer honours), and an `@` before
+# any non-space character (an email address, `mailto:` or a mention). A bounded scheme keeps the
+# scan linear.
+MD_AUTOLINK_RE = re.compile(r"(?i)([a-z][a-z0-9+.-]{0,31}:)(//)|(www)(\.)|(@)(?=\S)")
+# A character reference GFM decodes before it looks for links (`&#64;` is `@`); its `&` is escaped.
+MD_CHAR_REF_RE = re.compile(r"&(?=#[0-9]{1,7};|#[xX][0-9a-fA-F]{1,6};|[A-Za-z][A-Za-z0-9]{1,31};)")
+ZERO_WIDTH_SPACE = "\u200b"
+
+
+def _unlink(m: re.Match[str]) -> str:
+    """The match with a zero-width space where GFM would see the start of a link."""
+    if m.group(1):
+        return m.group(1) + ZERO_WIDTH_SPACE + m.group(2)
+    if m.group(3):
+        return m.group(3) + ZERO_WIDTH_SPACE + m.group(4)
+    return m.group(5) + ZERO_WIDTH_SPACE
+
+
 def _md_cell(text: str) -> str:
-    """Issue text in a rendered table cell: no pipes, no HTML, no links, no line breaks (C5)."""
-    return str(text).replace("|", "\\|").replace("<", "&lt;").replace(">", "&gt;").replace("[", "\\[").replace("]", "\\]").replace("\n", " ")
+    """Issue text in a rendered table cell: no pipes, no HTML, no links, no line breaks, no control
+    characters (C5). In order: the backslash is escaped first, so a title's own backslash cannot
+    cancel a later escape; every Unicode line break becomes a space; every other C0 or C1 control
+    character (ESC included) and every bidirectional control is dropped; the `&` of a character
+    reference becomes `&amp;`, so `&#64;` stays text; `|`, `[`, `]` are escaped and `<`, `>`
+    become entities; and nothing can autolink, because a zero-width space (U+200B) follows the
+    colon of every `scheme://`, the `www` of every `www.` and an `@` before any non-space
+    character (`_unlink`). Text that needs none of this is returned unchanged."""
+    text = str(text).replace("\\", "\\\\")
+    text = MD_CONTROL_RE.sub("", MD_LINE_BREAK_RE.sub(" ", text))
+    text = MD_CHAR_REF_RE.sub("&amp;", text)
+    text = text.replace("|", "\\|").replace("<", "&lt;").replace(">", "&gt;").replace("[", "\\[").replace("]", "\\]")
+    return MD_AUTOLINK_RE.sub(_unlink, text)
 
 
 def render_roadmap_block(result: dict[str, Any]) -> str:
@@ -1414,12 +1466,12 @@ def render_roadmap_block(result: dict[str, Any]) -> str:
     for i, n in enumerate(result.get("open_frontier_ranked", []), 1):
         out.append(
             f"| {i} | {n['priority_score']} | {_issue_link(n['id'], n.get('url'))} | {_md_cell(n['title'])} | {n['status']} | "
-            f"{n['transitive_unblocks_count']} | {n['critical_path_remaining_depth']} | {_resources_cell(n['holds'], n['meters'], '—')} | "
+            f"{n['transitive_unblocks_count']} | {n['critical_path_remaining_depth']} | {_resources_cell(n['holds'], n['meters'], '—', in_table=True)} | "
             f"{', '.join(n['directly_unlocks']) or '—'} |"
         )
     out += ["", "### Conflict-Free git-locks Batch", ""]
     for b in result.get("conflict_free_frontier_batch", []):
-        out.append(f"- {_issue_link(b['id'], b.get('url'))} {_md_cell(b['title'])} — {_resources_cell(b['holds'], b['meters'], 'no resources')}")
+        out.append(f"- {_issue_link(b['id'], b.get('url'))} {_md_cell(b['title'])} — {_resources_cell(b['holds'], b['meters'], 'no resources', in_table=False)}")
     out += ["", "## Task Checklist by Wave", ""]
     for wname, items in waves.items():
         out += [f"### {wname}", ""]
@@ -2384,7 +2436,7 @@ def handler(run: Any, _args: list[str]) -> None:
 # ---- --human --------------------------------------------------------------------------------
 
 # C0 and C1 controls, line and paragraph separators and bidirectional overrides: none reaches prose.
-HUMAN_UNSAFE_RE = re.compile("[\x00-\x1f\x7f-\x9f  ‪-‮⁦-⁩]")
+HUMAN_UNSAFE_RE = re.compile("[\x00-\x1f\x7f-\x9f\u2028\u2029\u202a-\u202e\u2066-\u2069]")
 
 
 def hs(value: Any) -> str:

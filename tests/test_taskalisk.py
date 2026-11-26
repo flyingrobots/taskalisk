@@ -7,7 +7,7 @@ in CHANGELOG.md: a 1.x exit 1 is now 2.
 
 Run: python3 -m unittest discover -s tests
 """
-import json, os, pathlib, shutil, subprocess, sys, tempfile, unittest
+import json, os, pathlib, re, shutil, subprocess, sys, tempfile, unittest
 
 import parley_lines as pl
 
@@ -639,6 +639,87 @@ class Trust(Harness):
         p = self.run_dag(state, "--from-github", "--root", f"{HOME}#9", "--emit-roadmap")
         self.assertNotIn("[click](https://example.invalid)", self.rendering(p))
         self.assertIn("a\\|b", self.rendering(p))
+
+    def test_a_hostile_title_renders_as_inert_text(self):
+        """F-10 (flyingrobots/taskalisk#75): no control, no line break, no live backslash, no autolink."""
+        state = plan_state()
+        state["issues"][f"{HOME}#1"]["title"] = ("a\rb\r\nc\u2028d\u2029e\x85f\x0bg\x0ch\x1b[0m\x00\x7f\x9b "
+                                                "back\\[x] \\| https://example.invalid HTTP://x.invalid www.example.invalid end")
+        p = self.run_dag(state, "--from-github", "--root", f"{HOME}#9", "--emit-roadmap")
+        self.assertEqual(p.returncode, 0, p.stderr)
+        row = next(l for l in self.rendering(p).split("\n") if f"{HOME}#1" in l and "end" in l)
+        self.assertIsNone(re.search("[\x00-\x1f\x7f-\x9f\u2028\u2029]", row), repr(row))
+        self.assertIn("a b c d e f g h[0m", row.replace("\\[", "[").replace("\\]", "]"))
+        self.assertIn("back\\\\\\[x\\] \\\\\\|", row)  # each backslash escaped, then each [ ] | escaped
+        for url in ("https://example.invalid", "HTTP://x.invalid", "www.example.invalid"):
+            self.assertNotIn(url, row)
+        self.assertIn("https:\u200b//example.invalid", row)
+        self.assertIn("www\u200b.example.invalid", row)
+
+    def test_no_autolink_after_an_underscore_a_letter_or_in_an_email_and_no_bidi_control(self):
+        """F-10 (flyingrobots/taskalisk#75): GFM starts an autolink after `_` or a non-ASCII letter, and links
+        an email address or a mention; a bidi control can reorder how a title reads."""
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("taskalisk_md_cell_links", SCRIPT)
+        tk = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(tk)
+        # a link start not broken by a zero-width space; any @ before a non-space counts, not only a letter
+        live = re.compile(r"(?i)(?:https?://|www\.)|@(?=[^\s\u200b])")  # anywhere: a digit or letter before it is no guard
+        for title in ("_www.evil.invalid", "_http://evil.invalid", "\u00e9http://evil.invalid", "\u00e9www.evil.invalid",
+                      "1https://evil.invalid", "1www.evil.invalid", "x9http://evil.invalid",
+                      "a@evil.invalid", "a@-evil.invalid", "a@_evil.invalid", "a@.evil.invalid", "mailto:a@evil.invalid", "xmpp:a@evil.invalid", "ping @someone", "(https://evil.invalid)"):
+            with self.subTest(ascii(title)):
+                self.assertIsNone(live.search(tk._md_cell(title)), ascii(tk._md_cell(title)))
+        for ch in ("\u202a", "\u202b", "\u202c", "\u202d", "\u202e", "\u2066", "\u2067", "\u2068", "\u2069", "\u200e", "\u200f", "\u061c"):
+            with self.subTest(ascii(ch)):
+                self.assertEqual(tk._md_cell(f"a{ch}b"), "ab")
+
+    def test_a_character_reference_in_a_title_stays_text(self):
+        """GFM decodes `&#64;` to `@` before it looks for links, so a reference must not stay live."""
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("taskalisk_md_cell_refs", SCRIPT)
+        tk = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(tk)
+        for title, expected in (("a&#64;evil.invalid", "a&amp;#64;evil.invalid"), ("a&#x40;evil.invalid", "a&amp;#x40;evil.invalid"),
+                                ("a&#X40;evil.invalid", "a&amp;#X40;evil.invalid"), ("a&commat;evil.invalid", "a&amp;commat;evil.invalid"),
+                                ("&lt;b&gt;", "&amp;lt;b&amp;gt;"), ("a & b", "a & b"), ("a &b c", "a &b c"), ("R&D; 5&6", "R&D; 5&6"),  # no one-letter entity exists
+                                ("AT&amp;T", "AT&amp;amp;T")):
+            with self.subTest(title):
+                self.assertEqual(tk._md_cell(title), expected)
+
+    def test_a_resource_key_in_a_code_span_is_shown_as_written(self):
+        """A code span shows its text literally: a key keeps its one backslash, and only a table needs `\\|`."""
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("taskalisk_md_code", SCRIPT)
+        tk = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(tk)
+        meters = [{"name": "gpu", "slots": 2}]
+        self.assertEqual(tk._resources_cell(["src\\cache", "a|b", "x[1]<y>"], meters, "-", in_table=True),
+                         "`src\\cache`, `a\\|b`, `x[1]<y>`, `gpu*2`")
+        self.assertEqual(tk._resources_cell(["src\\cache", "a|b"], [], "-", in_table=False), "`src\\cache`, `a|b`")
+        self.assertEqual(tk._resources_cell(["a`b", "``c"], [], "-", in_table=False), "``a`b``, ``` ``c ```")
+        self.assertEqual(tk._resources_cell(["a\rb\u2028c\x1bd\u202ee"], [], "-", in_table=False), "`a b cde`")
+        self.assertEqual(tk._resources_cell([], [], "none", in_table=False), "none")
+        # GFM strips one space from each end of a code span when both are spaces, so such a key is padded
+        self.assertEqual(tk._resources_cell([" a ", "b "], [], "-", in_table=False), "`  a  `, ` b  `")
+        self.assertEqual(tk._resources_cell(["   "], [], "-", in_table=False), "`   `")  # GFM never strips an all-space span
+        self.assertEqual(tk._resources_cell(["\x1b\x07"], [], "-", in_table=False), "\u2014")  # nothing left to show
+
+    def test_a_plain_title_renders_byte_for_byte_as_before(self):
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("taskalisk_md_cell", SCRIPT)
+        tk = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(tk)
+        for title in ("Write the spec", "Fix #12: a & b, (c) 'd' \"e\" 3.14 ~/path a_b *c*", "Ünïcødé – em — dash", "time: 10:30", ""):
+            with self.subTest(title):
+                self.assertEqual(tk._md_cell(title), title)
+        self.assertEqual(tk._md_cell("a|b <c> [d]"), "a\\|b &lt;c&gt; \\[d\\]")
+        import time
+        for text in ("a." * 50_000, "a-" * 50_000, "a+" * 50_000):  # a scheme-like word with no :// after it
+            with self.subTest(text[:6]):
+                start = time.monotonic()
+                tk._md_cell(text)
+                self.assertLess(time.monotonic() - start, 1.0)
 
     def test_compare_mode_fails_closed_on_a_gh_error(self):
         state = plan_state()
