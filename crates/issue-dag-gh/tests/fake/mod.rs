@@ -41,6 +41,11 @@ impl Fake {
         Self { dir }
     }
 
+    /// The `gh` this fake puts first on `PATH`.
+    pub fn gh(&self) -> PathBuf {
+        self.dir.join("bin/gh")
+    }
+
     /// A forge for `home` that finds this fake as `gh` on `PATH`.
     pub fn forge(&self, home: &str) -> GhForge {
         let mut path = OsString::from(self.dir.join("bin"));

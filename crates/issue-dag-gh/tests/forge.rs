@@ -370,6 +370,26 @@ fn with(changes: &Value) -> Value {
     base
 }
 
+/// #122: the tests run on parallel threads, and Linux refuses to run a file
+/// that any process holds open for writing (`ETXTBSY`). A child forked by
+/// one test while another writes its `gh` keeps that descriptor until its own
+/// exec, so a written `gh` sometimes "could not be run". A symlink to the
+/// checked-in fake is never open for writing.
+#[test]
+fn the_fake_gh_is_a_symlink_to_the_checked_in_fake_never_a_written_file() {
+    let fake = Fake::new(&state());
+    let gh = fake.gh();
+    let kind = std::fs::symlink_metadata(&gh)
+        .expect("the fake's gh")
+        .file_type();
+    assert!(kind.is_symlink(), "{} is a written file", gh.display());
+    let script = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fake_gh.py");
+    assert_eq!(
+        std::fs::canonicalize(&gh).expect("the link resolves"),
+        script.canonicalize().expect("tests/fake_gh.py")
+    );
+}
+
 #[test]
 fn a_listing_that_fills_its_limit_is_unavailable_never_a_short_list() {
     let fake = Fake::new(&state());
