@@ -63,93 +63,91 @@ fn state() -> Value {
     })
 }
 
-/// The issues the state above resolves, recorded by hand.
-fn recorded_issues() -> BTreeMap<IssueRef, Observed<Issue>> {
-    let open = |address: &str, author: Option<Actor>, association: &str, body: Observed<Body>| {
-        Observed::Value(Issue {
-            address: reference(address),
-            pull_request: false,
-            state: IssueState::Open,
-            state_reason: None,
-            author,
-            author_association: Some(association.to_owned()),
-            body: Some(body),
-        })
+/// The issues the state above resolves, and the body of each issue it
+/// resolves, recorded by hand.
+fn recorded_issues() -> (
+    BTreeMap<IssueRef, Observed<Issue>>,
+    BTreeMap<IssueRef, Observed<Body>>,
+) {
+    let issue = |address: &str, state, author: Option<Actor>, association: &str| Issue {
+        address: reference(address),
+        pull_request: false,
+        state,
+        state_reason: None,
+        author,
+        author_association: Some(association.to_owned()),
     };
     let mut issues = BTreeMap::new();
-    issues.insert(
-        reference("o/r#1"),
-        open(
-            "o/r#1",
-            Some(actor("o", "User")),
-            "OWNER",
-            Observed::Value(Body {
-                text: "B1".to_owned(),
-                editors: vec![Some(actor("o", "User"))],
-            }),
-        ),
+    let mut bodies = BTreeMap::new();
+    let mut add = |key: &str, read: Issue, body: Observed<Body>| {
+        issues.insert(reference(key), Observed::Value(read));
+        bodies.insert(reference(key), body);
+    };
+    add(
+        "o/r#1",
+        issue("o/r#1", IssueState::Open, Some(actor("o", "User")), "OWNER"),
+        Observed::Value(Body {
+            text: "B1".to_owned(),
+            editors: vec![Some(actor("o", "User"))],
+        }),
     );
-    issues.insert(
-        reference("o/r#2"),
-        Observed::Value(Issue {
-            address: reference("o/r#2"),
-            pull_request: false,
-            state: IssueState::Closed,
+    add(
+        "o/r#2",
+        Issue {
             state_reason: Some("completed".to_owned()),
-            author: Some(actor("Dev", "User")),
-            author_association: Some("CONTRIBUTOR".to_owned()),
-            body: Some(Observed::Value(Body {
-                text: "B2".to_owned(),
-                editors: vec![
-                    Some(actor("Dev", "User")),
-                    None,
-                    Some(actor("helper", "Bot")),
-                ],
-            })),
+            ..issue(
+                "o/r#2",
+                IssueState::Closed,
+                Some(actor("Dev", "User")),
+                "CONTRIBUTOR",
+            )
+        },
+        Observed::Value(Body {
+            text: "B2".to_owned(),
+            editors: vec![
+                Some(actor("Dev", "User")),
+                None,
+                Some(actor("helper", "Bot")),
+            ],
         }),
     );
-    issues.insert(
-        reference("o/r#3"),
-        Observed::Value(Issue {
-            address: reference("o/r#3"),
+    add(
+        "o/r#3",
+        Issue {
             pull_request: true,
-            state: IssueState::Open,
-            state_reason: None,
-            author: Some(actor("owner", "User")),
-            author_association: Some("OWNER".to_owned()),
-            body: Some(Observed::Unavailable(
-                "o/r#3 is a pull request; its body is not read".to_owned(),
-            )),
+            ..issue(
+                "o/r#3",
+                IssueState::Open,
+                Some(actor("owner", "User")),
+                "OWNER",
+            )
+        },
+        Observed::Unavailable("o/r#3 is a pull request; its body is not read".to_owned()),
+    );
+    add(
+        "o/r#4",
+        issue("o/r#4", IssueState::Open, None, "NONE"),
+        Observed::Value(Body {
+            text: String::new(),
+            editors: vec![None],
         }),
     );
-    issues.insert(
-        reference("o/r#4"),
-        open(
-            "o/r#4",
-            None,
-            "NONE",
-            Observed::Value(Body {
-                text: String::new(),
-                editors: vec![None],
-            }),
-        ),
-    );
-    issues.insert(
-        reference("o/r#5"),
-        open(
+    add(
+        "o/r#5",
+        issue(
             "o/s#9",
+            IssueState::Open,
             Some(actor("owner", "User")),
             "OWNER",
-            Observed::Unavailable(
-                "o/r#5 was transferred to o/s#9; its body is not read".to_owned(),
-            ),
         ),
+        Observed::Unavailable("o/r#5 was transferred to o/s#9; its body is not read".to_owned()),
     );
+    // An issue that cannot be read has no body to read or record.
     issues.insert(
         reference("o/r#404"),
         Observed::Unavailable("o/r#404 resolves to no issue gh can see (HTTP 404)".to_owned()),
     );
-    issues
+    (issues, bodies)
 }
 
 /// What the state above observes, recorded by hand.
@@ -171,6 +169,7 @@ fn recorded() -> Observations {
             ("stranger".to_owned(), Observed::Value(None)),
         ]),
     );
+    let (issues, bodies) = recorded_issues();
     Observations {
         home_open_issues: Some(Observed::Value(vec![
             reference("o/r#1"),
@@ -193,7 +192,8 @@ fn recorded() -> Observations {
             ),
             pull(12, None, None, Observed::Value(true), &["o/r#2"]),
         ])),
-        issues: recorded_issues(),
+        issues,
+        bodies,
         permissions,
         codeowners: Some(BTreeMap::from([
             (
@@ -220,18 +220,12 @@ fn assert_fixture<F: Forge + ?Sized>(forge: &F) {
         Ok(want.home_open_pull_requests.clone().expect("recorded"))
     );
     for (key, slot) in &want.issues {
-        // The issue is answered without its body, which is its own read.
-        let (issue, body) = match slot.clone() {
-            Observed::Value(mut issue) => {
-                let body = issue.body.take().expect("the fixture records every body");
-                (Observed::Value(issue), body)
-            }
-            Observed::Unavailable(why) => (
-                Observed::Unavailable(why.clone()),
-                Observed::Unavailable(why),
-            ),
+        assert_eq!(forge.issue(key), Ok(slot.clone()), "{key}");
+        // The body is its own read; an issue that cannot be read has none.
+        let body = match slot {
+            Observed::Value(_) => want.bodies[key].clone(),
+            Observed::Unavailable(why) => Observed::Unavailable(why.clone()),
         };
-        assert_eq!(forge.issue(key), Ok(issue), "{key}");
         assert_eq!(forge.body(key), Ok(body), "the body of {key}");
     }
     for (on, table) in &want.permissions {
@@ -626,8 +620,9 @@ fn c15_an_issue_read_costs_no_edit_history_query() {
     let forge = fake.forge("o/r");
     assert!(matches!(
         forge.issue(&reference("o/r#2")),
-        Ok(Observed::Value(Issue { body: None, .. }))
+        Ok(Observed::Value(_))
     ));
+    assert!(forge.observations().bodies.is_empty());
     assert_eq!(edit_history_calls(&fake), Vec::<String>::new());
     // The body is read when asked for, once, every page of it.
     let body = forge.body(&reference("o/r#2"));
@@ -653,10 +648,11 @@ fn c15_a_run_over_a_strangers_issue_makes_no_edit_history_query() {
     assert_eq!(forge.failures(), Vec::new());
     // The recording leaves the body out: it was never read (bundle OB14).
     let recorded = forge.observations();
-    let Some(Observed::Value(issue)) = recorded.issues.get(&reference("o/r#7")) else {
-        panic!("o/r#7 was read");
-    };
-    assert_eq!(issue.body, None);
+    assert!(matches!(
+        recorded.issues.get(&reference("o/r#7")),
+        Some(Observed::Value(_))
+    ));
+    assert_eq!(recorded.bodies.get(&reference("o/r#7")), None);
 }
 
 #[test]
@@ -667,12 +663,9 @@ fn c15_a_run_over_a_trusted_issue_reads_its_edit_history() {
     assert!(matches!(outcome, Outcome::Planned { .. }), "{outcome:?}");
     assert_eq!(edit_history_calls(&fake), ["number=1"]);
     let recorded = forge.observations();
-    let Some(Observed::Value(issue)) = recorded.issues.get(&reference("o/r#1")) else {
-        panic!("o/r#1 was read");
-    };
     assert_eq!(
-        issue.body,
-        Some(Observed::Value(Body {
+        recorded.bodies.get(&reference("o/r#1")),
+        Some(&Observed::Value(Body {
             text: "B1".to_owned(),
             editors: vec![Some(actor("o", "User"))],
         }))

@@ -123,7 +123,9 @@ pub struct Body {
     pub editors: Vec<Option<Actor>>,
 }
 
-/// What a reference resolved to (bundle rule OB8).
+/// What a reference resolved to (bundle rule OB8), without its body: the
+/// body is its own read, [`crate::Forge::body`], made only for an issue
+/// whose author is trusted (threat model C15).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Issue {
     /// The issue's address now; it differs from the reference read when the
@@ -139,12 +141,6 @@ pub struct Issue {
     pub author: Option<Actor>,
     /// The author's association with the repository, as reported.
     pub author_association: Option<String>,
-    /// The body and its editors, when they were read, or `None`. A body is
-    /// read only through [`crate::Forge::body`], and only for an issue whose
-    /// author is trusted (threat model C15); [`crate::Forge::issue`] answers
-    /// with `None` here. Observations record the body read in this member,
-    /// and leave it `None` when it was never read (bundle rule OB14).
-    pub body: Option<Observed<Body>>,
 }
 
 /// An open pull request of the home repository (bundle rule OB7).

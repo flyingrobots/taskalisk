@@ -320,7 +320,6 @@ pub fn issue(runner: &Runner, reference: &IssueRef) -> Result<Observed<Issue>, G
         state_reason: optional_text(&source, item, "state_reason")?,
         author,
         author_association: optional_text(&source, item, "author_association")?,
-        body: None,
     }))
 }
 

@@ -796,32 +796,39 @@ mod tests {
         }
     }
 
-    fn owned_issue(address: &str, text: &str) -> Observed<Issue> {
+    /// Records an open issue `address` by the owner, with the body `text`.
+    fn owned(observations: &mut Observations, address: &str, text: &str) {
         let owner = Actor {
             login: "o".to_owned(),
             actor_type: "User".to_owned(),
         };
-        Observed::Value(Issue {
-            address: reference(address),
-            pull_request: false,
-            state: IssueState::Open,
-            state_reason: None,
-            author: Some(owner.clone()),
-            author_association: Some("OWNER".to_owned()),
-            body: Some(Observed::Value(Body {
+        observations.issues.insert(
+            reference(address),
+            Observed::Value(Issue {
+                address: reference(address),
+                pull_request: false,
+                state: IssueState::Open,
+                state_reason: None,
+                author: Some(owner.clone()),
+                author_association: Some("OWNER".to_owned()),
+            }),
+        );
+        observations.bodies.insert(
+            reference(address),
+            Observed::Value(Body {
                 text: text.to_owned(),
                 editors: vec![Some(owner)],
-            })),
-        })
+            }),
+        );
     }
 
     #[test]
     fn d7_a_root_without_frontmatter_is_an_opaque_node() {
-        let observations = Observations {
+        let mut observations = Observations {
             home_open_pull_requests: Some(Observed::Value(Vec::new())),
-            issues: BTreeMap::from([(reference("o/r#1"), owned_issue("o/r#1", "Plain body."))]),
             ..Observations::default()
         };
+        owned(&mut observations, "o/r#1", "Plain body.");
         let outcome = plan(&parameters(&["o/r#1"]), &RecordedForge::new(&observations));
         let Ok(Outcome::Planned { graph, .. }) = outcome else {
             panic!("expected a plan, got {outcome:?}");
@@ -861,36 +868,39 @@ mod tests {
         }
     }
 
-    /// An open issue `address` by a stranger, whose body, when given, names
-    /// a valid task document.
-    fn strangers_issue(address: &str, body: Option<&str>) -> Observed<Issue> {
+    /// Records an open issue `address` by a stranger, and its body when
+    /// given.
+    fn strangers(observations: &mut Observations, address: &str, body: Option<&str>) {
         let stranger = Actor {
             login: "stranger".to_owned(),
             actor_type: "User".to_owned(),
         };
-        Observed::Value(Issue {
-            address: reference(address),
-            pull_request: false,
-            state: IssueState::Open,
-            state_reason: None,
-            author: Some(stranger.clone()),
-            author_association: Some("NONE".to_owned()),
-            body: body.map(|text| {
+        observations.issues.insert(
+            reference(address),
+            Observed::Value(Issue {
+                address: reference(address),
+                pull_request: false,
+                state: IssueState::Open,
+                state_reason: None,
+                author: Some(stranger.clone()),
+                author_association: Some("NONE".to_owned()),
+            }),
+        );
+        if let Some(text) = body {
+            observations.bodies.insert(
+                reference(address),
                 Observed::Value(Body {
                     text: text.to_owned(),
                     editors: vec![Some(stranger)],
-                })
-            }),
-        })
+                }),
+            );
+        }
     }
 
     #[test]
     fn c15_the_body_of_an_untrusted_issue_is_never_read() {
         let mut observations = tasks(vec![(1, task(1, &[2]))]);
-        observations.issues.insert(
-            reference("o/r#2"),
-            strangers_issue("o/r#2", Some(&task(2, &[]))),
-        );
+        strangers(&mut observations, "o/r#2", Some(&task(2, &[])));
         let forge = Counting {
             inner: RecordedForge::new(&observations),
             bodies: RefCell::new(Vec::new()),
@@ -908,9 +918,7 @@ mod tests {
     #[test]
     fn ob14_a_body_the_run_never_reads_need_not_be_recorded() {
         let mut observations = tasks(vec![(1, task(1, &[2]))]);
-        observations
-            .issues
-            .insert(reference("o/r#2"), strangers_issue("o/r#2", None));
+        strangers(&mut observations, "o/r#2", None);
         let outcome = plan(&parameters(&["o/r#1"]), &RecordedForge::new(&observations));
         assert!(
             matches!(outcome, Ok(Outcome::Planned { .. })),
@@ -918,10 +926,7 @@ mod tests {
         );
         // The body of a trusted issue the run reads is missing (OB5),
         // never empty.
-        let Some(Observed::Value(issue)) = observations.issues.get_mut(&reference("o/r#1")) else {
-            panic!("recorded");
-        };
-        issue.body = None;
+        observations.bodies.remove(&reference("o/r#1"));
         let outcome = plan(&parameters(&["o/r#1"]), &RecordedForge::new(&observations));
         assert!(outcome.is_err(), "got {outcome:?}");
     }
@@ -946,17 +951,14 @@ mod tests {
     }
 
     fn tasks(bodies: Vec<(u32, String)>) -> Observations {
-        Observations {
+        let mut observations = Observations {
             home_open_pull_requests: Some(Observed::Value(Vec::new())),
-            issues: bodies
-                .into_iter()
-                .map(|(n, body)| {
-                    let address = format!("o/r#{n}");
-                    (reference(&address), owned_issue(&address, &body))
-                })
-                .collect(),
             ..Observations::default()
+        };
+        for (n, body) in bodies {
+            owned(&mut observations, &format!("o/r#{n}"), &body);
         }
+        observations
     }
 
     /// The bound the large graphs below must plan within, in a debug build.

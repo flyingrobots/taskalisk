@@ -45,6 +45,10 @@ pub trait Forge {
     /// author is trusted: an issue a stranger wrote costs no further query
     /// (threat model C15).
     ///
+    /// A caller asks for it only after it has read the issue and admitted
+    /// its author ([`crate::Admission::trusted`]); the planner is the only
+    /// caller. Asking for the body of a stranger's issue defeats C15.
+    ///
     /// # Errors
     ///
     /// [`Missing`] when the body was not recorded.
@@ -97,6 +101,10 @@ pub struct Observations {
     pub home_open_pull_requests: Option<Observed<Vec<PullRequest>>>,
     /// `issues`, keyed by the reference read (OB8).
     pub issues: BTreeMap<IssueRef, Observed<Issue>>,
+    /// The `body` slot of each issue whose body was read, keyed as
+    /// `issues` (OB8). A body the run never read, such as that of an issue
+    /// whose author is not trusted, has no key (OB14).
+    pub bodies: BTreeMap<IssueRef, Observed<Body>>,
     /// `permissions`: repository, then login in lower case (OB10).
     pub permissions: BTreeMap<Repo, BTreeMap<String, Observed<Option<String>>>>,
     /// `codeowners` (OB11).
@@ -145,16 +153,8 @@ impl Forge for RecordedForge<'_> {
     }
 
     fn issue(&self, reference: &IssueRef) -> Lookup<Issue> {
-        let slot = recorded(self.observations.issues.get(reference), || {
+        recorded(self.observations.issues.get(reference), || {
             format!("the issue {reference}")
-        })?;
-        // The body is its own read, [`Forge::body`].
-        Ok(match slot {
-            Observed::Value(issue) => Observed::Value(Issue {
-                body: None,
-                ..issue
-            }),
-            Observed::Unavailable(why) => Observed::Unavailable(why),
         })
     }
 
@@ -163,7 +163,10 @@ impl Forge for RecordedForge<'_> {
             what: format!("the body of {reference}"),
         };
         match self.observations.issues.get(reference) {
-            Some(Observed::Value(issue)) => issue.body.clone().ok_or_else(missing),
+            Some(Observed::Value(_)) => recorded(self.observations.bodies.get(reference), || {
+                format!("the body of {reference}")
+            }),
+            // An issue that could not be read has no body to read.
             Some(Observed::Unavailable(why)) => Ok(Observed::Unavailable(why.clone())),
             None => Err(missing()),
         }
@@ -209,7 +212,7 @@ mod tests {
         assert!(forge.codeowners(&repo).is_err());
     }
 
-    fn issue(body: Option<Observed<Body>>) -> Observed<Issue> {
+    fn issue() -> Observed<Issue> {
         Observed::Value(Issue {
             address: IssueRef::parse("o/r#1").expect("a reference"),
             pull_request: false,
@@ -217,25 +220,22 @@ mod tests {
             state_reason: None,
             author: None,
             author_association: None,
-            body,
         })
     }
 
     #[test]
-    fn the_body_is_its_own_read_and_never_rides_on_the_issue() {
+    fn the_body_is_its_own_read() {
         let reference = IssueRef::parse("o/r#1").expect("a reference");
         let body = Observed::Value(Body {
             text: "text".to_owned(),
             editors: vec![None],
         });
         let mut observations = Observations::default();
-        observations
-            .issues
-            .insert(reference.clone(), issue(Some(body.clone())));
+        observations.issues.insert(reference.clone(), issue());
+        observations.bodies.insert(reference.clone(), body.clone());
         let forge = RecordedForge::new(&observations);
+        assert_eq!(forge.issue(&reference), Ok(issue()));
         assert_eq!(forge.body(&reference), Ok(body));
-        // The issue is answered without its body (threat model C15).
-        assert_eq!(forge.issue(&reference), Ok(issue(None)));
     }
 
     #[test]
@@ -244,7 +244,7 @@ mod tests {
         let mut observations = Observations::default();
         let forge = RecordedForge::new(&observations);
         assert!(forge.body(&reference).is_err(), "no issue recorded");
-        observations.issues.insert(reference.clone(), issue(None));
+        observations.issues.insert(reference.clone(), issue());
         let forge = RecordedForge::new(&observations);
         assert!(forge.body(&reference).is_err(), "no body recorded");
         observations.issues.insert(

@@ -271,10 +271,21 @@ fn ob14_the_body_of_an_issue_the_run_never_reads_may_be_left_out() {
     }});
     let bundle = load(&b.to_string()).expect("a bundle without that body loads");
     let three = IssueRef::parse("o/r#3").expect("reference");
-    let Some(Observed::Value(issue)) = bundle.observations.issues.get(&three) else {
-        panic!("o/r#3 is recorded");
-    };
-    assert_eq!(issue.body, None, "left out, not read as empty");
+    assert!(matches!(
+        bundle.observations.issues.get(&three),
+        Some(Observed::Value(_))
+    ));
+    assert_eq!(
+        bundle.observations.bodies.get(&three),
+        None,
+        "left out, not read as empty"
+    );
+    // The body an issue slot holds is read into the bodies.
+    let one = IssueRef::parse("o/r#1").expect("reference");
+    assert!(matches!(
+        bundle.observations.bodies.get(&one),
+        Some(Observed::Value(body)) if body.text == "Plain body."
+    ));
     let outcome = plan(
         &bundle.parameters,
         &RecordedForge::new(&bundle.observations),

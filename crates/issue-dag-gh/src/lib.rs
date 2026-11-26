@@ -185,26 +185,21 @@ impl Forge for GhForge {
                 .insert(reference.clone(), slot.clone());
             slot
         });
-        Ok(match slot {
-            Observed::Value(issue) => Observed::Value(Issue {
-                body: None,
-                ..issue
-            }),
-            Observed::Unavailable(why) => Observed::Unavailable(why),
-        })
+        Ok(slot)
     }
 
-    /// The edit-history query, run only when the body is asked for (threat
-    /// model C15), once; the body is recorded in the issue's slot.
+    /// The edit-history query, run only when the body is asked for, once;
+    /// the body is recorded in [`Observations::bodies`].
+    ///
+    /// Ask for it only after the issue's author is admitted: asking for a
+    /// stranger's body spends the query threat model C15 saves. The planner
+    /// is the only caller.
     fn body(&self, reference: &IssueRef) -> Lookup<Body> {
         let issue = match self.issue(reference)? {
             Observed::Value(issue) => issue,
             Observed::Unavailable(why) => return Ok(Observed::Unavailable(why)),
         };
-        let cached = match self.read.borrow().issues.get(reference) {
-            Some(Observed::Value(recorded)) => recorded.body.clone(),
-            _ => None,
-        };
+        let cached = self.read.borrow().bodies.get(reference).cloned();
         if let Some(slot) = cached {
             return Ok(slot);
         }
@@ -212,9 +207,10 @@ impl Forge for GhForge {
             || self.settle(read::edit_history(&self.runner, reference, self.limits)),
             Observed::Unavailable,
         );
-        if let Some(Observed::Value(recorded)) = self.read.borrow_mut().issues.get_mut(reference) {
-            recorded.body = Some(slot.clone());
-        }
+        self.read
+            .borrow_mut()
+            .bodies
+            .insert(reference.clone(), slot.clone());
         Ok(slot)
     }
 
