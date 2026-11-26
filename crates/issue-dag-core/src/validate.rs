@@ -395,6 +395,28 @@ mod tests {
     }
 
     #[test]
+    fn a_repeated_dag_leaves_the_version_unknown_so_c7_is_the_only_violation() {
+        assert_eq!(
+            violations(&[".dag: issue-dag/3", ".dag: issue-dag/3", ".kind: epic"]),
+            [C7]
+        );
+        let without_id =
+            body(&[".dag: issue-dag/2", ".dag: issue-dag/2"]).replace(".id: o/r#1\n", "");
+        match admit(&without_id, None) {
+            Judgement::Invalid(v) => assert_eq!(v.violations.into_iter().collect::<Vec<_>>(), [C7]),
+            other => panic!("expected an invalid document, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn another_repeated_key_is_judged_per_key() {
+        assert_eq!(
+            violations(&[".kind: task", ".kind: task", ".status: done"]),
+            [C7, Label::V8]
+        );
+    }
+
+    #[test]
     fn c4_is_still_the_only_violation() {
         assert_eq!(
             violations(&[".dag: issue-dag/2", ".dag: issue-dag/3", "area: a\u{2028}b"]),
