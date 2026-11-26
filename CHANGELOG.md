@@ -219,6 +219,16 @@ schema version under `Unreleased` is a draft and may change in place.
   `Finding::code()` and `Finding::severity()` and cannot be assigned, so a finding's severity
   always matches its code. A caller that read `finding.code` as a string uses
   `finding.code().as_str()`, and one that read `finding.severity` uses `finding.severity()`.
+- **A warning for a redundant edge** (flyingrobots/taskalisk#62). `issue-dag-core` gains a family
+  of plan-shape warnings, `shape_warnings`, read from a plan's `Graph` and registered in `CODES`
+  after the body warnings: Taskalisk's advisories from the skill's doctrine on graph health, which
+  never make a run invalid. Its first code, `taskalisk.redundant-edge`, is given once per edge the
+  transitive reduction removes (G5): the subject is the dependent, the finding concerns the
+  prerequisite, and its detail is the node the edge is implied via: the first child of the
+  prerequisite, in reference text order, that reaches the dependent, the Python compiler's
+  `implied_via` for the same edge, `edge.redundant`. The descendant sets are built once, so the
+  4,998 redundant edges of a 5,000-task chain whose every task is also blocked by its first take
+  well under a second; a `perf_` test guards it, and the CI perf guard now expects 7.
 
 - **Why a reference could not be read, in part** (flyingrobots/taskalisk#45). The test
   `unreadable_references` pins the three causes today's observations tell apart: outside the read
