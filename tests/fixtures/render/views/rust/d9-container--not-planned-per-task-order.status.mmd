@@ -1,0 +1,18 @@
+flowchart TD
+  subgraph Wave0["Wave 0: Open Frontier (Zero Incomplete Parents)"]
+    N_o_2fr_2310["o/r#10: (title not recorded)"]:::blocked
+    N_o_2fr_2320["o/r#20: (title not recorded)"]:::blocked
+    N_o_2fr_2330["o/r#30: (title not recorded)"]:::open
+    N_o_2fr_234["o/r#4: (title not recorded)"]:::open
+  end
+  N_o_2fr_235["o/r#5: done"]:::done
+  N_o_2fr_237["o/r#7: done"]:::done
+  N_o_2fr_235 -.-> N_o_2fr_2330
+  N_o_2fr_237 -.-> N_o_2fr_2330
+  N_o_2fr_235 -.-> N_o_2fr_234
+  N_o_2fr_237 -.-> N_o_2fr_234
+  classDef done fill:#f6f8fa,stroke:#8c959f,stroke-width:1px,stroke-dasharray:4 3,color:#57606a
+  classDef blocked fill:#d0d7de,stroke:#6e7781,stroke-width:2px,color:#1f2328
+  classDef open fill:#aceebb,stroke:#1a7f37,stroke-width:2px,color:#0f2e17
+  classDef active fill:#b6e3ff,stroke:#0969da,stroke-width:2px,color:#0a2540
+  classDef review fill:#e2d4ff,stroke:#8250df,stroke-width:2px,color:#2e1065

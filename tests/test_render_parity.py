@@ -49,6 +49,17 @@ class PythonFixtures(unittest.TestCase):
         stale = [name for name in expected if on_disk[name] != expected[name]]
         self.assertEqual(stale, [], "recapture: python3 tests/capture_render_parity.py")
 
+    def test_view_fixtures_are_what_the_compiler_renders_now(self):
+        expected = capture.expected_views()
+        on_disk = {p.name: p.read_text() for p in (capture.VIEW_FIXTURES / "python").iterdir()}
+        self.assertEqual(sorted(on_disk), sorted(expected), "recapture: python3 tests/capture_render_parity.py")
+        stale = [name for name in expected if on_disk[name] != expected[name]]
+        self.assertEqual(stale, [], "recapture: python3 tests/capture_render_parity.py")
+        # Every plan that is ok renders both views; the titled cases are among them.
+        self.assertGreater(len(expected), 250)
+        for case in capture.TITLE_FUNCTIONS:
+            self.assertIn(case + capture.TITLED_SUFFIX + ".mermaid.mmd", expected)
+
     def test_variant_bundles_are_what_the_script_writes_now(self):
         expected = capture.expected_bundles()
         on_disk = {p.stem: p.read_text() for p in (capture.FIXTURES / "bundles").glob("*.json")}

@@ -7,3 +7,4 @@
 
 pub mod render;
 mod sha256;
+pub mod views;

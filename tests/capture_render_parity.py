@@ -8,8 +8,11 @@ Not a test (unittest discovery skips it). For each graph case of
 Parley writer, without the writer's envelope (`t`, `seq`, `run`), one sorted-key JSON object per
 line, with `_schema` added from the message's id. A case the Python does not plan (rejected, a
 failed observation, a bundle that lacks a slot the run reads) gets no fixture. One case is captured twice, the second time with titles that
-hold what JSON must escape (TITLED), and a few corpus cases are changed to reach what none does
-(VARIANTS).
+hold what JSON must escape (TITLED), a variant is captured again with titles that attack the
+rendered views (TITLED_VIEWS), and a few corpus cases are changed to reach what none does
+(VARIANTS). For each fixture whose plan is ok, the texts of the `--emit-roadmap` and
+`--emit-mermaid` renderings are written to `views/python/<fixture>.roadmap.md` and
+`<fixture>.mermaid.mmd` (flyingrobots/taskalisk#68).
 
 The Rust renderer (`crates/taskalisk`, flyingrobots/taskalisk#58) is compared with these lines
 field by field. `tests/test_render_parity.py` fails when a fixture differs from what this script
@@ -19,6 +22,7 @@ would write, so the fixtures are captured output, never hand-written:
 """
 from __future__ import annotations
 
+import functools
 import json
 import pathlib
 import sys
@@ -27,6 +31,8 @@ from typing import Any
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 CASES = ROOT / "tests" / "fixtures" / "issue-dag" / "corpus" / "cases" / "graph"
 FIXTURES = ROOT / "tests" / "fixtures" / "render"
+# The views (`--emit-roadmap`, `--emit-mermaid`) the Python renders for each fixture.
+VIEW_FIXTURES = FIXTURES / "views"
 for path in (ROOT / "scripts", ROOT / "tests"):
     if str(path) not in sys.path:
         sys.path.insert(0, str(path))
@@ -72,11 +78,39 @@ def hostile_title(number: int) -> str:
     return f"T{number} \x7f\x00\x01\x1f\t\n\r\b\f é 😀 \u2028 \" \\ / end"
 
 
-class _Titled(forge.BundleForge):
-    def rest_issue(self, ref: str) -> dict[str, Any]:
-        obj = super().rest_issue(ref)
-        obj["title"] = hostile_title(obj["number"])
-        return obj
+def _titled_forge(title: Any) -> type:
+    class _Titled(forge.BundleForge):
+        def rest_issue(self, ref: str) -> dict[str, Any]:
+            obj = super().rest_issue(ref)
+            obj["title"] = title(obj["number"])
+            return obj
+
+    return _Titled
+
+
+# A second case planned again with titles that attack the rendered views (threat model T08, C5):
+# HTML, Mermaid syntax (a closing quote and bracket, an edge, a class, `end`, an init directive, an
+# entity code), Markdown (a pipe, a link, a mention, a character reference, backticks), line breaks,
+# an escape sequence, NUL, bidirectional controls and a title far past the label limit. Its fixture
+# is `<case>--titles` too.
+TITLED_VIEWS = "golden-plan-rich--every-status"
+# By issue number: the variant's open nodes are #1 to #6 and #110 (two repositories hold a #110).
+VIEW_TITLES = {
+    110: "<script>alert(1)</script> <img src=x onerror=alert(1)>",
+    1: '"]:::open --> N_evil["pwned"] %% comment',
+    2: '%%{init: {"theme":"dark"}}%% {braces}',
+    3: "end\nsubgraph X\nclick N_x call alert(1)\r\nclassDef open fill:#f00",
+    4: "[link](https://evil.example) | a & b #quot; &#64; @someone `code` www.example.com",
+    5: "‮evil⁦ bidi \x1b[31m red \x00 nul   sep \x85 nel \x1c fs",
+    6: "A very long title " + "that goes on and on " * 12 + "and ends here",
+}
+
+
+def view_title(number: int) -> str:
+    return f"T{number} {VIEW_TITLES.get(number, '`backticks` and *emphasis*')}"
+
+
+TITLE_FUNCTIONS = {TITLED: hostile_title, TITLED_VIEWS: view_title}
 
 
 # Corpus cases changed to reach what no case does, each planned from its changed bundle, which is
@@ -197,7 +231,19 @@ def _two_strangers(bundle: dict[str, Any]) -> dict[str, Any]:
     return bundle
 
 
+def _every_status(bundle: dict[str, Any]) -> dict[str, Any]:
+    """golden-plan-rich with a ready pull request by the owner closing flyingrobots/geordi#1: a plan
+    with a node in each state the status-coloured diagram shows (in review, active from a draft pull
+    request, blocked, open and unclaimed) and completed prerequisites (done)."""
+    pulls = bundle["observations"]["home_open_pull_requests"]["value"]
+    ready = json.loads(json.dumps(pulls[0]))
+    ready.update({"number": 12, "draft": False, "closes": ["flyingrobots/geordi#1"]})
+    pulls.append(ready)
+    return bundle
+
+
 VARIANTS = {
+    "golden-plan-rich--every-status": ("golden-plan-rich", _every_status),
     "trust-pull-request-by-stranger--two-in-order-listed": ("trust-pull-request-by-stranger", _two_strangers),
     "d9-container--traversal-order": ("d9-container", _traversal),
     "d9-container--not-planned-in-blocked-by-order": ("d9-container", _not_planned_read_first),
@@ -222,13 +268,19 @@ def bundle_text(bundle: dict[str, Any]) -> str:
     return json.dumps(bundle, indent=2, sort_keys=True, ensure_ascii=False) + "\n"
 
 
-def python_lines(name: str, titled: bool = False) -> list[dict[str, Any]] | None:
-    """The Python's result messages for one case, or None when it does not plan it."""
+# The views the Python renders from a plan (`taskalisk.rendering`): {format: fixture file suffix}.
+VIEWS = {"roadmap": ".roadmap.md", "mermaid": ".mermaid.mmd"}
+
+
+@functools.lru_cache(maxsize=None)
+def _captured(name: str, titled: bool) -> tuple[str, dict[str, str]] | None:
+    """The Python's result lines for one case as fixture text, and the text of each view it renders
+    ({format: text}, none when the plan is not ok); None when it does not plan the case."""
     bundle = bundle_of(name)
     if bundle["parameters"]["trust"]["policy"] != TRUST_POLICY:
         return None
     if titled:
-        saved, forge.BundleForge = forge.BundleForge, _Titled
+        saved, forge.BundleForge = forge.BundleForge, _titled_forge(TITLE_FUNCTIONS[name])
         try:
             out = forge.compile_bundle(bundle)
         finally:
@@ -243,29 +295,53 @@ def python_lines(name: str, titled: bool = False) -> list[dict[str, Any]] | None
         return None
     run = _Run()
     forge.compiler().emit_plan(run, out.result, "github", out.failures, None, None, out.rel_failed)
-    return run.lines
+    views = {}
+    for fmt in VIEWS:
+        rendered = _Run()
+        forge.compiler().emit_plan(rendered, out.result, "github", out.failures, None, fmt, out.rel_failed)
+        views.update({fmt: line["text"] for line in rendered.lines if line["event"] == "rendering"})
+    return fixture_text(run.lines), views
+
+
+def python_lines(name: str, titled: bool = False) -> list[dict[str, Any]] | None:
+    """The Python's result messages for one case, or None when it does not plan it."""
+    captured = _captured(name, titled)
+    return None if captured is None else [json.loads(line) for line in captured[0].splitlines()]
 
 
 def fixture_text(lines: list[dict[str, Any]]) -> str:
     return "".join(json.dumps(line, sort_keys=True, separators=(",", ":"), ensure_ascii=False) + "\n" for line in lines)
 
 
+def _fixture_names() -> list[tuple[str, str, bool]]:
+    """(fixture name, case, titled) for every fixture: the agreed cases, the titled cases, then the
+    variants."""
+    return ([(name, name, False) for name in agreed_cases()]
+            + [(name + TITLED_SUFFIX, name, True) for name in TITLE_FUNCTIONS]
+            + [(name, name, False) for name in VARIANTS])
+
+
 def expected_fixtures() -> dict[str, str]:
-    """{case name: fixture text} for every case the Python plans."""
+    """{fixture name: fixture text} for every case the Python plans."""
     out = {}
-    for name in agreed_cases():
-        lines = python_lines(name)
-        if lines is not None:
-            out[name] = fixture_text(lines)
-    titled = python_lines(TITLED, titled=True)
-    if titled is not None:
-        out[TITLED + TITLED_SUFFIX] = fixture_text(titled)
-    for name in VARIANTS:
-        lines = python_lines(name)
-        # A variant exists to reach something: one that stops giving a plan must fail loudly.
-        if lines is None:
-            raise AssertionError(f"the variant {name} gives no plan")
-        out[name] = fixture_text(lines)
+    for fixture, name, titled in _fixture_names():
+        captured = _captured(name, titled)
+        # A variant or a titled case exists to reach something: one that stops giving a plan must
+        # fail loudly.
+        if captured is None and (titled or name in VARIANTS):
+            raise AssertionError(f"the case {fixture} gives no plan")
+        if captured is not None:
+            out[fixture] = captured[0]
+    return out
+
+
+def expected_views() -> dict[str, str]:
+    """{file name: text} of every view the Python renders, for each fixture whose plan is ok."""
+    out = {}
+    for fixture, name, titled in _fixture_names():
+        captured = _captured(name, titled)
+        for fmt, text in (captured[1] if captured else {}).items():
+            out[fixture + VIEWS[fmt]] = text
     return out
 
 
@@ -283,11 +359,19 @@ def main() -> int:
             stale.unlink()
     for name, text in expected.items():
         (target / f"{name}.jsonl").write_text(text)
+    views = VIEW_FIXTURES / "python"
+    views.mkdir(parents=True, exist_ok=True)
+    expected_view_text = expected_views()
+    for stale in views.iterdir():
+        if stale.name not in expected_view_text:
+            stale.unlink()
+    for name, text in expected_view_text.items():
+        (views / name).write_text(text)
     bundles = FIXTURES / "bundles"
     bundles.mkdir(parents=True, exist_ok=True)
     for name, text in expected_bundles().items():
         (bundles / f"{name}.json").write_text(text)
-    print(json.dumps({"event": "captured", "cases": len(expected)}))
+    print(json.dumps({"event": "captured", "cases": len(expected), "views": len(expected_view_text)}))
     return 0
 
 

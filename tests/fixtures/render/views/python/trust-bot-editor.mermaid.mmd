@@ -1,0 +1,14 @@
+flowchart TD
+  subgraph Wave0["Wave 0: Open Frontier (Zero Incomplete Parents)"]
+    N_flyingrobots_bunny_110["flyingrobots/bunny#110: (title not recorded)"]
+    N_flyingrobots_echo_5["flyingrobots/echo#5: (title not recorded)"]
+    N_flyingrobots_geordi_1["flyingrobots/geordi#1: (untrusted issue)"]
+  end
+  subgraph Wave1["Wave 1"]
+    N_flyingrobots_echo_6["flyingrobots/echo#6: (title not recorded)"]
+    N_flyingrobots_geordi_110["flyingrobots/geordi#110: (title not recorded)"]
+    N_flyingrobots_geordi_2["flyingrobots/geordi#2: (title not recorded)"]
+  end
+  N_flyingrobots_bunny_110 --> N_flyingrobots_geordi_110
+  N_flyingrobots_echo_5 --> N_flyingrobots_echo_6
+  N_flyingrobots_geordi_1 --> N_flyingrobots_geordi_2

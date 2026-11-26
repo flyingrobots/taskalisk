@@ -117,6 +117,30 @@ pub fn lines(
     outcome: &Outcome,
     display: Option<&Display>,
 ) -> Result<Vec<Value>, NotRendered> {
+    built(parameters, outcome, display).map(|(lines, _)| lines)
+}
+
+/// The result document of a plan in the 1.x shape, as the renderer emits
+/// it, with `meta.artifact_hash` as 1.x adds it: what the views
+/// ([`crate::views`]) render from, as the Python renders from its result.
+///
+/// # Errors
+///
+/// [`NotRendered`] when the run has no plan to render.
+pub(crate) fn result_document(
+    parameters: &Parameters,
+    outcome: &Outcome,
+    display: Option<&Display>,
+) -> Result<Value, NotRendered> {
+    built(parameters, outcome, display).map(|(_, document)| document)
+}
+
+/// The result lines and the result document with its `meta`.
+fn built(
+    parameters: &Parameters,
+    outcome: &Outcome,
+    display: Option<&Display>,
+) -> Result<(Vec<Value>, Value), NotRendered> {
     let (findings, graph, unknown) = match outcome {
         Outcome::Rejected(_) => return Err(NotRendered::Rejected),
         Outcome::Incomplete { .. } => return Err(NotRendered::Incomplete),
@@ -154,10 +178,12 @@ pub fn lines(
         compiled.as_ref(),
     ));
 
-    let document = document(&plan, &report, discovery.as_ref(), compiled.as_ref());
-    plan["artifact_hash"] = json!(sha256::hex(canonical(&document).as_bytes()));
+    let mut document = document(&plan, &report, discovery.as_ref(), compiled.as_ref());
+    let hash = sha256::hex(canonical(&document).as_bytes());
+    document["meta"] = json!({"artifact_hash": hash});
+    plan["artifact_hash"] = json!(hash);
     out.insert(0, plan);
-    Ok(out)
+    Ok((out, document))
 }
 
 /// The text 1.x hashes: keys sorted, compact separators, every character
