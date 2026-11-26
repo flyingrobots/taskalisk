@@ -79,6 +79,11 @@ macro_rules! body_warnings {
 
         /// Every body warning, once each, in the order of its code's text.
         pub const BODY_WARNINGS: [BodyWarning; COUNT] = [$(BodyWarning::$name),+];
+
+        /// The codes of [`BODY_WARNINGS`] with their severity, in its order:
+        /// this family's entry in [`crate::CODES`].
+        pub const BODY_CODES: [(&str, Severity); COUNT] =
+            [$(($code, Severity::Warning)),+];
     };
 }
 

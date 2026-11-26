@@ -6,7 +6,7 @@
 //! The codes are tabled on [`code`] and listed, with every other family of
 //! findings, in the catalogue [`CODES`].
 
-use crate::body::BODY_WARNINGS;
+use crate::body::BODY_CODES;
 use crate::label::{self, Label};
 use crate::reference::IssueRef;
 use crate::{Judgement, admit};
@@ -17,33 +17,58 @@ pub const LABELS: [Label; label::VARIANTS] = label::ALL;
 
 /// The catalogue of every finding code the crate can report, with its
 /// severity: the document codes in [`LABELS`] order, then Taskalisk's body
-/// warnings in [`BODY_WARNINGS`] order. Each code appears once.
+/// warnings in [`crate::BODY_WARNINGS`] order. Each code appears once.
 ///
 /// This is the one public source of the codes; the table on [`code`] and
 /// any reference page are checked against it. Every family of findings must
-/// register its codes here, so a new family is appended to this list.
+/// register its codes here: a family supplies an array of its codes with
+/// their severities, and registers it with one line in `FAMILIES` (in this module).
 pub const CODES: &[(&str, Severity)] = &CATALOGUE;
 
-/// The number of codes in [`CODES`].
-const CODE_COUNT: usize = LABELS.len() + BODY_WARNINGS.len();
+/// Each family's codes with their severities, in catalogue order. A new
+/// family of findings is one more line here.
+const FAMILIES: &[&[(&str, Severity)]] = &[&LABEL_CODES, &BODY_CODES];
 
-/// [`CODES`] as an array, built from the families' own lists.
-const CATALOGUE: [(&str, Severity); CODE_COUNT] = {
-    let mut out = [("", Severity::Error); CODE_COUNT];
+/// The document codes in [`LABELS`] order: an error for every violation,
+/// a warning for the V10 advisory.
+const LABEL_CODES: [(&str, Severity); LABELS.len()] = {
+    let mut out = [("", Severity::Error); LABELS.len()];
     let mut i = 0;
     while i < LABELS.len() {
-        let severity = if matches!(LABELS[i], Label::V10) {
-            Severity::Warning
-        } else {
-            Severity::Error
-        };
-        out[i] = (code(LABELS[i]), severity);
+        if matches!(LABELS[i], Label::V10) {
+            out[i].1 = Severity::Warning;
+        }
+        out[i].0 = code(LABELS[i]);
         i += 1;
     }
-    let mut j = 0;
-    while j < BODY_WARNINGS.len() {
-        out[LABELS.len() + j] = (BODY_WARNINGS[j].code(), Severity::Warning);
-        j += 1;
+    out
+};
+
+/// The number of codes over all [`FAMILIES`].
+const CODE_COUNT: usize = {
+    let mut total = 0;
+    let mut f = 0;
+    while f < FAMILIES.len() {
+        total += FAMILIES[f].len();
+        f += 1;
+    }
+    total
+};
+
+/// [`CODES`] as an array: the [`FAMILIES`] concatenated in order.
+const CATALOGUE: [(&str, Severity); CODE_COUNT] = {
+    let mut out = [("", Severity::Error); CODE_COUNT];
+    let mut k = 0;
+    let mut f = 0;
+    while f < FAMILIES.len() {
+        let family = FAMILIES[f];
+        let mut i = 0;
+        while i < family.len() {
+            out[k] = family[i];
+            k += 1;
+            i += 1;
+        }
+        f += 1;
     }
     out
 };
