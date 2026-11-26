@@ -22,7 +22,9 @@ from typing import Any, Iterator
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 COMPILER = ROOT / "skills" / "taskalisk" / "scripts" / "taskalisk.py"
 API = "https://api.github.com/repos/"
-UNAVAILABLE = "observation unavailable: "
+# The one failure an unavailable slot gives, whatever its recorded reason (OB4). It names no HTTP
+# status, so the compiler never mistakes it for an observed answer such as not-found.
+UNAVAILABLE = "observation unavailable (recorded as unavailable in the bundle)"
 NOT_FOUND = "gh: Not Found (HTTP 404)"
 
 _tk: Any = None
@@ -70,8 +72,9 @@ class BundleForge:
     def __call__(self, cmd: list[str], cwd: str | None = None) -> tuple[bool, str, str]:
         try:
             return True, self.answer(cmd), ""
-        except _Unavailable as exc:
-            return False, "", UNAVAILABLE + str(exc)
+        except _Unavailable:
+            # Never the recorded reason: text such as "HTTP 404" would read as an observed not-found.
+            return False, "", UNAVAILABLE
         except _NotFound:
             return False, "", NOT_FOUND
 
