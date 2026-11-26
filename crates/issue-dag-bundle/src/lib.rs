@@ -6,7 +6,15 @@
 //! does not hold is left unrecorded, so that a run that needs it fails with
 //! [`issue_dag_core::Missing`] (OB5) instead of reading it as empty.
 
+mod evaluation;
+mod result;
 mod strict;
+
+pub use evaluation::{
+    EvaluationError, EvaluationRecord, Evaluator, Evaluators, RECORD_VERSION, Replay, evaluate,
+    replay, unretained,
+};
+pub use result::{in_result_order, outcome_json};
 
 use core::fmt;
 use std::collections::{BTreeMap, BTreeSet};
