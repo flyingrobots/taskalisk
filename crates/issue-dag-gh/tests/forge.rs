@@ -801,3 +801,67 @@ fn an_empty_permission_is_unavailable_never_none() {
         .expect("never missing");
     assert_eq!(failed(&forge, &slot).code(), "gh.response_invalid");
 }
+
+#[test]
+fn ob6_a_listing_that_prints_nothing_is_unavailable_never_empty() {
+    let fake = Fake::new(&with(&json!({"issues_list_silent": true})));
+    let forge = fake.forge("o/r");
+    let slot = forge.home_open_issues().expect("never missing");
+    let error = failed(&forge, &slot);
+    assert_eq!(error.code(), "gh.response_invalid");
+    assert!(error.to_string().contains("no page"), "{error}");
+}
+
+#[test]
+fn c15_a_run_over_strangers_listed_issues_makes_no_query_beyond_the_lists() {
+    let task = |n: u32| {
+        format!("```yaml\n.dag: issue-dag/2\n.id: o/r#{n}\n.kind: task\n.type: feature\n```\n")
+    };
+    let strangers: serde_json::Map<String, Value> = (1..=3)
+        .map(|n| {
+            (
+                format!("o/r#{n}"),
+                json!({"id": n, "title": "t", "state": "open", "author": "stranger",
+                       "association": "NONE", "body": task(n)}),
+            )
+        })
+        .collect();
+    let fake = Fake::new(&with(&json!({"issues": strangers, "prs": []})));
+    let forge = fake.forge("o/r");
+    let outcome = plan(&parameters(&[]), &forge).expect("never missing");
+    let Outcome::Planned { graph, .. } = &outcome else {
+        panic!("expected a plan, got {outcome:?}");
+    };
+    assert_eq!(graph.untrusted.len(), 3, "{graph:?}");
+    // The listing fills each issue: no issue GET, no edit history.
+    assert_eq!(
+        fake.calls(),
+        [
+            vec![
+                "api",
+                "--paginate",
+                "repos/o/r/issues?state=open&per_page=100"
+            ],
+            vec![
+                "pr",
+                "list",
+                "--repo",
+                "o/r",
+                "--state",
+                "open",
+                "--limit",
+                "500",
+                "--json",
+                "number,isDraft,closingIssuesReferences,author,isCrossRepository",
+            ],
+        ]
+    );
+    assert_eq!(forge.failures(), Vec::new());
+    // The listed issues are recorded as read, so the run replays.
+    let recorded = forge.observations();
+    assert_eq!(recorded.issues.len(), 3);
+    assert_eq!(
+        plan(&parameters(&[]), &RecordedForge::new(&recorded)),
+        Ok(outcome)
+    );
+}

@@ -27,6 +27,7 @@ State shape:
    "issues_list_fail_message": str,                   # the REST issue list fails with this text; {GH_TOKEN}, {$NAME} (any variable) and {HOME} expand
    "issues_list_drop_number": bool,                   # the REST issue list omits "number" (a malformed response)
    "issues_list_pages": [["owner/repo#N", ...], ...], # the REST issue list as these pages; --paginate writes every one
+   "issues_list_silent": bool,                        # the REST issue list prints nothing and exits 0
    "graphql_page_info": {...},                        # replaces the edit history's pageInfo as given
    "record_env": [str, ...]}                          # appends these variables' values, JSON, to $FAKE_GH_LOG.env
 """
@@ -156,6 +157,8 @@ def main(argv):
         if state.get("issues_list_fail_message"):
             message = state["issues_list_fail_message"].replace("{GH_TOKEN}", os.environ.get("GH_TOKEN", "")).replace("{HOME}", os.path.expanduser("~"))
             fail(re.sub(r"\{\$([A-Z_]+)\}", lambda m: os.environ.get(m.group(1), ""), message))
+        if state.get("issues_list_silent"):
+            return  # nothing on stdout, exit 0
         if "issues_list_pages" in state:
             # Like the real gh, --paginate writes each page's array in turn.
             pages = state["issues_list_pages"] if "--paginate" in argv else state["issues_list_pages"][:1]
