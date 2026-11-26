@@ -17,6 +17,7 @@ Fails (exit 1, one line per problem) when:
 """
 from __future__ import annotations
 
+import argparse
 import json
 import pathlib
 import sys
@@ -182,10 +183,18 @@ def check(spec_root: pathlib.Path) -> list[str]:
 
 
 def main(argv: list[str]) -> int:
-    if len(argv) != 1:
-        sys.stderr.write("usage: check.py <issue-dag checkout>\n")
+    parser = argparse.ArgumentParser(prog="check.py", description="Check an issue-dag conformance corpus: every case, "
+                                     "every citation and classification, and the recorded digest.")
+    parser.add_argument("checkout", help="an issue-dag checkout (or the vendored copy under tests/fixtures/issue-dag)")
+    try:
+        ns = parser.parse_args(argv)
+    except SystemExit as stop:
+        return int(stop.code or 0)
+    root = pathlib.Path(ns.checkout)
+    if not (root / "corpus" / "cases").is_dir():
+        sys.stderr.write(f"check.py: {root} is no issue-dag checkout (it has no corpus/cases)\n")
         return 2
-    problems = check(pathlib.Path(argv[0]))
+    problems = check(root)
     for problem in problems:
         print(problem)
     cases = sum(1 for _ in (pathlib.Path(argv[0]) / "corpus" / "cases").glob("*/*/case.json"))
