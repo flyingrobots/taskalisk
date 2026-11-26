@@ -58,9 +58,16 @@ fn read_json(path: &Path) -> Value {
     serde_json::from_str(&text).unwrap_or_else(|e| panic!("{}: {e}", path.display()))
 }
 
-/// A list of values sorted by their JSON text, as the corpus writes them.
+/// A list in the corpus's order: objects by their `id`, or by `from`, `to`
+/// and `status`; anything else by its JSON text.
 fn sorted(mut items: Vec<Value>) -> Value {
-    items.sort_by_key(Value::to_string);
+    items.sort_by_key(|v| {
+        ["id", "from", "to", "status", "subject", "rule", "concerns"]
+            .iter()
+            .map(|k| v.get(k).map_or_else(String::new, ToString::to_string))
+            .chain([v.to_string()])
+            .collect::<Vec<_>>()
+    });
     Value::Array(items)
 }
 
