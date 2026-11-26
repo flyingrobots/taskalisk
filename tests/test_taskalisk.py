@@ -643,18 +643,34 @@ class Trust(Harness):
     def test_a_hostile_title_renders_as_inert_text(self):
         """F-10 (flyingrobots/taskalisk#75): no control, no line break, no live backslash, no autolink."""
         state = plan_state()
-        state["issues"][f"{HOME}#1"]["title"] = ("a\rb\r\nc d e\x85f\x0bg\x0ch\x1b[0m\x00\x7f\x9b "
+        state["issues"][f"{HOME}#1"]["title"] = ("a\rb\r\nc\u2028d\u2029e\x85f\x0bg\x0ch\x1b[0m\x00\x7f\x9b "
                                                 "back\\[x] \\| https://example.invalid HTTP://x.invalid www.example.invalid end")
         p = self.run_dag(state, "--from-github", "--root", f"{HOME}#9", "--emit-roadmap")
         self.assertEqual(p.returncode, 0, p.stderr)
         row = next(l for l in self.rendering(p).split("\n") if f"{HOME}#1" in l and "end" in l)
-        self.assertIsNone(re.search("[\x00-\x1f\x7f-\x9f  ]", row), repr(row))
+        self.assertIsNone(re.search("[\x00-\x1f\x7f-\x9f\u2028\u2029]", row), repr(row))
         self.assertIn("a b c d e f g h[0m", row.replace("\\[", "[").replace("\\]", "]"))
         self.assertIn("back\\\\\\[x\\] \\\\\\|", row)  # each backslash escaped, then each [ ] | escaped
         for url in ("https://example.invalid", "HTTP://x.invalid", "www.example.invalid"):
             self.assertNotIn(url, row)
-        self.assertIn("https:​//example.invalid", row)
-        self.assertIn("www​.example.invalid", row)
+        self.assertIn("https:\u200b//example.invalid", row)
+        self.assertIn("www\u200b.example.invalid", row)
+
+    def test_no_autolink_after_an_underscore_a_letter_or_in_an_email_and_no_bidi_control(self):
+        """F-10 (flyingrobots/taskalisk#75): GFM starts an autolink after `_` or a non-ASCII letter, and links
+        an email address or a mention; a bidi control can reorder how a title reads."""
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("taskalisk_md_cell_links", SCRIPT)
+        tk = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(tk)
+        live = re.compile(r"(?i)(?<![a-z0-9])(?:https?://|www\.)|[a-z0-9]@[a-z0-9]|(?<![a-z0-9])@[a-z0-9]")
+        for title in ("_www.evil.invalid", "_http://evil.invalid", "\u00e9http://evil.invalid", "\u00e9www.evil.invalid",
+                      "a@evil.invalid", "mailto:a@evil.invalid", "xmpp:a@evil.invalid", "ping @someone", "(https://evil.invalid)"):
+            with self.subTest(ascii(title)):
+                self.assertIsNone(live.search(tk._md_cell(title)), ascii(tk._md_cell(title)))
+        for ch in ("\u202a", "\u202b", "\u202c", "\u202d", "\u202e", "\u2066", "\u2067", "\u2068", "\u2069", "\u200e", "\u200f", "\u061c"):
+            with self.subTest(ascii(ch)):
+                self.assertEqual(tk._md_cell(f"a{ch}b"), "ab")
 
     def test_a_plain_title_renders_byte_for_byte_as_before(self):
         import importlib.util

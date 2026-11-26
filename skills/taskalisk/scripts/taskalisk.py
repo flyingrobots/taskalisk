@@ -1347,7 +1347,7 @@ def _resources_cell(holds: list[str], meters: list[dict[str, Any]], empty: str) 
     return ", ".join(cells) or empty
 
 
-MD_LINE_BREAK_RE = re.compile("\r\n|[\n\r\x0b\x0c\x85  ]")
+MD_LINE_BREAK_RE = re.compile("\r\n|[\n\r\x0b\x0c\x85\u2028\u2029]")
 MD_CONTROL_RE = re.compile("[\x00-\x1f\x7f-\x9f]")
 MD_AUTOLINK_RE = re.compile(r"(?i)\b([a-z][a-z0-9+.-]{0,31}:)(//)|\b(www)(\.)")  # a bounded scheme keeps the scan linear
 
@@ -1362,7 +1362,7 @@ def _md_cell(text: str) -> str:
     text = str(text).replace("\\", "\\\\")
     text = MD_CONTROL_RE.sub("", MD_LINE_BREAK_RE.sub(" ", text))
     text = text.replace("|", "\\|").replace("<", "&lt;").replace(">", "&gt;").replace("[", "\\[").replace("]", "\\]")
-    return MD_AUTOLINK_RE.sub(lambda m: f"{m.group(1)}​{m.group(2)}" if m.group(1) else f"{m.group(3)}​{m.group(4)}", text)
+    return MD_AUTOLINK_RE.sub(lambda m: f"{m.group(1)}\u200b{m.group(2)}" if m.group(1) else f"{m.group(3)}\u200b{m.group(4)}", text)
 
 
 def render_roadmap_block(result: dict[str, Any]) -> str:
@@ -2319,7 +2319,7 @@ def handler(run: Any, _args: list[str]) -> None:
 # ---- --human --------------------------------------------------------------------------------
 
 # C0 and C1 controls, line and paragraph separators and bidirectional overrides: none reaches prose.
-HUMAN_UNSAFE_RE = re.compile("[\x00-\x1f\x7f-\x9f  ‪-‮⁦-⁩]")
+HUMAN_UNSAFE_RE = re.compile("[\x00-\x1f\x7f-\x9f\u2028\u2029\u202a-\u202e\u2066-\u2069]")
 
 
 def hs(value: Any) -> str:
