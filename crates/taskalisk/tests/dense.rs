@@ -113,7 +113,7 @@ fn a_dense_graph_renders_every_redundant_edge_with_the_node_it_is_implied_throug
 }
 
 #[test]
-#[ignore = "a timing bound: run in a release build with --ignored perf_"]
+#[ignore = "wall-clock bound; run with --release --ignored"]
 fn perf_a_dense_graph_of_400_nodes_renders_within_the_bound() {
     let n = 400;
     let outcome = dense(n);

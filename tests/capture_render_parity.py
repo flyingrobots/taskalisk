@@ -7,7 +7,7 @@ Not a test (unittest discovery skips it). For each graph case of
 (`scripts/corpus/forge.py`) and its result messages are written as `emit_plan` hands them to the
 Parley writer, without the writer's envelope (`t`, `seq`, `run`), one sorted-key JSON object per
 line, with `_schema` added from the message's id. A case the Python does not plan (rejected, a
-failed observation) gets no fixture. One case is captured twice, the second time with titles that
+failed observation, a bundle that lacks a slot the run reads) gets no fixture. One case is captured twice, the second time with titles that
 hold what JSON must escape (TITLED), and a few corpus cases are changed to reach what none does
 (VARIANTS).
 
@@ -177,7 +177,11 @@ def python_lines(name: str, titled: bool = False) -> list[dict[str, Any]] | None
         finally:
             forge.BundleForge = saved
     else:
-        out = forge.compile_bundle(bundle)
+        try:
+            out = forge.compile_bundle(bundle)
+        except forge.BundleIncomplete:
+            # A bundle that lacks a slot the run reads is unusable evidence (OB5, OB16): no plan.
+            return None
     if out.result is None:
         return None
     run = _Run()

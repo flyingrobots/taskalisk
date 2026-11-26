@@ -438,12 +438,10 @@ impl<'a, F: Forge + ?Sized> Run<'a, F> {
                             .push((pull.number, pull.draft.clone()));
                     }
                 }
-                Some(false) => {
-                    if !untrusted.contains(&pull.number) {
-                        untrusted.push(pull.number);
-                    }
+                Some(false) if !untrusted.contains(&pull.number) => {
+                    untrusted.push(pull.number);
                 }
-                None => {}
+                Some(false) | None => {}
             }
         }
         (linked, untrusted)
