@@ -4,7 +4,7 @@ use std::fs;
 use std::path::Path;
 
 use issue_dag_bundle::{BundleError, load};
-use issue_dag_core::{IssueRef, Observed, Outcome, RecordedForge, Repo, plan};
+use issue_dag_core::{IssueRef, NotFound, Observed, Outcome, RecordedForge, Repo, plan};
 use serde_json::{Value, json};
 
 /// The example of `corpus/bundle.md`, with a complete body.
@@ -284,6 +284,64 @@ fn a_member_given_twice_is_rejected_at_its_path() {
         error.at,
         "observations.issues[\"o/r#1\"].value.body.value.editors[0]"
     );
+}
+
+/// OB17: an unavailable issue slot may record which part of the reference
+/// was not found; the reader keeps it as the cause of that reference.
+#[test]
+fn ob17_an_unavailable_issue_records_which_part_was_not_found() {
+    let two = IssueRef::parse("o/r#2").expect("reference");
+    for (value, cause) in [
+        ("owner", NotFound::Owner),
+        ("repository", NotFound::Repository),
+        ("number", NotFound::Number),
+    ] {
+        let mut b = example();
+        b["observations"]["issues"]["o/r#2"] = json!({"unavailable": "HTTP 404", "not_found": value});
+        let bundle = load(&b.to_string()).expect("the bundle loads");
+        assert_eq!(
+            bundle.observations.issues.get(&two),
+            Some(&Observed::Unavailable("HTTP 404".to_owned()))
+        );
+        assert_eq!(bundle.observations.not_found.get(&two), Some(&cause));
+    }
+    // A slot without the member records no cause, as before OB17.
+    let bundle = load(&example().to_string()).expect("the example loads");
+    assert!(bundle.observations.not_found.is_empty());
+}
+
+/// OB17: a value outside the three is refused, not ignored.
+#[test]
+fn ob17_an_unknown_cause_is_rejected() {
+    for value in [json!("team"), json!("Owner"), json!(""), json!(null), json!(1), json!(["owner"])] {
+        let mut b = example();
+        b["observations"]["issues"]["o/r#2"] = json!({"unavailable": "HTTP 404", "not_found": value});
+        let error = reject(&b);
+        assert_eq!(error.at, "observations.issues[\"o/r#2\"].not_found", "{value}");
+    }
+}
+
+/// OB17: `not_found` only beside `unavailable`, and only in an issue slot.
+#[test]
+fn ob17_a_cause_anywhere_else_is_rejected() {
+    let mut b = example();
+    b["observations"]["issues"]["o/r#1"]["not_found"] = json!("number");
+    reject(&b);
+    let mut b = example();
+    b["observations"]["issues"]["o/r#1"]["value"]["body"] =
+        json!({"unavailable": "HTTP 404", "not_found": "number"});
+    reject(&b);
+    let mut b = example();
+    b["observations"]["home_open_pull_requests"] =
+        json!({"unavailable": "HTTP 404", "not_found": "repository"});
+    reject(&b);
+    let mut b = example();
+    b["observations"]["permissions"]["o/r"]["carol"] =
+        json!({"unavailable": "HTTP 404", "not_found": "owner"});
+    reject(&b);
+    let mut b = example();
+    b["observations"]["issues"]["o/r#2"] = json!({"not_found": "owner"});
+    reject(&b);
 }
 
 #[test]
