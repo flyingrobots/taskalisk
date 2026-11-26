@@ -123,6 +123,45 @@ schema version under `Unreleased` is a draft and may change in place.
   reports one); the critical path is empty when no node is open; `unknown_capacity` and each
   skip's semaphores are in ascending order.
 
+- **The Rust plan renders to the skill's JSON lines** (flyingrobots/taskalisk#58). A new library
+  crate, `crates/taskalisk`, whose `render` module turns the outcome of a `/2` run, ranked by
+  `rank` and batched by `select`, into the `taskalisk.plan`, `frontier_node`, `batch`, `node`,
+  `wave`, `edge` and `finding` messages in the contract's line order, without the writer's
+  envelope; keys are sorted, so equal plans give identical bytes. It performs no I/O; the command
+  line that writes the lines is #31. For it (decision D13) the core's `Node` now carries the
+  record's `.type` and a valid `.size_hours`, and the admitted pull requests S2 reads (number and
+  draft flag), and `Ranking` exposes each node's score terms (`Terms`, with their weights and
+  points). An optional `Display` input supplies what only the adapters read: issue and pull request
+  titles and URLs, recoverable branches, and the CODEOWNERS persons and teams. The plan line always
+  carries `artifact_hash`: the SHA-256 (by the RustCrypto `sha2` crate, MIT or Apache-2.0) of the
+  result document the renderer emits, in the 1.x shape, written as Python's `json.dumps` writes it,
+  DEL, controls and astral characters included. It equals the Python's hash only where that
+  document holds no intended difference and no gap; elsewhere it is a different, deterministic
+  hash, a permanent exception recorded in `docs/topics/output/README.md`. On the 157 graph cases of
+  the corpus where the Python and the specification agree, on one planned again with titles that
+  hold control, Latin-1, astral and line-separator characters, and on nine variants that reach
+  what no case does (an opaque issue a container and a task name, whose `referenced_by` lists
+  both in the order read, from the core's new `Node.named_by`; containers, opaque and untrusted
+  issues read out of sorted order, listed in the order read, from the core's new
+  `Graph.visit_order`; not-planned prerequisites listed by task read, then in the task's
+  `.blocked_by` order, from `Graph.not_planned_order`, two tasks naming them in opposite orders
+  included; strangers' pull requests listed out of order, from
+  `Graph.untrusted_pull_request_order`; and a run with both an unknown prerequisite and a cycle,
+  which is `unresolved` as in 1.x, which checks prerequisites first; the core still reports its G4
+  findings, and the output README records the omission as the renderer's intended difference;
+  and unknown prerequisites listed by task, then as declared, from `Outcome::Invalid::unknown`),
+  every line equals the Python's (`tests/capture_render_parity.py`), `artifact_hash` in 82 of the 167, once these gaps are
+  removed, and the suite checks the list is exact: the trust gate's reasons in `issue.untrusted`
+  and `pull_request.untrusted` (#46), and the discovery findings of a run whose graph is not
+  reported, a cycle or an unknown prerequisite (#44). Every rendered line validates against its
+  schema except for those fields. One difference is intended, not a gap: a frontmatter finding
+  compares by `code` and `subject`, which the skill reads; its message is prose the schema does
+  not fix, and the core writes fixed text, one line per rule. On a dense graph the renderer no longer
+  scans per edge: redundant edges are looked up by key and reachability is a bit set per
+  node, so a 400-node graph where every node blocks every later one renders in under a second in a
+  release build, down from minutes. A new `perf_` test bounds it (`cargo test --release --
+  --ignored perf_`), with a default-suite twin that checks the result.
+
 - **Evaluation records and offline replay** (flyingrobots/taskalisk#30). `issue-dag-bundle` gains
   the evaluation record `taskalisk-evaluation/1`: the observation bundle a run planned from, held
   whole in an observation slot, the evaluator's name and version, and the result in the corpus's

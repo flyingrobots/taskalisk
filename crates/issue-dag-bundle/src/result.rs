@@ -130,7 +130,9 @@ pub fn outcome_json(outcome: &Outcome, capacities: &BTreeMap<String, u64>) -> Ma
     let (name, findings, graph) = match outcome {
         Outcome::Rejected(_) => ("rejected", None, None),
         Outcome::Incomplete { .. } => ("incomplete", None, None),
-        Outcome::Invalid { findings, graph } => ("invalid", Some(findings), graph.as_ref()),
+        Outcome::Invalid {
+            findings, graph, ..
+        } => ("invalid", Some(findings), graph.as_ref()),
         Outcome::Planned { findings, graph } => ("planned", Some(findings), Some(graph)),
     };
     out.insert("outcome".into(), json!(name));

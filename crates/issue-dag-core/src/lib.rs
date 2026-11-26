@@ -42,9 +42,9 @@ pub use observation::{
     Actor, Body, CodeownersFile, Issue, IssueState, Lookup, Missing, Observed, Parameters,
     PullRequest, ReadScope, Repo, TRUST_POLICY, TrustParameters,
 };
-pub use plan::{Edge, Graph, Node, NodeStatus, Outcome, Rejection, plan};
+pub use plan::{Edge, Graph, LinkedPullRequest, Node, NodeStatus, Outcome, Rejection, plan};
 pub use plan_warning::{DENSITY_BAND, PLAN_WARNINGS, PlanDetail, PlanWarning, plan_warnings};
-pub use rank::{Ranking, rank};
+pub use rank::{Ranking, Terms, rank};
 pub use record::{Kind, MeterClaim, Record, Status, TaskType, VERSION};
 pub use reference::{IssueRef, MAX_NUMBER, is_name};
 pub use rewrite::{EdgeEdit, Refusal, Rewrite, rewrite_blocked_by};
