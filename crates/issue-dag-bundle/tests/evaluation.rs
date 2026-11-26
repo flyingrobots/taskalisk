@@ -10,8 +10,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use issue_dag_bundle::{
-    EvaluationRecord, Evaluator, Evaluators, RECORD_VERSION, Replay, evaluate, load, replay,
-    unretained,
+    EvaluationError, EvaluationRecord, Evaluator, Evaluators, RECORD_VERSION, Replay, evaluate,
+    load, replay, unretained,
 };
 use issue_dag_core::{RecordedForge, plan};
 use serde_json::{Value, json};
@@ -64,6 +64,30 @@ fn replay_value(record: &Value) -> Replay {
     replay(&record.to_string(), &evaluator()).expect("a well-formed record")
 }
 
+fn read_json(path: &Path) -> Value {
+    let text = fs::read_to_string(path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+    serde_json::from_str(&text).unwrap_or_else(|e| panic!("{}: {e}", path.display()))
+}
+
+/// The expected result the crate is held to: a `--python` twin's is its
+/// normative case's (corpus rule CC4).
+fn expected_of(dir: &Path) -> Value {
+    let case = read_json(&dir.join("case.json"));
+    case["normative_case"].as_str().map_or_else(
+        || read_json(&dir.join("expected.json")),
+        |twin| {
+            let name = twin.strip_prefix("graph/").expect("a graph case");
+            read_json(&dir.with_file_name(name).join("expected.json"))
+        },
+    )
+}
+
+/// The graph cases whose bundle lacks a slot the run reads (CC6
+/// `unusable`, bundle rule OB5), twins included, and the cases that have a
+/// result. A case cannot move between the two without changing these.
+const UNUSABLE_CASES: usize = 22;
+const RECORDED_CASES: usize = 205;
+
 #[test]
 fn every_graph_case_replays_byte_for_byte() {
     let mut names: Vec<_> = fs::read_dir(corpus_dir())
@@ -73,9 +97,25 @@ fn every_graph_case_replays_byte_for_byte() {
     names.sort();
     assert!(!names.is_empty(), "no graph cases found");
     let mut failures = Vec::new();
+    let (mut unusable, mut recorded_cases) = (0, 0);
     for dir in &names {
         let name = dir.file_name().and_then(|n| n.to_str()).unwrap_or("?");
         let bundle = fs::read_to_string(dir.join("bundle.json")).expect("bundle.json");
+        let expected = expected_of(dir);
+        if expected["outcome"] == "unusable" {
+            // OB5: no record, and the slot refused is the one the case
+            // expects (OB16).
+            unusable += 1;
+            match evaluate(&bundle, &evaluator()) {
+                Err(EvaluationError::Missing(m)) if json!(m.path) == expected["missing"] => {}
+                other => failures.push(format!(
+                    "{name}: expected no record for want of {}, got {other:?}",
+                    expected["missing"]
+                )),
+            }
+            continue;
+        }
+        recorded_cases += 1;
         let record = match evaluate(&bundle, &evaluator()) {
             Ok(record) => record,
             Err(e) => {
@@ -102,6 +142,12 @@ fn every_graph_case_replays_byte_for_byte() {
             failures.push(format!("{name}: evaluating twice gives two records"));
         }
     }
+    assert_eq!(
+        (unusable, recorded_cases),
+        (UNUSABLE_CASES, RECORDED_CASES),
+        "graph cases refused as unusable, and recorded"
+    );
+    assert_eq!(unusable + recorded_cases, names.len());
     assert!(
         failures.is_empty(),
         "{} of {} graph cases fail:\n{}",
