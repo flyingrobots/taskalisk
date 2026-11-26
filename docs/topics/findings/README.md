@@ -5,7 +5,7 @@ its public catalogue `CODES`. A finding is one violation or warning. It
 carries a code, a severity, the issue that receives it as its subject, for
 some codes the reference it concerns, and a fixed message that names keys and
 rules but never a value or a line of the body. Three families of findings
-share the catalogue:
+and the plan warnings share the catalogue:
 
 - **document findings** (function `findings`): the frontmatter document in an
   issue body, judged with the issue's address;
@@ -13,6 +13,10 @@ share the catalogue:
   discovery and the graph apply to a whole run;
 - **body warnings** (function `body_warnings`): Taskalisk's own writing
   convention for a task body, not a rule of any specification.
+- **plan warnings** (function `plan_warnings`): Taskalisk's own advisories on
+  a plan as a whole, from the skill's doctrine on graph health. A plan warning
+  is not a finding: it concerns no single issue, so it has no subject, and it
+  carries a detail of what it measured.
 
 These are the Rust crate's codes. The Python compiler reports frontmatter
 problems as `frontmatter.violation` and `frontmatter.warning` lines; their
@@ -28,7 +32,7 @@ V12 assigns it; the prefix names the specification that states the rule:
 | `format.` | the format [`issue-dag/2`](../../../tests/fixtures/issue-dag/formats/issue-dag-2.md): carrier rules C, value rules L, validity rules V |
 | `version.` | the [version policy](../../../tests/fixtures/issue-dag/versions.md) |
 | `profile.` | the planning profile [`issue-dag-planning/2`](../../../tests/fixtures/issue-dag/profiles/issue-dag-planning-2.md) |
-| `taskalisk.` | Taskalisk's convention, [Writing a task](../../../skills/taskalisk/WRITING-TASKS.md); the suffix is a name, not a label |
+| `taskalisk.` | Taskalisk's convention, [Writing a task](../../../skills/taskalisk/WRITING-TASKS.md) for a body warning, or its doctrine, [Core Doctrine](../../../skills/taskalisk/SKILL.md#core-doctrine), for a plan warning; the suffix is a name, not a label |
 
 The links go to the copy of the specification vendored in this repository
 under `tests/fixtures/issue-dag/`. A code never changes meaning; a rule that
@@ -37,7 +41,8 @@ once, in the catalogue:
 
 - **error**: a violation. The document is invalid, or for a run finding the
   run is.
-- **warning**: the V10 advisory, or a body warning. The document stays valid.
+- **warning**: the V10 advisory, a body warning or a plan warning. The document
+  stays valid, and a plan warning never makes a run invalid.
   A V10 warning is reported only for a document with no violations, and body
   warnings only for a valid task document.
 
@@ -57,7 +62,7 @@ are `o/r#1`, `o/r#2` and so on.
 
 The entries are in the catalogue's order (`CODES`): the document codes in the
 order of the labels' text, so `V10` comes before `V2`; then the planning
-profile's codes; then the body warnings. The test
+profile's codes; then the body warnings; then the plan warnings. The test
 `crates/issue-dag-core/tests/finding_reference.rs` fails when a code has no
 entry here, an entry names no code, or a link or anchor here does not
 resolve.
@@ -642,3 +647,27 @@ observation bundle records none.
 
 To fix: if the title names two outcomes, split the task. If `and` is part of
 one name, rephrase the title or put the name in a code span.
+
+### `taskalisk.edge-density`
+
+**Severity:** warning. **Rule:** [Edge density](../../../skills/taskalisk/SKILL.md#core-doctrine), Core Doctrine 4 of the skill.
+
+A plan warning, not a finding: it concerns the plan as a whole and has no
+subject. The plan's edge density is outside the band the skill states,
+`0.01` to `0.50`, both ends included. The density is the number of edges of
+the reduced graph (its edges less those the reduction removes, profile rule
+[G5](../../../tests/fixtures/issue-dag/profiles/issue-dag-planning-2.md#5-the-graph))
+over the number of pairs of open nodes, `n(n-1)/2`, rounded to four decimal
+places, as the Python compiler computes `edge_density`. A plan with one open
+node or none has no pairs and draws no warning. The warning's detail gives
+the reduced edges, the open nodes, the density and the band.
+
+Fifteen open tasks with no edges have density `0`, below the band. A chain
+of three tasks has two edges over three pairs, `0.6667`, above it. Four tasks
+with one edge, `0.1667`, are inside.
+
+To fix: below the band, look for prerequisites that are real but
+unrecorded, and propose the edges; many isolated tasks mean the dependencies
+have not been recorded, not that the work is independent. Above it, the plan
+is close to a single chain: check whether some edges are not true
+prerequisites. A small plan can be outside the band for good reason.

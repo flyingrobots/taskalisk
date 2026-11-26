@@ -29,6 +29,7 @@ pub const PLAN_CODES: [(&str, Severity); PLAN_WARNINGS.len()] = [(EDGE_DENSITY, 
 
 /// What a plan warning measured.
 #[derive(Clone, Copy, Debug, PartialEq)]
+#[non_exhaustive]
 pub enum PlanDetail {
     /// The plan's edge density and the band it falls outside.
     Density {
@@ -81,7 +82,7 @@ impl PlanWarning {
 #[must_use]
 pub fn plan_warnings(graph: &Graph) -> Vec<PlanWarning> {
     let open_nodes = graph.nodes.values().filter(|n| !n.complete).count();
-    if open_nodes < usize::MAX {
+    if open_nodes < 2 {
         return Vec::new();
     }
     let reduced_edges = graph.edges.difference(&graph.redundant).count();

@@ -219,6 +219,15 @@ schema version under `Unreleased` is a draft and may change in place.
   `Finding::code()` and `Finding::severity()` and cannot be assigned, so a finding's severity
   always matches its code. A caller that read `finding.code` as a string uses
   `finding.code().as_str()`, and one that read `finding.severity` uses `finding.severity()`.
+- **A warning when edge density is outside its band** (flyingrobots/taskalisk#61).
+  `issue-dag-core` gains plan warnings, `plan_warnings`, read from a plan's `Graph`: advisories
+  on a plan as a whole, from the skill's doctrine on graph health. A `PlanWarning` is not a
+  `Finding`, since it concerns no single issue: it has a catalogued `Code` (registered in `CODES`
+  after the body warnings, listed in `PLAN_WARNINGS`), its code's severity, a fixed message and a
+  `PlanDetail`. Its first code, `taskalisk.edge-density`, is given once when the plan has more than
+  one open node and its density, reduced edges over `n(n-1)/2` rounded to four places, is outside
+  `DENSITY_BAND`, `0.01` to `0.50` inclusive; the detail gives the reduced edges, the open nodes,
+  the density and the band. The Python compiler's `edge_density` and band are the same.
 
 - **A provenance check for the vendored Parley writer** (flyingrobots/taskalisk#77).
   `scripts/check_vendored_writer.py` fetches the writer from flyingrobots/parley at the pinned

@@ -100,13 +100,16 @@ fn tasks(count: u32, edges: &[(u32, u32)]) -> Graph {
     graph(&bodies)
 }
 
-fn density(warning: &PlanWarning) -> (usize, usize, f64, (f64, f64)) {
+const fn density(warning: &PlanWarning) -> (usize, usize, f64, (f64, f64)) {
     let PlanDetail::Density {
         reduced_edges,
         open_nodes,
         density,
         band,
-    } = warning.detail;
+    } = warning.detail
+    else {
+        panic!("not an edge-density detail");
+    };
     (reduced_edges, open_nodes, density, band)
 }
 
