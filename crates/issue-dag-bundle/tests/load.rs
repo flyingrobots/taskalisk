@@ -222,3 +222,40 @@ fn ob7_a_draft_flag_is_a_boolean_never_a_value_slot() {
     b["observations"]["home_open_pull_requests"] = json!({"value": [pull]});
     reject(&b);
 }
+
+#[test]
+fn a_member_given_twice_is_rejected_at_its_path() {
+    // serde_json would keep the last value silently.
+    let text = example().to_string();
+    let twice = text.replacen(
+        "\"bundle\":\"issue-dag-observations/1\"",
+        "\"bundle\":\"issue-dag-observations/1\",\"bundle\":\"issue-dag-observations/1\"",
+        1,
+    );
+    assert_ne!(twice, text);
+    let error = load(&twice).expect_err("a repeated member is rejected");
+    assert_eq!(error.at, "bundle");
+    assert!(error.problem.contains("\"bundle\""), "{error}");
+
+    let nested = text.replacen(
+        "\"state\":\"open\"",
+        "\"state\":\"closed\",\"state\":\"open\"",
+        1,
+    );
+    assert_ne!(nested, text);
+    let error = load(&nested).expect_err("a repeated nested member is rejected");
+    assert_eq!(error.at, "observations.issues[\"o/r#1\"].value");
+    assert!(error.problem.contains("\"state\""), "{error}");
+
+    let in_list = text.replacen(
+        "{\"login\":\"o\",\"type\":\"User\"},null",
+        "{\"login\":\"o\",\"login\":\"x\",\"type\":\"User\"},null",
+        1,
+    );
+    assert_ne!(in_list, text);
+    let error = load(&in_list).expect_err("a repeated member in a list is rejected");
+    assert_eq!(
+        error.at,
+        "observations.issues[\"o/r#1\"].value.body.value.editors[0]"
+    );
+}

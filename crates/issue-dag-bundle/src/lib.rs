@@ -6,6 +6,8 @@
 //! does not hold is left unrecorded, so that a run that needs it fails with
 //! [`issue_dag_core::Missing`] (OB5) instead of reading it as empty.
 
+mod strict;
+
 use core::fmt;
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -56,10 +58,7 @@ fn fail<T>(at: &str, problem: impl Into<String>) -> Read<T> {
 ///
 /// [`BundleError`] when the text is not JSON or breaks a bundle rule.
 pub fn load(text: &str) -> Read<Bundle> {
-    let value: Value = match serde_json::from_str(text) {
-        Ok(v) => v,
-        Err(e) => return fail("bundle", format!("not JSON: {e}")),
-    };
+    let value = strict::parse(text, "bundle")?;
     let top = exact(
         &value,
         "bundle",
