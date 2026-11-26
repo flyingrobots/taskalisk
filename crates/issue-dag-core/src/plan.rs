@@ -664,14 +664,14 @@ impl<'c> Assembly<'c> {
 
 /// The open nodes and the edges between them, by position, for Kahn's
 /// algorithm (G4) and the reduction (G5).
-struct Indexed {
-    ids: Vec<IssueRef>,
-    children: Vec<Vec<usize>>,
+pub struct Indexed {
+    pub ids: Vec<IssueRef>,
+    pub children: Vec<Vec<usize>>,
     in_degree: Vec<usize>,
 }
 
 impl Indexed {
-    fn of(graph: &Graph) -> Self {
+    pub fn of(graph: &Graph) -> Self {
         let ids: Vec<IssueRef> = graph
             .nodes
             .iter()
@@ -699,7 +699,7 @@ impl Indexed {
     /// Kahn's algorithm: the open nodes in a topological order, and (G4)
     /// those left after repeatedly removing every node with no incoming
     /// edge: the members of every cycle and every node downstream of one.
-    fn kahn(&self) -> (Vec<usize>, BTreeSet<IssueRef>) {
+    pub fn kahn(&self) -> (Vec<usize>, BTreeSet<IssueRef>) {
         let mut in_degree = self.in_degree.clone();
         let mut sources: Vec<usize> = (0..self.ids.len()).filter(|&i| in_degree[i] == 0).collect();
         let mut order = Vec::with_capacity(self.ids.len());

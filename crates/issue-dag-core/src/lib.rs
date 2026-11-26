@@ -15,6 +15,7 @@ mod forge;
 mod label;
 mod observation;
 mod plan;
+mod rank;
 mod record;
 mod reference;
 mod rewrite;
@@ -32,6 +33,7 @@ pub use observation::{
     PullRequest, ReadScope, Repo, TRUST_POLICY, TrustParameters,
 };
 pub use plan::{Edge, Graph, Node, NodeStatus, Outcome, Rejection, plan};
+pub use rank::{Ranking, rank};
 pub use record::{Kind, MeterClaim, Record, Status, TaskType, VERSION};
 pub use reference::{IssueRef, MAX_NUMBER};
 pub use rewrite::{EdgeEdit, Refusal, Rewrite, rewrite_blocked_by};
