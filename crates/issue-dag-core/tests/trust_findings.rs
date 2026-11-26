@@ -568,3 +568,21 @@ fn an_invalid_run_still_reports_its_trust_findings() {
         )]
     );
 }
+
+#[test]
+fn ad9_a_pull_request_whose_number_is_no_issue_number_is_still_reported() {
+    // A pull request's number is a u64; no reference (rule L1) holds one
+    // above MAX_NUMBER. Its finding must still be reported, never dropped.
+    let number = u64::from(issue_dag_core::MAX_NUMBER) + 1;
+    let found = run(
+        Some(person("o")),
+        Some("OWNER"),
+        vec![Some(person("o"))],
+        vec![pull(number, Some(person("dev")), Some(true), &["o/r#1"])],
+        &[],
+    );
+    let all = trust_findings(&found);
+    assert_eq!(all.len(), 1, "{all:?}");
+    assert_eq!(all[0].login.as_deref(), Some("dev"));
+    assert_eq!(all[0].rule, "AD9");
+}
