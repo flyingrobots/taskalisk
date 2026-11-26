@@ -162,6 +162,16 @@ def _unknown_and_cycle(bundle: dict[str, Any]) -> dict[str, Any]:
     return bundle
 
 
+def _unknown_in_declared_order(bundle: dict[str, Any]) -> dict[str, Any]:
+    """d9-container with o/r#1 waiting on [x/y#20, x/y#3] and o/s#2 on [x/y#9, x/y#1], all outside
+    the read scope: 1.x lists unknown prerequisites by task (as text), then in the task's declared
+    order, not sorted by reference."""
+    issues = bundle["observations"]["issues"]
+    for ref, refs in (("o/r#1", ["x/y#20", "x/y#3"]), ("o/s#2", ["x/y#9", "x/y#1"])):
+        issues[ref]["value"]["body"]["value"]["text"] = _doc(ref, "task", ".blocked_by", refs)
+    return bundle
+
+
 def _untrusted_in_order_read(bundle: dict[str, Any]) -> dict[str, Any]:
     """d9-container whose root names o/r#40 before o/r#30, both by a stranger: 1.x lists the
     untrusted issues in the order it read them, o/r#40 first, though o/r#30 sorts first."""
@@ -194,6 +204,7 @@ VARIANTS = {
     "d9-container--untrusted-in-order-read": ("d9-container", _untrusted_in_order_read),
     "d9-container--not-planned-per-task-order": ("d9-container", _not_planned_per_task),
     "graph-cycle--and-unknown-prerequisite": ("graph-cycle", _unknown_and_cycle),
+    "d9-container--unknown-in-declared-order": ("d9-container", _unknown_in_declared_order),
     "d9-container--opaque-child": ("d9-container", _opaque_child),
     "d9-container--opaque-children-in-order-read": ("d9-container", _opaque_children),
 }
