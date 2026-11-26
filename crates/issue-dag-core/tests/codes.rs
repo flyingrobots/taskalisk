@@ -76,8 +76,17 @@ fn every_emitted_finding_has_a_catalogued_code_and_its_severity() {
     assert!(severities.contains(&Severity::Error));
     let catalogued: BTreeSet<&str> = CODES.iter().map(|(c, _)| *c).collect();
     for finding in &emitted {
-        assert!(catalogued.contains(finding.code.as_str()), "{}", finding.code);
-        assert_eq!(finding.severity, finding.code.severity(), "{}", finding.code);
+        assert!(
+            catalogued.contains(finding.code.as_str()),
+            "{}",
+            finding.code
+        );
+        assert_eq!(
+            finding.severity,
+            finding.code.severity(),
+            "{}",
+            finding.code
+        );
     }
     let body: BTreeSet<&str> = emitted
         .iter()
@@ -95,7 +104,11 @@ fn every_emitted_finding_has_a_catalogued_code_and_its_severity() {
 /// A rule's code and a body warning's code are the catalogue's codes.
 #[test]
 fn rules_and_body_warnings_name_catalogued_codes() {
-    for rule in LABELS.iter().map(|&l| Rule::Document(l)).chain(PROFILE_RULES) {
+    for rule in LABELS
+        .iter()
+        .map(|&l| Rule::Document(l))
+        .chain(PROFILE_RULES)
+    {
         let finding = Finding::new(subject(), rule, None);
         assert!(finding.code == rule.code(), "{rule}");
         assert_eq!(finding.code.severity(), rule.severity(), "{rule}");

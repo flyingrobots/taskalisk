@@ -90,6 +90,110 @@ const CATALOGUE: [(&str, Severity); CODE_COUNT] = {
     out
 };
 
+/// A finding code: an entry of the catalogue [`CODES`].
+///
+/// It has no public constructor. The crate builds a `Code` only by finding
+/// its text in the catalogue, so every finding carries a catalogued code, and
+/// a family of findings that does not register its codes in [`CODES`] cannot
+/// emit them. Its text ([`Code::as_str`], also its [`fmt::Display`] and
+/// [`fmt::Debug`] form) is the code as reports print it; codes compare and
+/// order as their text. Its severity is the catalogue's ([`Code::severity`]),
+/// the one place each code's severity is defined.
+///
+/// ```compile_fail
+/// let invented = issue_dag_core::Code(0);
+/// ```
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+pub struct Code(usize);
+
+impl Code {
+    /// The catalogued code whose text is `text`.
+    ///
+    /// # Panics
+    ///
+    /// If `text` is in no catalogue entry. Every emitter takes its text from
+    /// a family that [`CODES`] is built from, so this does not happen.
+    pub(crate) const fn of(text: &str) -> Self {
+        let mut i = 0;
+        while i < CATALOGUE.len() {
+            if same_text(CATALOGUE[i].0, text) {
+                return Self(i);
+            }
+            i += 1;
+        }
+        panic!("a finding code that is not in the catalogue CODES");
+    }
+
+    /// The code's text, such as `"format.V1"`.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        CATALOGUE[self.0].0
+    }
+
+    /// The code's severity, as the catalogue gives it.
+    #[must_use]
+    pub const fn severity(self) -> Severity {
+        CATALOGUE[self.0].1
+    }
+
+    /// Every catalogued code, once each, in [`CODES`] order.
+    pub fn all() -> impl Iterator<Item = Self> {
+        (0..CATALOGUE.len()).map(Self)
+    }
+}
+
+/// Whether two strings are equal, in a constant.
+const fn same_text(a: &str, b: &str) -> bool {
+    let (a, b) = (a.as_bytes(), b.as_bytes());
+    if a.len() != b.len() {
+        return false;
+    }
+    let mut i = 0;
+    while i < a.len() {
+        if a[i] != b[i] {
+            return false;
+        }
+        i += 1;
+    }
+    true
+}
+
+impl PartialOrd for Code {
+    fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for Code {
+    fn cmp(&self, other: &Self) -> core::cmp::Ordering {
+        self.as_str().cmp(other.as_str())
+    }
+}
+
+impl PartialEq<&str> for Code {
+    fn eq(&self, other: &&str) -> bool {
+        self.as_str() == *other
+    }
+}
+
+impl PartialEq<str> for Code {
+    fn eq(&self, other: &str) -> bool {
+        self.as_str() == other
+    }
+}
+
+impl fmt::Display for Code {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+impl fmt::Debug for Code {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Debug::fmt(self.as_str(), f)
+    }
+}
+
 /// How much a finding matters.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Severity {
@@ -145,11 +249,12 @@ impl Severity {
 pub struct Finding {
     /// The issue that receives it.
     pub subject: IssueRef,
-    /// The stable code (see the table on [`code`] and [`Rule::code`]).
-    pub code: &'static str,
+    /// The stable code, an entry of [`CODES`] (see the table on [`code`]).
+    pub code: Code,
     /// The reference it concerns, for D3, D5, X2 and X3; otherwise `None`.
     pub concerns: Option<IssueRef>,
-    /// Error for a violation, warning for the advisory.
+    /// The severity of its code, [`Code::severity`]: error for a violation,
+    /// warning for the advisory and the body warnings.
     pub severity: Severity,
     /// Fixed text for the code. It may name a key, never a value or a line.
     pub message: &'static str,
@@ -157,7 +262,7 @@ pub struct Finding {
 
 impl Finding {
     /// Its identity under profile rule F5.
-    const fn identity(&self) -> (&IssueRef, &'static str, Option<&IssueRef>) {
+    const fn identity(&self) -> (&IssueRef, Code, Option<&IssueRef>) {
         (&self.subject, self.code, self.concerns.as_ref())
     }
 }
@@ -192,12 +297,23 @@ impl Finding {
     /// The finding of `rule` for `subject`, about `concerns`.
     #[must_use]
     pub const fn new(subject: IssueRef, rule: Rule, concerns: Option<IssueRef>) -> Self {
+        Self::coded(subject, Code::of(rule.code()), concerns, rule.message())
+    }
+
+    /// The finding of the catalogued `code` for `subject`, about `concerns`,
+    /// with the code's severity.
+    pub(crate) const fn coded(
+        subject: IssueRef,
+        code: Code,
+        concerns: Option<IssueRef>,
+        message: &'static str,
+    ) -> Self {
         Self {
             subject,
-            code: rule.code(),
+            code,
             concerns,
-            severity: rule.severity(),
-            message: rule.message(),
+            severity: code.severity(),
+            message,
         }
     }
 
@@ -205,9 +321,8 @@ impl Finding {
     /// document prefix, such as `"X3"` for `profile.X3`.
     #[must_use]
     pub fn label(&self) -> &'static str {
-        self.code
-            .split_once('.')
-            .map_or(self.code, |(_, label)| label)
+        let code = self.code.as_str();
+        code.split_once('.').map_or(code, |(_, label)| label)
     }
 }
 
@@ -421,15 +536,15 @@ const fn message(label: Label) -> &'static str {
 ///
 /// The body is judged with its address ([`crate::admit`]), so profile rule X1
 /// always applies, and every finding's subject is the address. A body
-/// without a document and a valid document without warnings have none.
+/// without a document and a valid document without warnings have none. Each
+/// finding's severity is its code's: the warnings are V10, which is the one
+/// warning label, and every violation's label is an error.
 #[must_use]
 pub fn findings(body: &str, address: &IssueRef) -> Vec<Finding> {
     match admit(body, Some(address)) {
         Judgement::NoDocument => Vec::new(),
-        Judgement::Valid { warnings, .. } => from_labels(address, &warnings, Severity::Warning),
-        Judgement::Invalid(validation) => {
-            from_labels(address, &validation.violations, Severity::Error)
-        }
+        Judgement::Valid { warnings, .. } => from_labels(address, &warnings),
+        Judgement::Invalid(validation) => from_labels(address, &validation.violations),
     }
 }
 
@@ -437,14 +552,10 @@ pub fn findings(body: &str, address: &IssueRef) -> Vec<Finding> {
 fn from_labels<'a>(
     subject: &IssueRef,
     labels: impl IntoIterator<Item = &'a Label>,
-    severity: Severity,
 ) -> Vec<Finding> {
     let mut found: Vec<Finding> = labels
         .into_iter()
-        .map(|&label| Finding {
-            severity,
-            ..Finding::new(subject.clone(), Rule::Document(label), None)
-        })
+        .map(|&label| Finding::new(subject.clone(), Rule::Document(label), None))
         .collect();
     found.sort();
     found
@@ -492,8 +603,8 @@ mod tests {
     #[test]
     fn findings_come_out_in_code_text_order() {
         let subject = IssueRef::parse("o/r#1").expect("a reference");
-        let found = from_labels(&subject, &[Label::P3, Label::V1], Severity::Error);
-        let codes: Vec<&str> = found.iter().map(|f| f.code).collect();
+        let found = from_labels(&subject, &[Label::P3, Label::V1]);
+        let codes: Vec<&str> = found.iter().map(|f| f.code.as_str()).collect();
         assert_eq!(codes, ["format.V1", "version.P3"]);
     }
 
@@ -513,7 +624,11 @@ mod tests {
         for rule in rules {
             let finding = Finding::new(subject.clone(), rule, None);
             assert_eq!(finding.label(), rule.as_str(), "{}", finding.code);
-            let (prefix, _) = finding.code.split_once('.').expect("a prefixed code");
+            let (prefix, _) = finding
+                .code
+                .as_str()
+                .split_once('.')
+                .expect("a prefixed code");
             assert!(
                 ["format", "version", "profile"].contains(&prefix),
                 "{}",

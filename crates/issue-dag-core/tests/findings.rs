@@ -185,7 +185,7 @@ fn judge(body: &str) -> Vec<Finding> {
 }
 
 fn codes(found: &[Finding]) -> Vec<&'static str> {
-    found.iter().map(|f| f.code).collect()
+    found.iter().map(|f| f.code.as_str()).collect()
 }
 
 #[test]
@@ -339,7 +339,7 @@ fn findings_of_several_documents_sort_by_subject_then_code() {
     all.sort();
     let order: Vec<(String, &str)> = all
         .iter()
-        .map(|f| (f.subject.to_string(), f.code))
+        .map(|f| (f.subject.to_string(), f.code.as_str()))
         .collect();
     assert_eq!(
         order,
