@@ -5,7 +5,7 @@ its public catalogue `CODES`. A finding is one violation or warning. It
 carries a code, a severity, the issue that receives it as its subject, for
 some codes the reference it concerns, and a fixed message that names keys and
 rules but never a value or a line of the body. Four families of findings
-share the catalogue:
+and the plan warnings share the catalogue:
 
 - **document findings** (function `findings`): the frontmatter document in an
   issue body, judged with the issue's address;
@@ -16,6 +16,10 @@ share the catalogue:
 - **shape warnings** (function `shape_warnings`): Taskalisk's own advisories
   on the shape of a plan's graph, from the skill's doctrine on graph health,
   not a rule of any specification.
+- **plan warnings** (function `plan_warnings`): Taskalisk's own advisories on
+  a plan as a whole, from the skill's doctrine on graph health. A plan warning
+  is not a finding: it concerns no single issue, so it has no subject, and it
+  carries a detail of what it measured.
 
 These are the Rust crate's codes. The Python compiler reports frontmatter
 problems as `frontmatter.violation` and `frontmatter.warning` lines; their
@@ -31,7 +35,7 @@ V12 assigns it; the prefix names the specification that states the rule:
 | `format.` | the format [`issue-dag/2`](../../../tests/fixtures/issue-dag/formats/issue-dag-2.md): carrier rules C, value rules L, validity rules V |
 | `version.` | the [version policy](../../../tests/fixtures/issue-dag/versions.md) |
 | `profile.` | the planning profile [`issue-dag-planning/2`](../../../tests/fixtures/issue-dag/profiles/issue-dag-planning-2.md) |
-| `taskalisk.` | Taskalisk's convention, [Writing a task](../../../skills/taskalisk/WRITING-TASKS.md) for a body warning, or its doctrine, [Core Doctrine](../../../skills/taskalisk/SKILL.md#core-doctrine), for a shape warning; the suffix is a name, not a label |
+| `taskalisk.` | Taskalisk's convention, [Writing a task](../../../skills/taskalisk/WRITING-TASKS.md) for a body warning, or its doctrine, [Core Doctrine](../../../skills/taskalisk/SKILL.md#core-doctrine), for a shape or plan warning; the suffix is a name, not a label |
 
 The links go to the copy of the specification vendored in this repository
 under `tests/fixtures/issue-dag/`. A code never changes meaning; a rule that
@@ -40,11 +44,11 @@ once, in the catalogue:
 
 - **error**: a violation. The document is invalid, or for a run finding the
   run is.
-- **warning**: the V10 advisory, a body warning or a shape warning. The
-  document stays valid, and a shape warning never makes a run invalid. A V10
-  warning is reported only for a document with no violations, body warnings
-  only for a valid task document, and shape warnings only for the graph of a
-  run.
+- **warning**: the V10 advisory, a body warning, a shape warning or a plan
+  warning. The document stays valid, and a shape or plan warning never makes a
+  run invalid. A V10 warning is reported only for a document with no
+  violations, body warnings only for a valid task document, and shape and plan
+  warnings only for the graph of a run.
 
 A body with no frontmatter block (rules C1 to C3) is not a document and has
 no findings. A document gets one finding per rule it breaks, however many of
@@ -84,7 +88,8 @@ flyingrobots/taskalisk#126 (decision D17). The test
 
 The entries are in the catalogue's order (`CODES`): the document codes in the
 order of the labels' text, so `V10` comes before `V2`; then the planning
-profile's codes; then the body warnings; then the shape warnings. The test
+profile's codes; then the body warnings; then the shape warnings; then the
+plan warnings. The test
 `crates/issue-dag-core/tests/finding_reference.rs` fails when a code has no
 entry here, an entry names no code, or a link or anchor here does not
 resolve.
@@ -686,6 +691,25 @@ In a plan where `o/r#2` is open and its frontmatter has no `.size_hours`,
 To fix: estimate the task after splitting it ([Size](../../../skills/taskalisk/WRITING-TASKS.md#size))
 and add `.size_hours`, a whole number of hours.
 
+### `taskalisk.isolated-task`
+
+**Severity:** warning. **Rule:** [Isolated nodes](../../../skills/taskalisk/SKILL.md#core-doctrine), Core Doctrine 4 of the skill.
+
+An open node of the plan's graph has no edge in or out: no open task is
+blocked by it, and it is blocked by no open node. Edges are those between
+open nodes, so a task whose prerequisites have all closed counts as isolated,
+as the Python compiler's `isolated_open_nodes` metric counts it. A plan with
+fewer than two open nodes draws no warning: a single task has nothing to be
+joined to.
+
+In a plan where `o/r#2` is blocked by `o/r#1` and `o/r#3` names no
+prerequisite and is named by none, `o/r#3` receives `taskalisk.isolated-task`.
+
+To fix: read the task's body, review follow-ups and unmerged branches for a
+real prerequisite or dependent, and propose the edge. Many isolated tasks
+mean the dependencies have not been recorded yet, not that the work is
+independent. A task that is truly independent can keep the warning.
+
 ### `taskalisk.redundant-edge`
 
 **Severity:** warning. **Rule:** [Transitive reduction](../../../skills/taskalisk/SKILL.md#core-doctrine), Core Doctrine 4 of the skill.
@@ -705,3 +729,46 @@ receives `taskalisk.redundant-edge` concerning `o/r#1`, implied via `o/r#2`.
 
 To fix: nothing is required; the plan already ignores the edge. Keep it as
 evidence, or remove `o/r#1` from `o/r#3`'s `.blocked_by` if it adds nothing.
+
+### `taskalisk.small-container`
+
+**Severity:** warning. **Rule:** [Containers](../../../skills/taskalisk/SKILL.md#core-doctrine), Core Doctrine 2 of the skill.
+
+An open container's `.children` names fewer than two distinct issues: none, or
+one.
+A container exists to group the tasks a split produced, so with one child or
+none it groups nothing. A reference to the container itself is not counted,
+and a child named twice counts once. A closed container, read because an
+open document names it, draws no warning: its grouping is finished.
+
+In a plan where `o/r#9` is a container with `.children: [o/r#1]`, `o/r#9`
+receives `taskalisk.small-container`.
+
+To fix: add the missing children to `.children`, or, if the container groups
+only one task, drop the container and keep the task.
+
+### `taskalisk.edge-density`
+
+**Severity:** warning. **Rule:** [Edge density](../../../skills/taskalisk/SKILL.md#core-doctrine), Core Doctrine 4 of the skill.
+
+A plan warning, not a finding: it concerns the plan as a whole and has no
+subject. The plan's edge density is outside the band the skill states,
+`0.01` to `0.50`, both ends included. The density is the number of edges of
+the reduced graph (its edges less those the reduction removes, profile rule
+[G5](../../../tests/fixtures/issue-dag/profiles/issue-dag-planning-2.md#5-the-graph))
+over the number of pairs of open nodes, `n(n-1)/2`, rounded to four decimal
+places on its exact decimal value, ties to even, as the Python compiler
+computes `edge_density`: 63 edges over 64 open nodes, exactly `0.03125`, is
+`0.0312`. The renderer's `edge_density` metric is the same function. A plan with one open
+node or none has no pairs and draws no warning. The warning's detail gives
+the reduced edges, the open nodes, the density and the band.
+
+Fifteen open tasks with no edges have density `0`, below the band. A chain
+of three tasks has two edges over three pairs, `0.6667`, above it. Four tasks
+with one edge, `0.1667`, are inside.
+
+To fix: below the band, look for prerequisites that are real but
+unrecorded, and propose the edges; many isolated tasks mean the dependencies
+have not been recorded, not that the work is independent. Above it, the plan
+is close to a single chain: check whether some edges are not true
+prerequisites. A small plan can be outside the band for good reason.

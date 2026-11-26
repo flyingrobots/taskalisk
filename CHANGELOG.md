@@ -267,12 +267,31 @@ schema version under `Unreleased` is a draft and may change in place.
   prerequisite, in reference text order, that reaches the dependent, the Python compiler's
   `implied_via` for the same edge, `edge.redundant`. The descendant sets are built once, so the
   4,998 redundant edges of a 5,000-task chain whose every task is also blocked by its first take
-  well under a second; a `perf_` test guards it, and the CI perf guard now expects 7.
+  well under a second; a `perf_` test guards it, and the CI perf guard now expects 8.
+- **A warning for an open task with no edges** (flyingrobots/taskalisk#47). `shape_warnings` gains
+  `taskalisk.isolated-task`, given once per open node with no edge in or out, when the plan has at
+  least two open nodes; a plan of a single task draws none. Edges are those between open nodes, as
+  for the Python compiler's `isolated_open_nodes` metric. `ShapeFinding::detail` becomes an
+  `Option<Detail>`: `None` for a warning that measures nothing beyond its finding.
+- **A warning for a container with one child or none** (flyingrobots/taskalisk#63).
+  `shape_warnings` gains `taskalisk.small-container`, given once per open container whose
+  `.children` names fewer than two distinct issues. `Graph` gains `closed_containers`, the
+  containers whose issue the run observed closed. `ShapeFinding::detail` becomes an
+  `Option<Detail>`: `None` for a warning that measures nothing beyond its finding.
+- **A warning when edge density is outside its band** (flyingrobots/taskalisk#61).
+  `issue-dag-core` gains plan warnings, `plan_warnings`, read from a plan's `Graph`: advisories
+  on a plan as a whole, from the skill's doctrine on graph health. A `PlanWarning` is not a
+  `Finding`, since it concerns no single issue: it has a catalogued `Code` (registered in `CODES`
+  after the shape warnings, listed in `PLAN_WARNINGS`), its code's severity, a fixed message and a
+  `PlanDetail`. Its first code, `taskalisk.edge-density`, is given once when the plan has more than
+  one open node and its density, `edge_density`, reduced edges over `n(n-1)/2` rounded to four
+  places with ties to even (as Python's `round`, and now also the renderer's metric), is outside
+  `DENSITY_BAND`, `0.01` to `0.50` inclusive; the detail gives the reduced edges, the open nodes,
+  the density and the band. The Python compiler's `edge_density` and band are the same.
 - **A warning for an open task with no estimate** (flyingrobots/taskalisk#64). `shape_warnings`
   gains `taskalisk.estimate-missing`, given once per open task with a document whose
-  `Node::size_hours` is absent; closed tasks, opaque nodes and containers draw none.
-  `ShapeFinding::detail` becomes an `Option<Detail>`: `None` for a warning that measures nothing
-  beyond its finding.
+  `Node::size_hours` (#114) is absent; closed tasks, opaque nodes and containers draw none. Its
+  detail is `None`.
 
 - **Why a reference could not be read, in part** (flyingrobots/taskalisk#45). The test
   `unreadable_references` pins the three causes today's observations tell apart: outside the read

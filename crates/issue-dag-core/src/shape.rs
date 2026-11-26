@@ -7,7 +7,7 @@
 //! warnings never make a run invalid. [`shape_warnings`] reads them from a
 //! [`Graph`] that [`crate::plan`] returned.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use crate::finding::{Code, Finding, Severity};
 use crate::plan::{Edge, Graph, Indexed};
@@ -61,9 +61,15 @@ shape_warnings! {
     /// An open task without `.size_hours`.
     EstimateMissing => "taskalisk.estimate-missing",
         "the open task has no .size_hours: the plan cannot be reported at its true size",
+    /// An open node with no edge in or out, in a plan of two or more.
+    IsolatedTask => "taskalisk.isolated-task",
+        "the open task has no .blocked_by edge in or out: its prerequisites may not be recorded yet",
     /// An edge the transitive reduction removes (profile rule G5).
     RedundantEdge => "taskalisk.redundant-edge",
         "the .blocked_by edge is implied by a path of other edges; the reduction removes it",
+    /// A container that groups fewer than two issues.
+    SmallContainer => "taskalisk.small-container",
+        "the container's .children names fewer than two issues: it groups nothing",
 }
 
 /// What a shape warning measured, beyond its finding.
@@ -91,10 +97,18 @@ pub struct ShapeFinding {
 /// - `taskalisk.estimate-missing`, for each open task without `.size_hours`
 ///   ([`crate::Node::size_hours`]): an opaque node has no document to hold
 ///   the key, and a closed node or a container draws none. It has no detail.
+/// - `taskalisk.isolated-task`, for each open node that no edge of the graph
+///   enters or leaves, when the graph has at least two open nodes: a plan of
+///   a single task draws none. Edges are those between open nodes (G3), so a
+///   task whose prerequisites are all complete is isolated, as the Python
+///   compiler's isolated nodes are. It has no detail.
 /// - `taskalisk.redundant-edge`, for each edge the reduction removes (G5):
 ///   the subject is the dependent, whose `.blocked_by` declares the edge,
 ///   the finding concerns the prerequisite, and the detail is the node the
 ///   edge is implied via ([`Detail::ImpliedVia`]).
+/// - `taskalisk.small-container`, for each open container of the graph whose
+///   `.children` names fewer than two distinct issues (a reference to the
+///   container itself is not a child). It has no detail.
 #[must_use]
 pub fn shape_warnings(graph: &Graph) -> Vec<ShapeFinding> {
     let mut found = Vec::new();
@@ -106,6 +120,8 @@ pub fn shape_warnings(graph: &Graph) -> Vec<ShapeFinding> {
         });
     }
     estimates_missing(graph, &mut found);
+    isolated(graph, &mut found);
+    small_containers(graph, &mut found);
     found.sort_by(|a, b| a.finding.cmp(&b.finding));
     found
 }
@@ -117,6 +133,42 @@ fn estimates_missing(graph: &Graph, found: &mut Vec<ShapeFinding>) {
         if !node.complete && !node.opaque && node.size_hours.is_none() {
             found.push(ShapeFinding {
                 finding: finding(ShapeWarning::EstimateMissing, id, None),
+                detail: None,
+            });
+        }
+    }
+}
+
+/// `taskalisk.isolated-task`: each open node no edge joins, in a graph of
+/// two or more open nodes.
+fn isolated(graph: &Graph, found: &mut Vec<ShapeFinding>) {
+    let open: Vec<&IssueRef> = graph
+        .nodes
+        .iter()
+        .filter(|(_, node)| !node.complete)
+        .map(|(id, _)| id)
+        .collect();
+    if open.len() < 2 {
+        return;
+    }
+    let joined: BTreeSet<&IssueRef> = graph.edges.iter().flat_map(|e| [&e.from, &e.to]).collect();
+    for id in open.into_iter().filter(|id| !joined.contains(id)) {
+        found.push(ShapeFinding {
+            finding: finding(ShapeWarning::IsolatedTask, id, None),
+            detail: None,
+        });
+    }
+}
+
+/// `taskalisk.small-container`: each open container of fewer than two
+/// distinct children.
+fn small_containers(graph: &Graph, found: &mut Vec<ShapeFinding>) {
+    for (id, children) in &graph.containers {
+        if !graph.closed_containers.contains(id)
+            && children.iter().collect::<BTreeSet<_>>().len() < 2
+        {
+            found.push(ShapeFinding {
+                finding: finding(ShapeWarning::SmallContainer, id, None),
                 detail: None,
             });
         }
