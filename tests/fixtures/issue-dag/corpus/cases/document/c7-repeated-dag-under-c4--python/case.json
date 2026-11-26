@@ -13,5 +13,5 @@
   "level": "document",
   "normative_case": "document/c7-repeated-dag-under-c4",
   "source": "the Python compiler, on the input of document/c7-repeated-dag-under-c4",
-  "title": "What the compiler does: A body that fails C4 is not read into lines: a repeated `.dag` leaves C4 the only violation"
+  "title": "Where document/c7-repeated-dag-under-c4 differs: the compiler splits the line at the CR and reports C6 and C7"
 }

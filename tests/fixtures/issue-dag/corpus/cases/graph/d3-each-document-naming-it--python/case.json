@@ -14,5 +14,5 @@
   "level": "graph",
   "normative_case": "graph/d3-each-document-naming-it",
   "source": "the Python compiler, on the bundle of graph/d3-each-document-naming-it",
-  "title": "What the compiler does: Every document that names a reference outside the scope receives a violation, whatever the order of visits"
+  "title": "Where graph/d3-each-document-naming-it differs: the compiler gives the violation only to the documents visited before the reference"
 }

@@ -17,6 +17,7 @@ mod carrier;
 mod finding;
 mod forge;
 mod label;
+mod local;
 mod observation;
 mod plan;
 mod rank;
@@ -34,6 +35,7 @@ pub use carrier::{Block, Entry, Integer, Parse, Slot, Value, parse, trim};
 pub use finding::{CODES, Finding, LABELS, PROFILE_RULES, Rule, Severity, code, findings};
 pub use forge::{Bundle, Forge, LocalRepository, NoLocalRepository, Observations, RecordedForge};
 pub use label::Label;
+pub use local::{AheadBehind, Branch, BranchScope, Checkout, Worktree};
 pub use observation::{
     Actor, Body, CodeownersFile, Issue, IssueState, Lookup, Missing, Observed, Parameters,
     PullRequest, ReadScope, Repo, TRUST_POLICY, TrustParameters,

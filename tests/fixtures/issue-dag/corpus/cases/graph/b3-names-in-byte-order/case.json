@@ -1,0 +1,12 @@
+{
+  "cites": [
+    "B3",
+    "B5",
+    "CC6"
+  ],
+  "id": "graph/b3-names-in-byte-order",
+  "kind": "normative",
+  "level": "graph",
+  "source": "constructed from the rule text",
+  "title": "Two unknown capacities and two full semaphores are named in ascending byte order"
+}

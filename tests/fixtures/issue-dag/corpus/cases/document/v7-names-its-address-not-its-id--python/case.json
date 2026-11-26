@@ -13,5 +13,5 @@
   "level": "document",
   "normative_case": "document/v7-names-its-address-not-its-id",
   "source": "the Python compiler, on the input of document/v7-names-its-address-not-its-id",
-  "title": "What the compiler does: An item equal to the address but not to `.id` is not a self reference"
+  "title": "Where document/v7-names-its-address-not-its-id differs: the compiler compares with the address; the document is invalid either way and the same issue receives the violations (F4)"
 }

@@ -14,5 +14,5 @@
   "level": "document",
   "normative_case": "document/v10-invalid-document-has-no-warnings",
   "source": "the Python compiler, on the input of document/v10-invalid-document-has-no-warnings",
-  "title": "What the compiler does: An invalid document with a `.size_hours` above 8 has violations and no warnings"
+  "title": "Where document/v10-invalid-document-has-no-warnings differs: the compiler reports the V10 warning beside the violation"
 }

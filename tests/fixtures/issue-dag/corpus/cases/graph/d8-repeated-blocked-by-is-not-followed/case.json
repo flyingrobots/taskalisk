@@ -1,0 +1,18 @@
+{
+  "cites": [
+    "D8",
+    "C7",
+    "F1",
+    "I5"
+  ],
+  "disagreement": {
+    "classification": "defect",
+    "difference": 24,
+    "note": "the compiler reads the first `.blocked_by` line, follows the unavailable issue, and the run is incomplete"
+  },
+  "id": "graph/d8-repeated-blocked-by-is-not-followed",
+  "kind": "normative",
+  "level": "graph",
+  "source": "constructed from the rule text",
+  "title": "A repeated `.blocked_by` contributes no reference: an unavailable issue it names leaves the run invalid, not incomplete"
+}

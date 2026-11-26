@@ -13,5 +13,5 @@
   "level": "document",
   "normative_case": "document/c6-nbsp-before-value",
   "source": "the Python compiler, on the input of document/c6-nbsp-before-value",
-  "title": "What the compiler does: U+00A0 before a value is part of the value"
+  "title": "Where document/c6-nbsp-before-value differs: the compiler strips U+00A0 from the value and reads `feature`"
 }

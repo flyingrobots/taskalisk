@@ -55,10 +55,15 @@ for their own reasons (Decision 7).
 ### 2. Rust, with a hexagonal architecture — Decided
 
 Taskalisk is rewritten in Rust. A core crate holds the domain and the ports
-and performs no I/O; it plans over a recorded set of observations. An adapter
-crate holds the `gh` and `git` adapters, an in-memory forge for tests, the
-renderers and the command line. Ports: `Forge` and `LocalRepository`; later
+and performs no I/O; it plans over a recorded set of observations. Each port
+adapter is its own crate: the git adapter is `issue-dag-git` (#57), which
+implements `LocalRepository`, and the `gh` adapter is to be its own crate,
+`issue-dag-gh` (#56), implementing `Forge`. The in-memory forge for tests
+(`RecordedForge`) is in the core. The renderers and the command line go in
+the binary crate (#31). Ports: `Forge` and `LocalRepository`; later
 `AgentLauncher` and `Locks`.
+
+Amended 2026-11-26: one crate per adapter (#57).
 
 Each forge write is a named port operation. A narrow operation does not
 narrow its effect: the edge edit still replaces the issue body, and its
@@ -140,7 +145,10 @@ written; #26 classifies the Python's behaviour as a defect.
 2. Reconcile the Python against it and freeze the corpus (#26).
 3. Port the core to Rust at `/2` parity (#27 to #30). `--explain` (#4) is
    built on the core after #30.
-4. Add the adapters, safe edge writes and the cutover (#31, #1, #32).
+4. Add the adapters, safe edge writes and the cutover: the `gh` adapter
+   (#56), the git adapter (#57), the command line and renderers (#31, #58),
+   safe edge writes (#1) and the cutover (#32). Amended 2026-11-26 to match
+   section 2.
 5. Add the lifecycle audit and `compare-plans` (#33, #34).
 6. Land the `/3` changes one at a time (#35 to #37).
 7. Build the executor in Rust (#3, #9 to #15).
