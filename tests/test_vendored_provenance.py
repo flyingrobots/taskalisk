@@ -95,6 +95,20 @@ class UpstreamProvenanceTest(unittest.TestCase):
             check.urllib.request.urlopen = opened
         self.assertEqual(response.asked, 101)
 
+    def test_main_fetches_with_the_pinned_size_as_its_limit(self):
+        seen = []
+        real = check.fetch
+        check.fetch = lambda url, limit=None: seen.append(limit) or self.copy
+        try:
+            import contextlib
+            import io
+            with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                status = check.main()
+        finally:
+            check.fetch = real
+        self.assertEqual(status, 0)
+        self.assertEqual(seen, [self.pin["bytes"]])
+
     @unittest.skipUnless(os.environ.get("TASKALISK_UPSTREAM_CHECK") == "1",
                          "upstream provenance not checked: set TASKALISK_UPSTREAM_CHECK=1 (needs network; CI sets it)")
     def test_the_vendored_writer_is_upstream_at_its_pinned_commit(self):
