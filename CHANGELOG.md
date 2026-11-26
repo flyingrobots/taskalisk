@@ -9,6 +9,12 @@ schema version under `Unreleased` is a draft and may change in place.
 
 ### Fixed
 
+- **A secret in a URL query string or fragment is redacted** (flyingrobots/taskalisk#78). The
+  value of a query or fragment parameter named `token`, `access_token`, `key`, `secret`,
+  `password`, `sig`, `signature`, `auth` or `code`, in any case, is replaced by `[redacted]` in
+  `gh` and `git` text before it reaches a line or the receipt, as `user:secret@` already was.
+  Other parameters, and the quotes, brackets or full stop around a URL, are kept.
+
 - **A bad edge object in a `--verify-dag` spec is `dag_spec.invalid`** (flyingrobots/taskalisk#74).
   A `confidence` that is not a finite number (a string, a bool, null, NaN, an infinity), or an
   `isHard` that is not a boolean, is refused before any plan line. Before, it ended in
