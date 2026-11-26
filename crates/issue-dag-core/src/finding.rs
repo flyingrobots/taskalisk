@@ -5,11 +5,12 @@
 //!
 //! The codes are tabled on [`code`].
 
-use crate::Judgement;
 use crate::label::Label;
 use crate::reference::IssueRef;
+use crate::{Judgement, admit};
 
 /// Every label a document judgement can carry, in the order of its text.
+/// Each label stands at its position (checked when the crate compiles).
 pub const LABELS: [Label; 19] = [
     Label::C4,
     Label::C6,
@@ -54,16 +55,14 @@ impl Severity {
 
 /// One violation or warning of a document.
 ///
-/// The subject of a valid document's findings is its `.id`. An invalid
-/// document's `.id` may be the very thing at fault, so its subject is the
-/// address of the issue that holds it. A message is fixed text for its code:
+/// The subject is the address of the issue that holds the document, never
+/// the document's own `.id` (a `.id` that differs is finding `profile.X1`). A message is fixed text for its code:
 /// it may name a key, and never carries a value or a line of the body.
 /// The fields are in sort order: findings sort by subject, then code, so two
 /// runs give the same report.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Finding {
-    /// The issue the finding is about: a valid document's `.id`, otherwise
-    /// the address of the issue that holds the document.
+    /// The address of the issue that holds the document.
     pub subject: IssueRef,
     /// The stable code (see the table on [`code`]).
     pub code: &'static str,
@@ -72,6 +71,44 @@ pub struct Finding {
     /// Fixed text for the code. It may name a key, never a value or a line.
     pub message: &'static str,
 }
+
+/// The index of a label in [`LABELS`]. The match is exhaustive, so a new
+/// label cannot be added without a place in the list.
+const fn position(label: Label) -> usize {
+    match label {
+        Label::C4 => 0,
+        Label::C6 => 1,
+        Label::C7 => 2,
+        Label::C8 => 3,
+        Label::L1 => 4,
+        Label::L2 => 5,
+        Label::L3 => 6,
+        Label::L4 => 7,
+        Label::P3 => 8,
+        Label::V1 => 9,
+        Label::V10 => 10,
+        Label::V2 => 11,
+        Label::V3 => 12,
+        Label::V4 => 13,
+        Label::V5 => 14,
+        Label::V6 => 15,
+        Label::V7 => 16,
+        Label::V8 => 17,
+        Label::X1 => 18,
+    }
+}
+
+// LABELS holds each label at its position.
+const _: () = {
+    let mut i = 0;
+    while i < LABELS.len() {
+        assert!(
+            position(LABELS[i]) == i,
+            "LABELS is out of step with position"
+        );
+        i += 1;
+    }
+};
 
 /// The stable code of a label.
 ///
@@ -172,18 +209,30 @@ const fn message(label: Label) -> &'static str {
     }
 }
 
-/// The findings of a document judgement, given the address of the issue
-/// that holds the document, sorted by subject, then code. A body without a
-/// document and a valid document without warnings have none.
+/// The findings of a body held by the issue at `address`, sorted by code.
+///
+/// The body is judged with its address ([`crate::admit`]), so profile rule X1
+/// always applies, and every finding's subject is the address. A body
+/// without a document and a valid document without warnings have none.
 #[must_use]
-pub fn findings(judgement: &Judgement, address: &IssueRef) -> Vec<Finding> {
-    let (subject, labels, severity) = match judgement {
-        Judgement::NoDocument => return Vec::new(),
-        Judgement::Valid { record, warnings } => (&record.id, warnings, Severity::Warning),
-        Judgement::Invalid(validation) => (address, &validation.violations, Severity::Error),
-    };
+pub fn findings(body: &str, address: &IssueRef) -> Vec<Finding> {
+    match admit(body, Some(address)) {
+        Judgement::NoDocument => Vec::new(),
+        Judgement::Valid { warnings, .. } => from_labels(address, &warnings, Severity::Warning),
+        Judgement::Invalid(validation) => {
+            from_labels(address, &validation.violations, Severity::Error)
+        }
+    }
+}
+
+/// One finding per label, under one subject, sorted by code.
+fn from_labels<'a>(
+    subject: &IssueRef,
+    labels: impl IntoIterator<Item = &'a Label>,
+    severity: Severity,
+) -> Vec<Finding> {
     let mut found: Vec<Finding> = labels
-        .iter()
+        .into_iter()
         .map(|&label| Finding {
             subject: subject.clone(),
             code: code(label),

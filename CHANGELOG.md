@@ -20,12 +20,12 @@ schema version under `Unreleased` is a draft and may change in place.
   document's only violation, as C4 and P3 stop judging; an invalid document reports no warnings. CI
   runs the job "Rust workspace": `cargo fmt`, `clippy -D warnings` and `cargo test`, all locked.
 
-- **Document findings with stable codes** (flyingrobots/taskalisk#43). `issue-dag-core` turns a
-  document judgement and its issue's address into findings: a stable code, a severity (error, or
-  warning for the V10 advisory), a subject (a valid document's `.id`, otherwise the address) and a
-  message. A code is the rule's V12 label prefixed by the specification that states it:
-  `format.C4` to `format.V10`, `version.P3` and `profile.X1`, tabled on `code` in the crate docs.
-  Findings sort by subject, then code. A message is fixed text that names keys and rules only,
+- **Document findings with stable codes** (flyingrobots/taskalisk#43). `issue-dag-core`
+  judges a body with its issue's address, so rule X1 always applies, and returns findings: a stable
+  code, a severity (error, or warning for the V10 advisory), the address as subject, and a message.
+  A code is the rule's V12 label prefixed by the specification that states it: `format.C4` to
+  `format.V10`, `version.P3` and `profile.X1`, tabled on `code` in the crate docs.
+  Findings sort by subject, then code text. A message is fixed text that names keys and rules only,
   never a value or a line of the body; a body without a document has no findings.
 
 - **A provenance check for the vendored Parley writer** (flyingrobots/taskalisk#77).
