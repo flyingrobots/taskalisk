@@ -77,6 +77,17 @@ call, so a test can check which repository each request went to. Every run in
 the suite has each of its lines validated against its schema, and
 `tests/fixtures/golden/` holds the 1.x output the lines must reconstruct.
 
+The Rust rebuild ([decision 0001](docs/decisions/0001-rust-issue-dag-contract.md)) is a Cargo
+workspace at the repository root; `crates/issue-dag-core` reads and validates `issue-dag/2`
+documents and runs every document case of the vendored corpus. The toolchain is pinned in
+`rust-toolchain.toml`, and CI runs the same three checks:
+
+```sh
+cargo fmt --all --check
+cargo clippy --workspace --all-targets --locked -- -D warnings
+cargo test --workspace --locked
+```
+
 ## License
 
 Apache-2.0. See [LICENSE](LICENSE) and [NOTICE](NOTICE). The vendored Parley
