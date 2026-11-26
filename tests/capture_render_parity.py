@@ -197,7 +197,49 @@ def _two_strangers(bundle: dict[str, Any]) -> dict[str, Any]:
     return bundle
 
 
+def _unmodeled_and_cycle(bundle: dict[str, Any]) -> dict[str, Any]:
+    """discovery-unmodeled-home-issue with flyingrobots/echo#5 also waiting on
+    flyingrobots/geordi#2: a three-issue cycle (echo#5, geordi#1, geordi#2) with echo#6 behind it,
+    in a run that also reads a container, an opaque issue and an unmodeled one. 1.x still lists
+    what discovery read (decision D13)."""
+    five = bundle["observations"]["issues"]["flyingrobots/echo#5"]["value"]["body"]["value"]
+    five["text"] = five["text"].replace(".blocked_by: [flyingrobots/bunny#7]", ".blocked_by: [flyingrobots/bunny#7, flyingrobots/geordi#2]")
+    return bundle
+
+
+def _stranger_and_unknown(bundle: dict[str, Any]) -> dict[str, Any]:
+    """trust-pull-request-by-stranger with flyingrobots/geordi#110 also waiting on x/y#1, outside the
+    read scope: an unknown prerequisite in a run that also lists a stranger's pull request."""
+    one = bundle["observations"]["issues"]["flyingrobots/geordi#110"]["value"]["body"]["value"]
+    one["text"] = one["text"].replace(".blocked_by: [flyingrobots/bunny#110]", ".blocked_by: [flyingrobots/bunny#110, x/y#1]")
+    return bundle
+
+
+def _traversal_and_cycle(bundle: dict[str, Any]) -> dict[str, Any]:
+    """The traversal variant with o/r#4 and o/r#30 waiting on each other: a cycle in a run that
+    lists containers, opaque issues and not-planned prerequisites read out of sorted order."""
+    bundle = _traversal(bundle)
+    issues = bundle["observations"]["issues"]
+    issues["o/r#4"]["value"]["body"]["value"]["text"] = _doc("o/r#4", "task", ".blocked_by", ["o/r#30"])
+    issues["o/r#30"]["value"]["body"]["value"]["text"] = _doc("o/r#30", "task", ".blocked_by", ["o/r#7", "o/r#5", "o/r#4"])
+    return bundle
+
+
+def _untrusted_and_unknown(bundle: dict[str, Any]) -> dict[str, Any]:
+    """The untrusted variant whose root also names o/r#1, which waits on x/y#1, outside the read
+    scope: an unknown prerequisite in a run that lists untrusted issues in the order read."""
+    bundle = _untrusted_in_order_read(bundle)
+    issues = bundle["observations"]["issues"]
+    issues["o/r#9"]["value"]["body"]["value"]["text"] = _doc("o/r#9", "container", ".children", ["o/r#40", "o/r#30", "o/r#1"])
+    issues["o/r#1"]["value"]["body"]["value"]["text"] = _doc("o/r#1", "task", ".blocked_by", ["x/y#1"])
+    return bundle
+
+
 VARIANTS = {
+    "discovery-unmodeled-home-issue--three-issue-cycle": ("discovery-unmodeled-home-issue", _unmodeled_and_cycle),
+    "trust-pull-request-by-stranger--unknown-prerequisite": ("trust-pull-request-by-stranger", _stranger_and_unknown),
+    "d9-container--traversal-order-and-cycle": ("d9-container", _traversal_and_cycle),
+    "d9-container--untrusted-and-unknown": ("d9-container", _untrusted_and_unknown),
     "trust-pull-request-by-stranger--two-in-order-listed": ("trust-pull-request-by-stranger", _two_strangers),
     "d9-container--traversal-order": ("d9-container", _traversal),
     "d9-container--not-planned-in-blocked-by-order": ("d9-container", _not_planned_read_first),
