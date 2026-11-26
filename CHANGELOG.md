@@ -9,10 +9,11 @@ schema version under `Unreleased` is a draft and may change in place.
 
 ### Fixed
 
-- **A secret in a URL query string is redacted** (flyingrobots/taskalisk#78). The value of a
-  query parameter named `token`, `access_token`, `key`, `secret`, `password`, `sig`, `signature`,
-  `auth` or `code`, in any case, is replaced by `[redacted]` in `gh` and `git` text before it
-  reaches a line or the receipt, as `user:secret@` already was. Other parameters are kept.
+- **A secret in a URL query string or fragment is redacted** (flyingrobots/taskalisk#78). The
+  value of a query or fragment parameter named `token`, `access_token`, `key`, `secret`,
+  `password`, `sig`, `signature`, `auth` or `code`, in any case, is replaced by `[redacted]` in
+  `gh` and `git` text before it reaches a line or the receipt, as `user:secret@` already was.
+  Other parameters, and the quotes, brackets or full stop around a URL, are kept.
 
 ## 2.1.2 - 2026-11-24
 

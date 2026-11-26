@@ -121,14 +121,23 @@ URL_CREDENTIALS_RE = re.compile(r"(?i)\b([a-z][a-z0-9+.-]*://)[^\s/@]+@")
 URL_RE = re.compile(r"(?i)\b[a-z][a-z0-9+.-]*://\S+")
 # A query parameter whose name says it carries a secret; its value is redacted. The names are a
 # heuristic: a secret in a parameter not named here is not found (docs/topics/output/README.md).
-URL_SECRET_PARAM_RE = re.compile(r"(?i)([?&;](?:access_token|token|key|secret|password|signature|sig|auth|code)=)[^&;#\s]+")
+# A value ends at the next parameter, the fragment, white space, or a quote or bracket around the
+# URL; punctuation that ends a sentence after it is given back (`_redact_value`).
+URL_SECRET_PARAM_RE = re.compile(r"(?i)([?&;#](?:access_token|token|key|secret|password|signature|sig|auth|code)=)([^&;#\s'\"<>()]+)")
+SENTENCE_END = ".,:!?"
+
+
+def _redact_value(m: re.Match[str]) -> str:
+    value = m.group(2)
+    kept = value.rstrip(SENTENCE_END)
+    return m.group(1) + "[redacted]" + value[len(kept):] if kept else m.group(0)
 
 
 def sanitize_text(text: str) -> str:
     """Command output that may reach a line: no home directory, no credential inside a URL, either
-    as `user:secret@` or as the value of a secret-like query parameter."""
+    as `user:secret@` or as the value of a secret-like query or fragment parameter."""
     text = URL_CREDENTIALS_RE.sub(r"\1[redacted]@", text)
-    text = URL_RE.sub(lambda m: URL_SECRET_PARAM_RE.sub(r"\1[redacted]", m.group(0)), text)
+    text = URL_RE.sub(lambda m: URL_SECRET_PARAM_RE.sub(_redact_value, m.group(0)), text)
     return sanitize_home(text)
 
 
