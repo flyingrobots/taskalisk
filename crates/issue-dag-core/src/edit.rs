@@ -11,18 +11,20 @@
 //! a body after a write, and a failed write is never retried (E9).
 
 use std::cell::RefCell;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
-use crate::admission::Undecided;
-use crate::finding::Finding;
+use crate::admission::{Admission, Undecided, lookup};
+use crate::carrier::{Parse, Slot, Value, parse};
+use crate::finding::{Code, Finding, Rule, Severity};
 use crate::forge::Forge;
 use crate::observation::{
-    Actor, Body, CodeownersFile, Issue, Lookup, Missing, NotFound, Observed,
+    Actor, Body, CodeownersFile, Issue, IssueState, Lookup, Missing, NotFound, Observed,
     Parameters, PullRequest, Repo,
 };
-use crate::plan::Rejection;
+use crate::plan::{Outcome, Rejection, plan};
+use crate::record::Kind;
 use crate::reference::IssueRef;
-use crate::rewrite::{EdgeEdit, Refusal, Rewrite};
+use crate::rewrite::{EdgeEdit, Refusal, Rewrite, rewrite_blocked_by};
 
 /// The forge write port: the one write an edge edit makes, and the account
 /// it is made as.
@@ -166,8 +168,14 @@ impl<'a, F: Forge + ?Sized> Proposed<'a, F> {
 
 impl<F: Forge + ?Sized> Forge for Proposed<'_, F> {
     fn home_open_issues(&self) -> Lookup<Vec<IssueRef>> {
-        let _ = self.seed;
-        unimplemented!("flyingrobots/taskalisk#1")
+        let mut slot = self.inner.home_open_issues()?;
+        if let Observed::Value(listing) = &mut slot
+            && self.seed
+            && !listing.contains(&self.child)
+        {
+            listing.push(self.child.clone());
+        }
+        Ok(slot)
     }
 
     fn home_open_pull_requests(&self) -> Lookup<Vec<PullRequest>> {
@@ -179,14 +187,22 @@ impl<F: Forge + ?Sized> Forge for Proposed<'_, F> {
     }
 
     fn not_found(&self, reference: &IssueRef) -> Option<NotFound> {
-        let _ = reference;
-        unimplemented!("flyingrobots/taskalisk#1")
+        self.inner.not_found(reference)
     }
 
     fn body(&self, reference: &IssueRef) -> Lookup<Body> {
-        let _ = (&self.body, &self.child, self.served());
-        let _ = reference;
-        unimplemented!("flyingrobots/taskalisk#1")
+        let mut slot = self.inner.body(reference)?;
+        if let Observed::Value(body) = &mut slot {
+            if *reference == self.child
+                && let Some(text) = &self.body
+            {
+                text.clone_into(&mut body.text);
+            }
+            self.served
+                .borrow_mut()
+                .insert(reference.clone(), body.clone());
+        }
+        Ok(slot)
     }
 
     fn permission(&self, repo: &Repo, login: &str) -> Lookup<Option<String>> {
@@ -198,10 +214,56 @@ impl<F: Forge + ?Sized> Forge for Proposed<'_, F> {
     }
 }
 
-/// Checks an edge edit of `child` before any write (E1 to E6): the scope,
-/// the child's issue, its admission and its body, the rewrite, and, when
-/// the body changes, the plan with the edit against the plan without it,
-/// with the child among the seeds even when the roots do not reach it.
+fn admission<'a, F: Forge + ?Sized>(parameters: &'a Parameters, forge: &'a F) -> Admission<'a, F> {
+    Admission::new(
+        forge,
+        &parameters.read_scope,
+        &parameters.trust.logins,
+        parameters.trust.codeowners,
+    )
+}
+
+/// The child's issue, read and admitted (E3), and its body.
+fn admitted_child<F: Forge + ?Sized>(
+    parameters: &Parameters,
+    forge: &F,
+    child: &IssueRef,
+) -> Result<(Issue, Result<Body, EditRefusal>), EditRefusal> {
+    let issue = match forge.issue(child)? {
+        Observed::Value(issue) => issue,
+        Observed::Unavailable(unavailable) => {
+            return Err(EditRefusal::Incomplete {
+                unavailable,
+                cause: forge.not_found(child),
+            });
+        }
+    };
+    if issue.pull_request {
+        return Err(EditRefusal::PullRequest);
+    }
+    if issue.address != *child {
+        return Err(EditRefusal::Transferred(issue.address));
+    }
+    let repo = Repo::of(child);
+    let mut admission = admission(parameters, forge);
+    let author = issue.author.as_ref();
+    if !admission.trusted(author, &repo, issue.author_association.as_deref())? {
+        return Ok((issue, Err(EditRefusal::Untrusted)));
+    }
+    // C15: the body is read only once the author is admitted.
+    let body = lookup(forge.body(child))?;
+    if !admission.editors_trusted(author, &body, &repo)? {
+        return Ok((issue, Err(EditRefusal::Untrusted)));
+    }
+    Ok((issue, Ok(body)))
+}
+
+/// Checks an edge edit of `child` before any write (E1 to E6).
+///
+/// It checks the scope, the child's issue, its admission and its body, the
+/// rewrite, and, when the body changes, the plan with the edit against the
+/// plan without it, with the child among the seeds even when the roots do
+/// not reach it.
 ///
 /// # Errors
 ///
@@ -212,8 +274,188 @@ pub fn check_edit<F: Forge + ?Sized>(
     child: &IssueRef,
     edit: &EdgeEdit,
 ) -> Result<Checked, EditRefusal> {
-    let _ = (parameters, forge, child, edit);
-    unimplemented!("flyingrobots/taskalisk#1")
+    // E2: removing a reference outside the scope is how it is repaired, so
+    // only an added parent must be in the scope.
+    let mut needed = vec![child];
+    if let EdgeEdit::Add(parent) = edit {
+        needed.push(parent);
+    }
+    if let Some(outside) = needed
+        .into_iter()
+        .find(|r| !parameters.read_scope.contains(&Repo::of(r)))
+    {
+        return Err(EditRefusal::OutOfScope(outside.clone()));
+    }
+    let (_, body) = admitted_child(parameters, forge, child)?;
+    let body = body?;
+    let rewrite = rewrite_blocked_by(&body.text, child, edit).map_err(EditRefusal::Document)?;
+    let checked = Checked {
+        child: child.clone(),
+        body,
+        rewrite,
+    };
+    if !checked.rewrite.changed {
+        // E5: nothing is written, so there is nothing to validate.
+        return Ok(checked);
+    }
+    validate(parameters, forge, &checked, edit)?;
+    Ok(checked)
+}
+
+/// E6 and E6a: the plan with the edit against the plan without it.
+fn validate<F: Forge + ?Sized>(
+    parameters: &Parameters,
+    forge: &F,
+    checked: &Checked,
+    edit: &EdgeEdit,
+) -> Result<(), EditRefusal> {
+    let child = &checked.child;
+    let mut seeded = parameters.clone();
+    if !seeded.roots.is_empty()
+        && !seeded
+            .roots
+            .iter()
+            .any(|r| IssueRef::parse(r).as_ref() == Some(child))
+    {
+        seeded.roots.push(child.to_string());
+    }
+    let without = Proposed::new(forge, child, None).seeding();
+    let with = Proposed::new(forge, child, Some(checked.rewrite.body.clone())).seeding();
+    let after = settled(plan(&seeded, &with)?)?;
+    let before = settled(plan(&seeded, &without)?)?;
+    let known: BTreeSet<(IssueRef, Code, Option<IssueRef>)> =
+        findings(&before).map(identity).collect();
+    let new: Vec<Finding> = findings(&after)
+        .filter(|f| f.severity() == Severity::Error && !known.contains(&identity(f)))
+        .cloned()
+        .collect();
+    let mut cyclic: Vec<IssueRef> = new
+        .iter()
+        .filter(|f| f.code() == Rule::G4.code())
+        .map(|f| f.subject.clone())
+        .collect();
+    if let EdgeEdit::Add(parent) = edit
+        && closes_cycle(parameters, &with, child, parent)?
+        && cyclic.is_empty()
+    {
+        cyclic = vec![parent.clone(), child.clone()];
+    }
+    if !cyclic.is_empty() {
+        cyclic.sort();
+        cyclic.dedup();
+        return Err(EditRefusal::Cycle(cyclic));
+    }
+    if !new.is_empty() {
+        return Err(EditRefusal::NewFindings(new));
+    }
+    Ok(())
+}
+
+/// An outcome that has findings, or why the run has none (E10).
+fn settled(outcome: Outcome) -> Result<Outcome, EditRefusal> {
+    match outcome {
+        Outcome::Rejected(rejection) => Err(EditRefusal::Rejected(rejection)),
+        Outcome::Incomplete { unavailable, cause } => {
+            Err(EditRefusal::Incomplete { unavailable, cause })
+        }
+        outcome => Ok(outcome),
+    }
+}
+
+fn findings(outcome: &Outcome) -> impl Iterator<Item = &Finding> {
+    match outcome {
+        Outcome::Invalid { findings, .. } | Outcome::Planned { findings, .. } => Some(findings),
+        Outcome::Rejected(_) | Outcome::Incomplete { .. } => None,
+    }
+    .into_iter()
+    .flatten()
+}
+
+/// A finding's identity (E6a): the issue that receives it, its rule, and
+/// the reference it concerns. Its message is not part of it.
+fn identity(finding: &Finding) -> (IssueRef, Code, Option<IssueRef>) {
+    (
+        finding.subject.clone(),
+        finding.code(),
+        finding.concerns.clone(),
+    )
+}
+
+/// E6a: whether the parent is reachable from the child in the graph of the
+/// plan with the edit, that one edge left out. The edges are those of the
+/// admitted open tasks whose bodies that plan read, between open issues.
+fn closes_cycle<F: Forge + ?Sized>(
+    parameters: &Parameters,
+    with: &Proposed<'_, F>,
+    child: &IssueRef,
+    parent: &IssueRef,
+) -> Result<bool, EditRefusal> {
+    let served = with.served();
+    let mut admission = admission(parameters, with);
+    let mut open = BTreeSet::new();
+    // Each prerequisite, and the tasks that wait on it.
+    let mut dependents: BTreeMap<IssueRef, Vec<IssueRef>> = BTreeMap::new();
+    for (reference, body) in &served {
+        let Observed::Value(issue) = with.issue(reference)? else {
+            continue;
+        };
+        if issue.state != IssueState::Open || issue.pull_request || issue.address != *reference {
+            continue;
+        }
+        let repo = Repo::of(reference);
+        let author = issue.author.as_ref();
+        if !admission.trusted(author, &repo, issue.author_association.as_deref())?
+            || !admission.editors_trusted(author, body, &repo)?
+        {
+            continue;
+        }
+        open.insert(reference.clone());
+        for prerequisite in blocked_by(&body.text, reference) {
+            if reference == child && prerequisite == *parent {
+                continue;
+            }
+            dependents
+                .entry(prerequisite)
+                .or_default()
+                .push(reference.clone());
+        }
+    }
+    let mut seen = BTreeSet::from([child.clone()]);
+    let mut queue = VecDeque::from([child.clone()]);
+    while let Some(node) = queue.pop_front() {
+        if !open.contains(&node) {
+            continue;
+        }
+        for next in dependents.get(&node).into_iter().flatten() {
+            if next == parent {
+                return Ok(true);
+            }
+            if seen.insert(next.clone()) {
+                queue.push_back(next.clone());
+            }
+        }
+    }
+    Ok(false)
+}
+
+/// The `.blocked_by` references of a task document, without its own
+/// address, read whether or not the document is valid (profile rule D8).
+fn blocked_by(text: &str, address: &IssueRef) -> Vec<IssueRef> {
+    let Parse::Block(block) = parse(text) else {
+        return Vec::new();
+    };
+    let is_task = matches!(
+        block.slot(".kind"),
+        Slot::One(Value::String(kind)) if Kind::parse(kind) == Some(Kind::Task)
+    );
+    match block.slot(".blocked_by") {
+        Slot::One(Value::List(items)) if is_task => items
+            .iter()
+            .filter_map(|i| IssueRef::parse(i))
+            .filter(|r| r != address)
+            .collect(),
+        _ => Vec::new(),
+    }
 }
 
 /// Whether the account a write is made as is admitted in the child's
@@ -229,14 +471,19 @@ pub fn writer_admitted<F: Forge + ?Sized>(
     child: &IssueRef,
     writer: &Actor,
 ) -> Result<bool, Undecided> {
-    let _ = (parameters, forge, child, writer);
-    unimplemented!("flyingrobots/taskalisk#1")
+    if writer.login.trim().is_empty() {
+        return Ok(false);
+    }
+    admission(parameters, forge).trusted(Some(writer), &Repo::of(child), None)
 }
 
-/// The final reread (E7): reads the child again through `fresh`, a forge
-/// that has not read it yet, and refuses when its address, its body, or
-/// the admission of its author and editors differs from what
-/// [`check_edit`] validated.
+/// The final reread (E7).
+///
+/// It reads the child again through `fresh`, a forge that has not read it
+/// yet, and refuses when its address, its body, or the admission of its
+/// author and editors differs from what [`check_edit`] validated. A child
+/// that now resolves to nothing, with a recorded cause, has a changed
+/// address.
 ///
 /// # Errors
 ///
@@ -247,8 +494,21 @@ pub fn recheck<F: Forge + ?Sized>(
     fresh: &F,
     checked: &Checked,
 ) -> Result<(), EditRefusal> {
-    let _ = (parameters, fresh, checked);
-    unimplemented!("flyingrobots/taskalisk#1")
+    let child = &checked.child;
+    let body = match admitted_child(parameters, fresh, child) {
+        Ok((_, Ok(body))) => body,
+        Ok((_, Err(_))) => return Err(EditRefusal::Conflict(Conflict::Trust)),
+        Err(
+            EditRefusal::PullRequest
+            | EditRefusal::Transferred(_)
+            | EditRefusal::Incomplete { cause: Some(_), .. },
+        ) => return Err(EditRefusal::Conflict(Conflict::Address)),
+        Err(other) => return Err(other),
+    };
+    if body.text != checked.body.text {
+        return Err(EditRefusal::Conflict(Conflict::Body));
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -407,7 +667,12 @@ mod tests {
     fn an_edit_that_leaves_an_existing_problem_unchanged_passes() {
         // 6 names a repository outside the scope (D3) before and after.
         let mut observations = chain();
-        put(&mut observations, "o/r#6", &task("o/r#6", &["x/y#1"]), &["owner"]);
+        put(
+            &mut observations,
+            "o/r#6",
+            &task("o/r#6", &["x/y#1"]),
+            &["owner"],
+        );
         if let Some(Observed::Value(listing)) = &mut observations.home_open_issues {
             listing.push(r("o/r#6"));
         }
@@ -420,11 +685,19 @@ mod tests {
     fn a_violation_the_edit_brings_into_the_plan_is_refused() {
         // 7 is invalid and outside the plan until 5 names it.
         let mut observations = chain();
-        put(&mut observations, "o/r#7", "```yaml\n.dag: issue-dag/2\n.id: o/r#7\n.kind: task\n```\n", &["owner"]);
+        put(
+            &mut observations,
+            "o/r#7",
+            "```yaml\n.dag: issue-dag/2\n.id: o/r#7\n.kind: task\n```\n",
+            &["owner"],
+        );
         let refused = check(&observations, &["o/r#5"], "o/r#5", &add("o/r#7"));
         match refused {
             Err(EditRefusal::NewFindings(findings)) => {
-                assert!(findings.iter().all(|f| f.subject == r("o/r#7")), "{findings:?}");
+                assert!(
+                    findings.iter().all(|f| f.subject == r("o/r#7")),
+                    "{findings:?}"
+                );
             }
             other => panic!("expected new findings, got {other:?}"),
         }
@@ -494,7 +767,12 @@ mod tests {
     #[test]
     fn remove_repairs_a_reference_outside_the_scope() {
         let mut observations = chain();
-        put(&mut observations, "o/r#5", &task("o/r#5", &["x/y#1", "o/r#1"]), &["owner"]);
+        put(
+            &mut observations,
+            "o/r#5",
+            &task("o/r#5", &["x/y#1", "o/r#1"]),
+            &["owner"],
+        );
         let checked = check(&observations, &[], "o/r#5", &remove("x/y#1")).expect("passes");
         assert!(checked.rewrite.body.contains(".blocked_by: [o/r#1]"));
     }
@@ -508,7 +786,12 @@ mod tests {
     #[test]
     fn the_child_must_be_an_admitted_issue_with_a_task_document() {
         let mut observations = chain();
-        put(&mut observations, "o/r#5", &task("o/r#5", &[]), &["owner", "mallory"]);
+        put(
+            &mut observations,
+            "o/r#5",
+            &task("o/r#5", &[]),
+            &["owner", "mallory"],
+        );
         observations
             .permissions
             .entry(Repo::parse("o/r").expect("a repository"))
@@ -552,7 +835,11 @@ mod tests {
     fn the_final_reread_passes_an_unchanged_child() {
         let (observations, checked) = checked_five();
         assert_eq!(
-            recheck(&parameters(&[]), &RecordedForge::new(&observations), &checked),
+            recheck(
+                &parameters(&[]),
+                &RecordedForge::new(&observations),
+                &checked
+            ),
             Ok(())
         );
     }
@@ -560,9 +847,18 @@ mod tests {
     #[test]
     fn the_final_reread_refuses_a_changed_body() {
         let (mut observations, checked) = checked_five();
-        put(&mut observations, "o/r#5", &task("o/r#5", &["o/r#2"]), &["owner"]);
+        put(
+            &mut observations,
+            "o/r#5",
+            &task("o/r#5", &["o/r#2"]),
+            &["owner"],
+        );
         assert_eq!(
-            recheck(&parameters(&[]), &RecordedForge::new(&observations), &checked),
+            recheck(
+                &parameters(&[]),
+                &RecordedForge::new(&observations),
+                &checked
+            ),
             Err(EditRefusal::Conflict(Conflict::Body))
         );
     }
@@ -570,14 +866,26 @@ mod tests {
     #[test]
     fn the_final_reread_refuses_a_newly_untrusted_editor() {
         let (mut observations, checked) = checked_five();
-        put(&mut observations, "o/r#5", &checked.body.text, &["owner", "mallory"]);
+        put(
+            &mut observations,
+            "o/r#5",
+            &checked.body.text,
+            &["owner", "mallory"],
+        );
         observations
             .permissions
             .entry(Repo::parse("o/r").expect("a repository"))
             .or_default()
-            .insert("mallory".to_owned(), Observed::Value(Some("read".to_owned())));
+            .insert(
+                "mallory".to_owned(),
+                Observed::Value(Some("read".to_owned())),
+            );
         assert_eq!(
-            recheck(&parameters(&[]), &RecordedForge::new(&observations), &checked),
+            recheck(
+                &parameters(&[]),
+                &RecordedForge::new(&observations),
+                &checked
+            ),
             Err(EditRefusal::Conflict(Conflict::Trust))
         );
     }
@@ -589,7 +897,11 @@ mod tests {
             issue.address = r("o/s#5");
         }
         assert_eq!(
-            recheck(&parameters(&[]), &RecordedForge::new(&observations), &checked),
+            recheck(
+                &parameters(&[]),
+                &RecordedForge::new(&observations),
+                &checked
+            ),
             Err(EditRefusal::Conflict(Conflict::Address))
         );
         observations
@@ -599,7 +911,11 @@ mod tests {
             issue.address = r("o/r#5");
         }
         assert_eq!(
-            recheck(&parameters(&[]), &RecordedForge::new(&observations), &checked),
+            recheck(
+                &parameters(&[]),
+                &RecordedForge::new(&observations),
+                &checked
+            ),
             Err(EditRefusal::Incomplete {
                 unavailable: "HTTP 502".to_owned(),
                 cause: None
@@ -622,10 +938,22 @@ mod tests {
             login: "helper".to_owned(),
             actor_type: "Bot".to_owned(),
         };
-        assert_eq!(writer_admitted(&parameters(&[]), &forge, &child, &actor("dev")), Ok(true));
-        assert_eq!(writer_admitted(&parameters(&[]), &forge, &child, &actor("mallory")), Ok(false));
-        assert_eq!(writer_admitted(&parameters(&[]), &forge, &child, &actor("")), Ok(false));
-        assert_eq!(writer_admitted(&parameters(&[]), &forge, &child, &bot), Ok(false));
+        assert_eq!(
+            writer_admitted(&parameters(&[]), &forge, &child, &actor("dev")),
+            Ok(true)
+        );
+        assert_eq!(
+            writer_admitted(&parameters(&[]), &forge, &child, &actor("mallory")),
+            Ok(false)
+        );
+        assert_eq!(
+            writer_admitted(&parameters(&[]), &forge, &child, &actor("")),
+            Ok(false)
+        );
+        assert_eq!(
+            writer_admitted(&parameters(&[]), &forge, &child, &bot),
+            Ok(false)
+        );
         assert_eq!(writer_admitted(&with_bot, &forge, &child, &bot), Ok(true));
         assert!(writer_admitted(&parameters(&[]), &forge, &child, &actor("nobody")).is_err());
     }

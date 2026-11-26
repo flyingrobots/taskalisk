@@ -1,13 +1,16 @@
-//! The `taskalisk` command line and its one command, `plan`.
+//! The `taskalisk` command line and its commands, `plan` and `edit`.
 //!
 //! `plan` reads a live backlog through the `gh` and `git` adapters, plans
 //! it with `issue-dag-core`, and writes the rendered lines under the Parley
-//! envelope with a receipt (flyingrobots/taskalisk#31).
+//! envelope with a receipt (flyingrobots/taskalisk#31). `edit` adds or removes
+//! one edge, checked before its one write, and then plans (its `edit` module,
+//! flyingrobots/taskalisk#1).
 //!
 //! It accepts the Python compiler's plan-mode flags where the core supports
 //! them: `--repo`, `--root`, `--sem-capacity`, `--trust`, `--trust-owner`,
 //! `--trust-repo`, `--trust-codeowners`, `--from-github` (which selects
-//! `plan`, as in 1.x), and the writer's `--human` and `--help`. Every other
+//! `plan`, as in 1.x), `edit`'s `--add-edge`, `--remove-edge` and `--reason`,
+//! and the writer's `--human` and `--help`. Every other
 //! flag of the Python's, and every other command, is refused before the run
 //! starts (exit 3), never ignored.
 //!
@@ -28,6 +31,7 @@ use issue_dag_gh::{GhError, GhForge, repository_of};
 use issue_dag_git::{GitError, GitRepository};
 use serde_json::{Value, json};
 
+use crate::edit;
 use crate::parley::{self, Run, Start, StartupFailure, schemas};
 use crate::render::{self, Display};
 use crate::{human, sha256};
@@ -74,13 +78,10 @@ const VALUE_FLAGS: [&str; 12] = [
 ];
 /// The Python's flags this binary refuses: the core or the binary cannot
 /// honour them yet.
-const REFUSED: [&str; 12] = [
+const REFUSED: [&str; 9] = [
     "--milestone",
     "--verify-dag",
     "--min-confidence",
-    "--add-edge",
-    "--remove-edge",
-    "--reason",
     "--compare-relationships",
     "--emit-mermaid",
     "--emit-roadmap",
@@ -139,20 +140,26 @@ struct WriterFlags {
     help: bool,
 }
 
-/// The plan command's arguments, checked.
+/// The arguments of `plan` or `edit`, checked.
 #[derive(Debug, Default)]
-struct Arguments {
+pub(crate) struct Arguments {
+    /// `plan` or `edit`.
+    command: &'static str,
     /// The argument vector with the command first, as the receipt shows it.
     argv: Vec<String>,
     inferred: bool,
     writer: WriterFlags,
     repo: Option<String>,
-    roots: Vec<String>,
+    pub(crate) roots: Vec<String>,
     capacities: Vec<String>,
-    trust: Vec<String>,
+    pub(crate) trust: Vec<String>,
     trust_owners: Vec<String>,
     trust_repos: Vec<String>,
     trust_codeowners: bool,
+    /// `edit`: the edge to add or remove (`--add-edge`, `--remove-edge`).
+    pub(crate) edge: Option<edit::Request>,
+    /// `--reason`, recorded with an edit.
+    pub(crate) reason: Option<String>,
 }
 
 fn usage(problem: impl Into<String>) -> StartupFailure {
@@ -224,15 +231,17 @@ fn parse(raw: &[String]) -> Result<Arguments, StartupFailure> {
         inferred,
         ..Arguments::default()
     };
-    match name.as_deref() {
-        Some("plan") | None => {}
+    parsed.command = match name.as_deref() {
+        Some("plan") | None => "plan",
+        Some("edit") => "edit",
         Some(other) => {
             return Err(unsupported(&format!("the {other} command")));
         }
-    }
-    parsed.argv = std::iter::once("plan".to_owned())
+    };
+    parsed.argv = std::iter::once(parsed.command.to_owned())
         .chain(rest.iter().cloned())
         .collect();
+    let mut edges = Vec::new();
     let mut i = 0;
     while i < rest.len() {
         let (flag, inline) = split(&rest[i]);
@@ -281,11 +290,21 @@ fn parse(raw: &[String]) -> Result<Arguments, StartupFailure> {
             "--sem-capacity" => parsed.capacities.push(value),
             "--trust" => parsed.trust.push(value),
             "--trust-owner" => parsed.trust_owners.push(value),
+            "--add-edge" | "--remove-edge" => edges.push((flag == "--add-edge", value)),
+            "--reason" => parsed.reason = Some(value),
             _ => parsed.trust_repos.push(value),
         }
     }
+    if parsed.command != "edit" && (!edges.is_empty() || parsed.reason.is_some()) {
+        return Err(usage(
+            "--add-edge, --remove-edge and --reason belong to the edit command",
+        ));
+    }
     if parsed.writer.help {
         return Ok(parsed);
+    }
+    if parsed.command == "edit" {
+        parsed.edge = Some(edit::Request::parse(&edges).map_err(usage)?);
     }
     if capacities(&parsed.capacities).is_none() {
         return Err(usage("--sem-capacity takes name=N with N >= 1"));
@@ -353,7 +372,7 @@ pub fn main(args: &[OsString], cwd: &Path, stdout: &mut dyn Write, stderr: &mut 
     };
     let repo_dir = cwd.join(arguments.repo.as_deref().unwrap_or("."));
     let resolved = if arguments.writer.help {
-        json!({"discovery": "help", "command": "plan"})
+        json!({"discovery": "help", "command": arguments.command})
     } else {
         resolved(&arguments, cwd, &repo_dir)
     };
@@ -365,14 +384,14 @@ pub fn main(args: &[OsString], cwd: &Path, stdout: &mut dyn Write, stderr: &mut 
     let start = Start {
         tool: TOOL,
         v: VERSION,
-        command: "plan",
+        command: arguments.command,
         cwd,
         argv: std::iter::once(TOOL.to_owned())
             .chain(arguments.argv.iter().cloned())
             .collect(),
         resolved,
         inputs,
-        effects: effects(),
+        effects: effects(arguments.command),
         secrets: secrets.clone(),
         secret_names,
         human: arguments
@@ -388,21 +407,27 @@ pub fn main(args: &[OsString], cwd: &Path, stdout: &mut dyn Write, stderr: &mut 
         }
     };
     if arguments.writer.help {
-        help(&mut run);
+        help(&mut run, arguments.command);
     } else {
         if arguments.inferred {
             run.step(
-                "command plan inferred from the 1.x mode flags",
+                &format!("command {} inferred from the 1.x mode flags", arguments.command),
                 "no command was named; --add-edge or --remove-edge means edit, --from-github plan, --verify-dag verify, none of them inventory",
                 None,
             );
         }
-        plan_live(&mut run, &arguments, &repo_dir);
+        match &arguments.edge {
+            Some(request) => edit::edit_live(&mut run, &arguments, request, &repo_dir),
+            None => plan_live(&mut run, &arguments, &repo_dir),
+        }
     }
     run.end()
 }
 
-fn effects() -> Value {
+fn effects(command: &str) -> Value {
+    if command == "edit" {
+        return edit::effects(&READS);
+    }
     json!({"reads": READS, "writes": [], "network": true, "idempotent": true})
 }
 
@@ -428,8 +453,12 @@ fn resolved(arguments: &Arguments, cwd: &Path, repo_dir: &Path) -> Value {
     roots.sort();
     let mut capacities = arguments.capacities.clone();
     capacities.sort();
+    let mut options = json!({"emit": null, "compare_relationships": false, "since_last": false, "sem_capacity": capacities});
+    if let Some(request) = &arguments.edge {
+        options["edge"] = request.resolved(arguments.reason.as_deref());
+    }
     json!({
-        "command": "plan",
+        "command": arguments.command,
         "question": {
             "repo": relative(repo_dir, cwd),
             "roots": roots,
@@ -440,7 +469,7 @@ fn resolved(arguments: &Arguments, cwd: &Path, repo_dir: &Path) -> Value {
                 "codeowners": arguments.trust_codeowners,
             },
         },
-        "options": {"emit": null, "compare_relationships": false, "since_last": false, "sem_capacity": capacities},
+        "options": options,
     })
 }
 
@@ -465,23 +494,34 @@ fn relative(path: &Path, base: &Path) -> String {
     }
 }
 
-/// `plan --help`: the command and the schemas of its results and errors.
-fn help(run: &mut Run<'_>) {
-    let emits: Vec<Value> = DESCRIBED
+/// `plan --help` or `edit --help`: the command and the schemas of its
+/// results and errors.
+fn help(run: &mut Run<'_>, command: &str) {
+    let described: Vec<(&str, &str)> = if command == "edit" {
+        edit::DESCRIBED
+            .iter()
+            .chain(DESCRIBED.iter())
+            .copied()
+            .collect()
+    } else {
+        DESCRIBED.to_vec()
+    };
+    let emits: Vec<Value> = described
         .iter()
         .map(|(id, text)| {
             let version = schema_version(text);
             json!({"id": id, "version": version})
         })
         .collect();
-    let mut effects = effects();
+    let mut effects = effects(command);
     effects["bookkeeping"] = run.bookkeeping();
     run.describe(
-        json!({"event": "command", "name": "plan", "intent": INTENT, "effects": effects,
+        json!({"event": "command", "name": command,
+               "intent": if command == "edit" { edit::INTENT } else { INTENT }, "effects": effects,
                "secrets": SECRETS, "emits": emits}),
         schemas::COMMAND,
     );
-    for (id, text) in DESCRIBED {
+    for (id, text) in described {
         let schema: Value = serde_json::from_str(text).unwrap_or(Value::Null);
         run.describe(
             json!({"event": "schema", "id": id, "version": schema_version(text), "schema": schema}),
@@ -503,7 +543,7 @@ fn schema_version(text: &str) -> String {
 }
 
 /// What `gh` or `git` reported, as an error line's fields.
-struct Failure {
+pub(crate) struct Failure {
     code: &'static str,
     source: String,
     error: String,
@@ -511,7 +551,7 @@ struct Failure {
 }
 
 impl Failure {
-    fn gh(error: &GhError) -> Self {
+    pub(crate) fn gh(error: &GhError) -> Self {
         let (source, text) = match error {
             GhError::CommandFailed { source, detail }
             | GhError::ResponseInvalid { source, detail } => (source.clone(), detail.clone()),
@@ -528,7 +568,7 @@ impl Failure {
         }
     }
 
-    fn git(error: &GitError) -> Self {
+    pub(crate) fn git(error: &GitError) -> Self {
         let source = match error {
             GitError::Spawn { command, .. }
             | GitError::Failed { command, .. }
@@ -546,7 +586,13 @@ impl Failure {
         }
     }
 
-    fn report(&self, run: &mut Run<'_>) {
+    pub(crate) fn report(&self, run: &mut Run<'_>) {
+        self.report_in(run, "discovery");
+    }
+
+    /// The error line, for a failure in `phase` (`discovery`, or `edge_edit`
+    /// before or at the write).
+    pub(crate) fn report_in(&self, run: &mut Run<'_>, phase: &str) {
         let remedy = match self.code {
             "gh.command_failed" => {
                 "check `gh auth status` and the network, then rerun; nothing was compiled from a partial read"
@@ -564,13 +610,13 @@ impl Failure {
             &one_sentence(&format!("{}: {}", self.source, self.error)),
             Some(remedy),
             Some(self.retryable),
-            Some(json!({"source": self.source, "error": self.error, "phase": "discovery"})),
+            Some(json!({"source": self.source, "error": self.error, "phase": phase})),
         );
     }
 }
 
 /// One line of at most 600 characters.
-fn one_sentence(text: &str) -> String {
+pub(crate) fn one_sentence(text: &str) -> String {
     let flat = text.split_whitespace().collect::<Vec<_>>().join(" ");
     if flat.chars().count() <= 600 {
         flat
@@ -589,7 +635,7 @@ fn home_as_tilde(text: &str) -> String {
 
 /// The local and remote-tracking branch names of the repository `--repo`
 /// is in, sorted and distinct.
-fn branch_names(dir: &Path) -> Result<Vec<String>, GitError> {
+pub(crate) fn branch_names(dir: &Path) -> Result<Vec<String>, GitError> {
     let repository = match GitRepository::open(dir) {
         Err(GitError::NotTopLevel { top_level, .. }) => GitRepository::open(top_level),
         other => other,
@@ -634,7 +680,7 @@ fn codeowners_teams(text: &str) -> Vec<String> {
 
 /// The display input (decision D13): what the adapters read beside the
 /// observations, only to show it.
-fn display(
+pub(crate) fn display(
     forge: &GhForge,
     observations: &Observations,
     parameters: &Parameters,
@@ -681,7 +727,7 @@ fn display(
 
 /// What discovery read, by id and digest only (threat model C3), and the
 /// declared input's bytes.
-fn observed(run: &mut Run<'_>, observations: &Observations, display: &Display) {
+pub(crate) fn observed(run: &mut Run<'_>, observations: &Observations, display: &Display) {
     let digest = |text: Option<&str>| sha256::hex(text.unwrap_or_default().as_bytes());
     let items: Vec<Value> = observations
         .issues
@@ -767,7 +813,7 @@ fn plan_errors(run: &mut Run<'_>, lines: &[Value]) {
 
 /// The run parameters of `plan`: the home repository, the roots, the read
 /// scope, the trust and the capacities.
-fn parameters(arguments: &Arguments, home: Repo) -> Parameters {
+pub(crate) fn parameters(arguments: &Arguments, home: Repo) -> Parameters {
     let mut owners: BTreeSet<String> = arguments
         .trust_owners
         .iter()
@@ -852,7 +898,7 @@ fn plan_live(run: &mut Run<'_>, arguments: &Arguments, repo_dir: &Path) {
 /// a run that has no plan. A plan the core made while the gh adapter
 /// recorded a failed read is not trusted: the failures are reported and no
 /// plan is written (fail closed).
-fn conclude(
+pub(crate) fn conclude(
     run: &mut Run<'_>,
     parameters: &Parameters,
     outcome: &Outcome,
@@ -937,7 +983,7 @@ fn conclude(
 /// receipt step: the formats, the profile, the evaluator, the discovery
 /// scope and the result. A live run's bundle is not retained, so its replay
 /// is unavailable until flyingrobots/taskalisk#59 captures it.
-fn record(run: &mut Run<'_>, parameters: &Parameters, outcome: &Outcome) {
+pub(crate) fn record(run: &mut Run<'_>, parameters: &Parameters, outcome: &Outcome) {
     let record = unretained(
         parameters,
         outcome,
@@ -955,7 +1001,7 @@ fn record(run: &mut Run<'_>, parameters: &Parameters, outcome: &Outcome) {
     );
 }
 
-fn reject(run: &mut Run<'_>, rejection: &Rejection) {
+pub(crate) fn reject(run: &mut Run<'_>, rejection: &Rejection) {
     let (code, problem, remedy) = match rejection {
         Rejection::RootOutsideScope(root) => (
             "root.out_of_scope",

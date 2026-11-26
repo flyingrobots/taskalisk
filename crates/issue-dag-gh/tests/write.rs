@@ -6,7 +6,7 @@ mod fake;
 
 use fake::Fake;
 use issue_dag_core::{Actor, ForgeWrite, IssueRef, Observed};
-use issue_dag_gh::WriteFailure;
+use issue_dag_gh::{GhError, WriteFailure};
 use serde_json::{Value, json};
 
 fn state() -> Value {
@@ -36,8 +36,11 @@ fn the_writer_is_the_authenticated_account() {
             actor_type: "User".to_owned(),
         })
     );
-    assert_eq!(fake.calls(), vec![vec!["api".to_owned(), "user".to_owned()]]);
-    assert!(forge.failures().is_empty());
+    assert_eq!(
+        fake.calls(),
+        vec![vec!["api".to_owned(), "user".to_owned()]]
+    );
+    assert_eq!(forge.failures(), Vec::<GhError>::new());
 }
 
 #[test]
@@ -87,7 +90,10 @@ fn the_body_is_replaced_with_one_patch_whose_input_is_the_json_body() {
     let editors = state["issues"]["o/r#1"]["editors"]
         .as_array()
         .expect("editors");
-    assert_eq!(editors.last(), Some(&json!({"login": "Dev", "type": "User"})));
+    assert_eq!(
+        editors.last(),
+        Some(&json!({"login": "Dev", "type": "User"}))
+    );
 }
 
 #[test]
@@ -101,7 +107,10 @@ fn a_failed_patch_is_a_write_failure_made_once() {
     assert!(failure.detail.contains("HTTP 502"), "{failure}");
     assert_eq!(WriteFailure::CODE, "gh.mutation_failed");
     assert_eq!(fake.calls().len(), 1, "never retried");
-    assert_eq!(fake.state()["issues"]["o/r#1"]["body"], json!("old\r\nbody"));
+    assert_eq!(
+        fake.state()["issues"]["o/r#1"]["body"],
+        json!("old\r\nbody")
+    );
 }
 
 #[test]

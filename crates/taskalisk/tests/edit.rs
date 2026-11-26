@@ -212,7 +212,9 @@ impl Run {
     }
 
     fn edge_edit(&self) -> Option<Value> {
-        self.stdout().into_iter().find(|l| l["event"] == "edge_edit")
+        self.stdout()
+            .into_iter()
+            .find(|l| l["event"] == "edge_edit")
     }
 
     fn describe(&self) -> String {
@@ -225,7 +227,7 @@ impl Run {
     }
 }
 
-/// A refused edit: exit 2, the one error `code`, no write and no edge_edit.
+/// A refused edit: exit 2, the one error `code`, no write and no `edge_edit`.
 fn assert_refused(fixture: &Fixture, run: &Run, code: &str) {
     assert_eq!(run.status(), 2, "{}", run.describe());
     assert_eq!(run.codes(), vec![code.to_owned()], "{}", run.describe());
@@ -276,7 +278,12 @@ fn a_body_changed_before_the_final_reread_is_refused() {
     let error = &run.errors()[0];
     assert_eq!(error["detail"]["child"], "o/r#5");
     assert_eq!(error["detail"]["conflict"], "body");
-    assert!(error["problem"].as_str().unwrap_or_default().contains("o/r#5"));
+    assert!(
+        error["problem"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("o/r#5")
+    );
     assert_eq!(fixture.body("o/r#5"), theirs, "their edit is kept");
 }
 
@@ -341,7 +348,10 @@ fn a_successful_write_patches_once_and_records_its_editor() {
         Some(&json!({"login": "dev", "type": "User"}))
     );
     let stdout = run.stdout();
-    assert_eq!(stdout[1]["event"], "edge_edit", "first result after bootstrap");
+    assert_eq!(
+        stdout[1]["event"], "edge_edit",
+        "first result after bootstrap"
+    );
     let edit = &stdout[1];
     assert_eq!(edit["type"], "add_blocked_by");
     assert_eq!(edit["parent"], "o/r#1");
@@ -351,7 +361,10 @@ fn a_successful_write_patches_once_and_records_its_editor() {
     assert_eq!(edit["_schema"]["id"], "taskalisk.edge_edit");
     assert!(edit.get("rolled_back").is_none());
     // The plan follows, over the validated proposal: 5 now waits on 1.
-    let plan = stdout.iter().find(|l| l["event"] == "plan").expect("a plan");
+    let plan = stdout
+        .iter()
+        .find(|l| l["event"] == "plan")
+        .expect("a plan");
     assert_eq!(plan["ok"], true, "{plan}");
     assert!(
         !plan["frontier"]
@@ -366,7 +379,9 @@ fn a_successful_write_patches_once_and_records_its_editor() {
     let patch = at(&|a| a.iter().any(|x| x == "PATCH"));
     let last_read = calls
         .iter()
-        .rposition(|a| a.first().is_some_and(|x| x == "api") && a.get(1).is_some_and(|x| x == "graphql"))
+        .rposition(|a| {
+            a.first().is_some_and(|x| x == "api") && a.get(1).is_some_and(|x| x == "graphql")
+        })
         .expect("an edit-history read");
     assert!(user < last_read && last_read < patch, "{calls:?}");
 }
@@ -395,7 +410,10 @@ fn a_parent_that_resolves_to_nothing_is_reported_before_any_write() {
     let errors = run.errors();
     assert_eq!(errors.len(), 1, "{}", run.describe());
     assert!(
-        errors[0]["problem"].as_str().unwrap_or_default().contains("o/r#99"),
+        errors[0]["problem"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("o/r#99"),
         "{}",
         run.describe()
     );
@@ -494,14 +512,19 @@ fn edit_arguments_are_checked_before_the_run_starts() {
     for args in [
         &["--add-edge", "o/r#1->o/r#1"][..],
         &["--add-edge", "1->2"],
-        &["--add-edge", "o/r#1->o/r#5", "--remove-edge", "o/r#1->o/r#5"],
+        &[
+            "--add-edge",
+            "o/r#1->o/r#5",
+            "--remove-edge",
+            "o/r#1->o/r#5",
+        ],
         &[],
     ] {
         let run = fixture.run(args);
         assert_eq!(run.status(), 3, "{args:?}: {}", run.describe());
-        assert!(run.stdout().is_empty());
+        assert_eq!(run.stdout(), Vec::<Value>::new());
     }
-    assert!(fixture.calls().is_empty());
+    assert_eq!(fixture.calls(), Vec::<Vec<String>>::new());
 }
 
 #[test]

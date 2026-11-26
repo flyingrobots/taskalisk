@@ -9,6 +9,26 @@ schema version under `Unreleased` is a draft and may change in place.
 
 ### Added
 
+- **The Rust binary's `edit`: an edge edit checked before its write** (flyingrobots/taskalisk#1;
+  supersedes the Python draft #19). `taskalisk edit --add-edge|--remove-edge "<parent>-><child>"
+  [--reason ...]` follows the vendored edge-edit contract (E1 to E10). `issue-dag-core` gains the
+  forge write port `ForgeWrite` (`writer`, `replace_body`), the overlay `Proposed`, `check_edit`
+  (the scope, the child's admission and task document, the rewrite, and the plan with the edit
+  compiled in memory against the plan without it, the child seeded when `--root` does not reach
+  it; a new cycle, found by reachability as E6a defines it, or a new violation, out-of-scope
+  reference or unknown prerequisite refuses the edit), `writer_admitted` and `recheck`, the final
+  reread. `issue-dag-gh` implements the port: `gh api user`, and one `gh api -X PATCH ... --input -`
+  with the JSON body on standard input (`WriteFailure`, `gh.mutation_failed`). The binary asks for
+  the writer only when the body changes, rereads the child through a fresh forge immediately before
+  the one `PATCH`, never retries and never restores, and plans the validated proposal after the
+  write. New error codes: `edge.cycle`, `edge.graph_invalid`, `edge.writer_untrusted` and
+  `edge.conflict`, all exit 2; the issue's exit 1 for a conflict is reconciled to the output
+  contract's 2 (`docs/topics/output/README.md`). The fake `gh` answers `gh api user`, records each
+  `PATCH` in the edit history under the authenticated account, can apply another person's edit just
+  before a given edit-history read (`edit_on_read`), and can lose a `PATCH`'s answer after applying
+  it (`patch_lost`). The optimistic concurrency limit (E8) is stated in the skill, the output
+  contract and the threat model (T13). The Python script is unchanged.
+
 - **Which part of a reference could not be found** (flyingrobots/taskalisk#126). The vendored
   issue-dag specification (flyingrobots/issue-dag#9) adds bundle rule OB17: an unavailable issue
   slot may record `not_found` (`owner`, `repository` or `number`) beside its free-text reason, and
