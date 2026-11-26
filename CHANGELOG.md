@@ -28,6 +28,12 @@ schema version under `Unreleased` is a draft and may change in place.
   Findings sort by subject, then code text. A message is fixed text that names keys and rules only,
   never a value or a line of the body; a body without a document has no findings.
 
+- **A reference page for the finding codes** (flyingrobots/taskalisk#60). `docs/topics/findings/README.md`
+  has one entry per code of `issue-dag-core`: its severity, the rule it cites in the vendored
+  specification, an example from the conformance corpus, and what to do about it. The test
+  `finding_reference` enumerates the codes from `LABELS`, so a code without an entry, or an entry for
+  no code, fails it.
+
 - **A provenance check for the vendored Parley writer** (flyingrobots/taskalisk#77).
   `scripts/check_vendored_writer.py` fetches the writer from flyingrobots/parley at the pinned
   commit and requires it to equal the pin and the copy; CI runs it. The offline pin test proves
