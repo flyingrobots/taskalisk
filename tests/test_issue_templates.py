@@ -33,9 +33,15 @@ def filed_body(name):
     return text[match.end():].lstrip("\n").replace("OWNER/REPO#NEW", f"{SELF[0]}#{SELF[1]}")
 
 
+def template_names(folder):
+    """The template files in a folder, by name. A hidden file (a `.DS_Store` the system writes, which
+    git ignores) is not a template, and is neither installed nor drift."""
+    return sorted(p.name for p in folder.iterdir() if p.is_file() and not p.name.startswith("."))
+
+
 class IssueTemplatesTest(unittest.TestCase):
     def test_one_template_per_task_type(self):
-        self.assertEqual(sorted(p.stem for p in TEMPLATES.glob("*.md")), sorted(TYPES))
+        self.assertEqual(sorted(n[:-3] for n in template_names(TEMPLATES) if n.endswith(".md")), sorted(TYPES))
 
     def test_filed_template_compiles_as_a_valid_task(self):
         tk = compiler()
@@ -60,7 +66,7 @@ class IssueTemplatesTest(unittest.TestCase):
     def test_templates_are_generic(self):
         # Deny by default: no project, owner, runtime or machine-local path may appear.
         forbidden = re.compile(r"(?i)parley|flyingrobots|\bbun\b|/" + "Users/|/" + "home/")
-        files = sorted(TEMPLATES.iterdir())
+        files = [TEMPLATES / n for n in template_names(TEMPLATES)]
         self.assertEqual(len(files), len(TYPES) + 1, "seven templates and config.yml")
         for path in files:
             with self.subTest(file=path.name):
@@ -84,12 +90,6 @@ class IssueTemplatesTest(unittest.TestCase):
 
 
 INSTALLED = ROOT / ".github" / "ISSUE_TEMPLATE"
-
-
-def template_names(folder):
-    """The template files in a folder, by name. A hidden file (a `.DS_Store` the system writes, which
-    git ignores) is not a template, and is neither installed nor drift."""
-    return sorted(p.name for p in folder.iterdir() if p.is_file() and not p.name.startswith("."))
 
 THIS_REPO = ("flyingrobots/taskalisk", 83)
 
