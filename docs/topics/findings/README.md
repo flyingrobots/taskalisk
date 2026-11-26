@@ -675,6 +675,25 @@ observation bundle records none.
 To fix: if the title names two outcomes, split the task. If `and` is part of
 one name, rephrase the title or put the name in a code span.
 
+### `taskalisk.isolated-task`
+
+**Severity:** warning. **Rule:** [Isolated nodes](../../../skills/taskalisk/SKILL.md#core-doctrine), Core Doctrine 4 of the skill.
+
+An open node of the plan's graph has no edge in or out: no open task is
+blocked by it, and it is blocked by no open node. Edges are those between
+open nodes, so a task whose prerequisites have all closed counts as isolated,
+as the Python compiler's `isolated_open_nodes` metric counts it. A plan with
+fewer than two open nodes draws no warning: a single task has nothing to be
+joined to.
+
+In a plan where `o/r#2` is blocked by `o/r#1` and `o/r#3` names no
+prerequisite and is named by none, `o/r#3` receives `taskalisk.isolated-task`.
+
+To fix: read the task's body, review follow-ups and unmerged branches for a
+real prerequisite or dependent, and propose the edge. Many isolated tasks
+mean the dependencies have not been recorded yet, not that the work is
+independent. A task that is truly independent can keep the warning.
+
 ### `taskalisk.redundant-edge`
 
 **Severity:** warning. **Rule:** [Transitive reduction](../../../skills/taskalisk/SKILL.md#core-doctrine), Core Doctrine 4 of the skill.
@@ -694,6 +713,23 @@ receives `taskalisk.redundant-edge` concerning `o/r#1`, implied via `o/r#2`.
 
 To fix: nothing is required; the plan already ignores the edge. Keep it as
 evidence, or remove `o/r#1` from `o/r#3`'s `.blocked_by` if it adds nothing.
+
+### `taskalisk.small-container`
+
+**Severity:** warning. **Rule:** [Containers](../../../skills/taskalisk/SKILL.md#core-doctrine), Core Doctrine 2 of the skill.
+
+An open container's `.children` names fewer than two distinct issues: none, or
+one.
+A container exists to group the tasks a split produced, so with one child or
+none it groups nothing. A reference to the container itself is not counted,
+and a child named twice counts once. A closed container, read because an
+open document names it, draws no warning: its grouping is finished.
+
+In a plan where `o/r#9` is a container with `.children: [o/r#1]`, `o/r#9`
+receives `taskalisk.small-container`.
+
+To fix: add the missing children to `.children`, or, if the container groups
+only one task, drop the container and keep the task.
 
 ### `taskalisk.edge-density`
 

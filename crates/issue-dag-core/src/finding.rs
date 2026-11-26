@@ -529,7 +529,9 @@ impl fmt::Display for Rule {
 /// | `taskalisk.outcome-sentences` | an Outcome of more than one sentence | warning |
 /// | `taskalisk.scope-missing` | a task body without `## Scope` | warning |
 /// | `taskalisk.title-joins` | a title joining two things with "and" or `;` | warning |
+/// | `taskalisk.isolated-task` | an open task with no edge in or out | warning |
 /// | `taskalisk.redundant-edge` | an edge the reduction removes (G5) | warning |
+/// | `taskalisk.small-container` | a container with fewer than two children | warning |
 /// | `taskalisk.edge-density` | a plan whose edge density is outside its band | warning |
 #[must_use]
 pub const fn code(label: Label) -> &'static str {
