@@ -866,7 +866,27 @@ fn conclude(
             }
         }
         Outcome::Rejected(rejection) => reject(run, rejection),
-        Outcome::Incomplete { unavailable, .. } => {
+        Outcome::Incomplete {
+            unavailable,
+            cause: Some(cause),
+        } => {
+            // A reference that resolves to nothing, for the recorded reason
+            // (profile rules D11 to D13): the catalogued code says which part.
+            run.error(
+                cause.code().as_str(),
+                &one_sentence(unavailable),
+                Some("fix the reference: its owner, repository or number names nothing gh can see"),
+                Some(false),
+                Some(json!({"source": "gh", "error": unavailable, "not_found": cause.as_str(), "phase": "discovery"})),
+            );
+            for failure in failures {
+                Failure::gh(failure).report(run);
+            }
+        }
+        Outcome::Incomplete {
+            unavailable,
+            cause: None,
+        } => {
             if failures.is_empty() {
                 run.error(
                     "gh.response_invalid",

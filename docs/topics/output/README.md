@@ -353,6 +353,10 @@ It differs from the Python in these ways, each tested in `crates/taskalisk/tests
   line, `resolved` included: the head records the argument indexes, the JSON Pointers into
   `resolved` and the variable names in `redacted`, and `inv` is computed over the redacted
   `resolved`, as the Python writer does. A secret inside an object key is not redacted.
+- **A reference that resolves to nothing.** When the core records why a read found nothing
+  (bundle rule OB17), the run's `parley.error` has that cause's catalogued code,
+  `profile.D11` (no such owner), `profile.D12` (no such repository) or `profile.D13` (no such
+  number), with `detail.not_found`; exit 2. Without a recorded cause it is `gh.response_invalid`.
 - **Symlinks are followed**, as the Python writer follows them: `.parley`, `receipts/` and `--repo`
   may be links. Every file the binary writes is created new (`O_EXCL`), so it never overwrites a
   file a link points at.
