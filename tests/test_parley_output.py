@@ -396,11 +396,30 @@ class QuerySecrets(unittest.TestCase):
             "failed at https://h/p?token=abc123secret.": "failed at https://h/p?token=[redacted].",
             "https://h/p?token=abc123secret, then": "https://h/p?token=[redacted], then",
             "https://h/p?token=abc.123secret": "https://h/p?token=[redacted]",
+            "[https://h/p?token=abc123secret]": "[https://h/p?token=[redacted]]",
+            # a value made only of sentence punctuation is still a value
+            "https://h/p?token=...": "https://h/p?token=[redacted]",
         }
         for given, expected in cases.items():
             with self.subTest(given):
                 self.assertEqual(self.tk.sanitize_text(given), expected)
                 self.assertNotIn("abc123secret", self.tk.sanitize_text(given))
+
+    def test_a_quote_or_bracket_inside_a_value_leaks_nothing(self):
+        for value in ("abc(def)TAILSECRET", "ab'cdTAILSECRET", 'ab"cdTAILSECRET', "ab<cd>TAILSECRET", "ab[cd]TAILSECRET", "ab)TAILSECRET"):
+            for wrap in ("{}", "'{}'", "({})", "<{}>"):
+                text = wrap.format(f"https://h/p?token={value}")
+                with self.subTest(text):
+                    self.assertNotIn("TAILSECRET", self.tk.sanitize_text(text))
+                    self.assertNotIn("cd", self.tk.sanitize_text(text).replace("[redacted]", ""))
+
+    def test_long_text_without_a_url_is_linear(self):
+        """A scheme-like word with no `://` after it must not rescan the rest of the text."""
+        for text in ("a." * 50_000, "a-" * 50_000, "a+" * 50_000, "x" * 100_000 + ":/"):
+            with self.subTest(text[:6]):
+                start = time.monotonic()
+                self.tk.sanitize_text(text)
+                self.assertLess(time.monotonic() - start, 1.0)
 
     def test_other_parameters_and_text_are_untouched(self):
         for text in ("https://h/p?page=2&per_page=100", "https://h/p?tokens_left=3", "https://h/p?monkey=1",
