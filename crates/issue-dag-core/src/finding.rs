@@ -15,6 +15,7 @@ use core::fmt;
 use crate::body::BODY_CODES;
 use crate::label::{self, Label};
 use crate::reference::IssueRef;
+use crate::shape::SHAPE_CODES;
 use crate::{Judgement, admit};
 
 /// Every label a document judgement can carry, once each, in the order of
@@ -25,7 +26,8 @@ pub const LABELS: [Label; label::VARIANTS] = label::ALL;
 ///
 /// Each code comes with its severity: the document codes in [`LABELS`] order, then the planning
 /// profile's in [`PROFILE_RULES`] order, then Taskalisk's body warnings in
-/// [`crate::BODY_WARNINGS`] order. Each code appears once.
+/// [`crate::BODY_WARNINGS`] order, then its shape warnings in [`crate::SHAPE_WARNINGS`] order.
+/// Each code appears once.
 ///
 /// This is the one public source of the codes; the table on [`code`] and
 /// any reference page are checked against it. Every family of findings must
@@ -35,7 +37,7 @@ pub const CODES: &[(&str, Severity)] = &CATALOGUE;
 
 /// Each family's codes with their severities, in catalogue order. A new
 /// family of findings is one more line here.
-const FAMILIES: &[&[(&str, Severity)]] = &[&LABEL_CODES, &PROFILE_CODES, &BODY_CODES];
+const FAMILIES: &[&[(&str, Severity)]] = &[&LABEL_CODES, &PROFILE_CODES, &BODY_CODES, &SHAPE_CODES];
 
 /// The document codes in [`LABELS`] order, with [`Rule::severity`].
 const LABEL_CODES: [(&str, Severity); LABELS.len()] = {
@@ -460,7 +462,8 @@ impl fmt::Display for Rule {
 /// run that [`Rule::code`] codes: D3, D4, D5, X2, X3 and G4). A code never
 /// changes meaning; a rule that is added gets a new code. The table lists
 /// the codes in [`CODES`] order: the labels' codes in [`LABELS`] order, then
-/// the profile's in [`PROFILE_RULES`] order, then the body warnings.
+/// the profile's in [`PROFILE_RULES`] order, then the body warnings, then
+/// the shape warnings.
 ///
 /// Rules C1 to C3 decide whether a body has a document at all (a body without
 /// one has no findings), and C5, C9, C10, V9, V11 and V12 never fail a
@@ -474,6 +477,11 @@ impl fmt::Display for Rule {
 /// rule of any specification. Their code is `taskalisk.<name>`, given by
 /// [`crate::BodyWarning::code`], listed in [`crate::BODY_WARNINGS`]; they are
 /// stable on the same terms.
+/// After them come its shape warnings ([`crate::shape_warnings`],
+/// flyingrobots/taskalisk#42): advisories on a plan's graph from the skill's
+/// doctrine on graph health, `skills/taskalisk/SKILL.md`, coded
+/// `taskalisk.<name>` by [`crate::ShapeWarning::code`] and listed in
+/// [`crate::SHAPE_WARNINGS`].
 ///
 /// | Code | Rule | Severity |
 /// | --- | --- | --- |
@@ -508,6 +516,7 @@ impl fmt::Display for Rule {
 /// | `taskalisk.outcome-sentences` | an Outcome of more than one sentence | warning |
 /// | `taskalisk.scope-missing` | a task body without `## Scope` | warning |
 /// | `taskalisk.title-joins` | a title joining two things with "and" or `;` | warning |
+/// | `taskalisk.isolated-task` | an open task with no edge in or out | warning |
 #[must_use]
 pub const fn code(label: Label) -> &'static str {
     match label {

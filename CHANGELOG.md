@@ -219,6 +219,13 @@ schema version under `Unreleased` is a draft and may change in place.
   `Finding::code()` and `Finding::severity()` and cannot be assigned, so a finding's severity
   always matches its code. A caller that read `finding.code` as a string uses
   `finding.code().as_str()`, and one that read `finding.severity` uses `finding.severity()`.
+- **A warning for an open task with no edges** (flyingrobots/taskalisk#47). `issue-dag-core` gains a
+  family of plan-shape warnings, `shape_warnings`, read from a plan's `Graph` and registered in
+  `CODES` after the body warnings: Taskalisk's advisories from the skill's doctrine on graph
+  health, which never make a run invalid. Its first code, `taskalisk.isolated-task`, is given once
+  per open node with no edge in or out, when the plan has at least two open nodes; a plan of a
+  single task draws none. Edges are those between open nodes, as for the Python compiler's
+  `isolated_open_nodes` metric.
 
 - **A provenance check for the vendored Parley writer** (flyingrobots/taskalisk#77).
   `scripts/check_vendored_writer.py` fetches the writer from flyingrobots/parley at the pinned
