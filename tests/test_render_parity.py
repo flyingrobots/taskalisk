@@ -7,7 +7,7 @@
   holds byte for byte. Each of its lines must validate against the exact schema its `_schema`
   names, once the writer's envelope (`t`, `seq`, `run`) is added, except that a field the Rust
   renderer cannot write yet may be missing (RUST_GAPS, FINDING_GAPS): the trust gate's reasons
-  (flyingrobots/taskalisk#46) and an `artifact_hash` beyond the core's reach.
+  (flyingrobots/taskalisk#46).
 """
 import json
 import re
@@ -20,12 +20,9 @@ from parley_emit import validate_line
 RUST = capture.FIXTURES / "rust"
 
 # {schema id: the errors allowed}; `*` is any list index; a finding's depend on its code. The Rust
-# rendering here is given a display input, so only what the core cannot know yet is missing:
-# `artifact_hash` where the 1.x document holds the Python's frontmatter messages or trust reasons
-# (flyingrobots/taskalisk#46) or a cycle's discovery findings (flyingrobots/taskalisk#44).
-RUST_GAPS = {
-    "taskalisk.plan": {"/ is missing artifact_hash"},
-}
+# rendering here is given a display input, so only what the core cannot know yet is missing; every
+# plan line carries `artifact_hash`.
+RUST_GAPS: dict = {}
 # The trust gate's reasons: flyingrobots/taskalisk#46.
 FINDING_GAPS = {
     "issue.untrusted": {"/ is missing message"} | {f"/detail is missing {f}" for f in ("url", "state", "author", "reasons", "referenced_by")},

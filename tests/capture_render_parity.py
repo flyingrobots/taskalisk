@@ -7,7 +7,8 @@ Not a test (unittest discovery skips it). For each graph case of
 (`scripts/corpus/forge.py`) and its result messages are written as `emit_plan` hands them to the
 Parley writer, without the writer's envelope (`t`, `seq`, `run`), one sorted-key JSON object per
 line, with `_schema` added from the message's id. A case the Python does not plan (rejected, a
-failed observation) gets no fixture.
+failed observation) gets no fixture. One case is captured twice, the second time with titles that
+hold what JSON must escape (TITLED).
 
 The Rust renderer (`crates/taskalisk`, flyingrobots/taskalisk#58) is compared with these lines
 field by field. `tests/test_render_parity.py` fails when a fixture differs from what this script
@@ -58,12 +59,38 @@ def agreed_cases() -> list[str]:
     return [n for n in names if n not in twinned]
 
 
-def python_lines(name: str) -> list[dict[str, Any]] | None:
+# A case planned again with a title on every issue that holds what JSON must escape: DEL and the C0
+# controls, Latin-1, an astral character, a line separator, a quote and a backslash. The bundle has no
+# titles (the forge answers "(title not recorded)"), so the forge is given these instead. The fixture
+# is named `<case>--titles`.
+TITLED = "discovery-unmodeled-home-issue"
+TITLED_SUFFIX = "--titles"
+
+
+def hostile_title(number: int) -> str:
+    return f"T{number} \x7f\x00\x01\x1f\t\n\r\b\f é 😀 \u2028 \" \\ / end"
+
+
+class _Titled(forge.BundleForge):
+    def rest_issue(self, ref: str) -> dict[str, Any]:
+        obj = super().rest_issue(ref)
+        obj["title"] = hostile_title(obj["number"])
+        return obj
+
+
+def python_lines(name: str, titled: bool = False) -> list[dict[str, Any]] | None:
     """The Python's result messages for one case, or None when it does not plan it."""
     bundle = json.loads((CASES / name / "bundle.json").read_text())
     if bundle["parameters"]["trust"]["policy"] != TRUST_POLICY:
         return None
-    out = forge.compile_bundle(bundle)
+    if titled:
+        saved, forge.BundleForge = forge.BundleForge, _Titled
+        try:
+            out = forge.compile_bundle(bundle)
+        finally:
+            forge.BundleForge = saved
+    else:
+        out = forge.compile_bundle(bundle)
     if out.result is None:
         return None
     run = _Run()
@@ -82,6 +109,9 @@ def expected_fixtures() -> dict[str, str]:
         lines = python_lines(name)
         if lines is not None:
             out[name] = fixture_text(lines)
+    titled = python_lines(TITLED, titled=True)
+    if titled is not None:
+        out[TITLED + TITLED_SUFFIX] = fixture_text(titled)
     return out
 
 

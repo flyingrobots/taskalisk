@@ -1046,3 +1046,35 @@ fn discovery_findings(d: &Discovery) -> Vec<Value> {
     }
     out
 }
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    use super::canonical;
+
+    /// Each expected text is what Python writes for the same value:
+    /// `json.dumps(v, sort_keys=True, separators=(",", ":")) + "\n"`.
+    #[test]
+    fn canonical_text_is_what_python_writes() {
+        let controls: String = (0_u8..0x20).map(char::from).collect();
+        let cases = [
+            (
+                json!({"k": controls}),
+                r#"{"k":"\u0000\u0001\u0002\u0003\u0004\u0005\u0006\u0007\b\t\n\u000b\f\r\u000e\u000f\u0010\u0011\u0012\u0013\u0014\u0015\u0016\u0017\u0018\u0019\u001a\u001b\u001c\u001d\u001e\u001f"}"#,
+            ),
+            (json!({"k": "\u{7f}"}), r#"{"k":"\u007f"}"#),
+            (json!({"k": "é"}), r#"{"k":"é"}"#),
+            (json!({"k": "😀"}), r#"{"k":"😀"}"#),
+            (json!({"k": "\u{2028}"}), r#"{"k":" "}"#),
+            (json!({"k": "\" \\ / ~"}), r#"{"k":"\" \\ / ~"}"#),
+            (
+                json!({"b": [1, 0.1786, 0.0, null, true], "a\u{7f}": {"é": "x"}}),
+                r#"{"a\u007f":{"é":"x"},"b":[1,0.1786,0.0,null,true]}"#,
+            ),
+        ];
+        for (value, python) in cases {
+            assert_eq!(canonical(&value), format!("{python}\n"), "{value}");
+        }
+    }
+}

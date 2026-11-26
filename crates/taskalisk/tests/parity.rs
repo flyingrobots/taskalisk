@@ -40,7 +40,10 @@ fn fixtures() -> PathBuf {
     root().join("tests/fixtures/render")
 }
 
+/// The corpus case a fixture plans: `<case>--titles` is `<case>` with
+/// titles that hold what JSON must escape (`tests/capture_render_parity.py`).
 fn bundle_text(case: &str) -> String {
+    let case = case.strip_suffix("--titles").unwrap_or(case);
     let path = root()
         .join("tests/fixtures/issue-dag/corpus/cases/graph")
         .join(case)
@@ -149,9 +152,10 @@ fn display_of(python: &[Value]) -> Display {
     d
 }
 
-/// Whether the case's 1.x document holds text the core does not: then the
-/// renderer cannot compute its `artifact_hash`.
-fn hash_out_of_reach(python: &[Value]) -> bool {
+/// Whether the case's 1.x document holds an intended difference or a gap:
+/// then the Rust `artifact_hash` digests the Rust document, and is not the
+/// Python's (`docs/topics/output/README.md`). Only its form is asserted.
+fn hash_differs(python: &[Value]) -> bool {
     python[0]["outcome"] != "compiled"
         || python.iter().any(|l| {
             matches!(
@@ -169,12 +173,8 @@ fn hash_out_of_reach(python: &[Value]) -> bool {
 /// The fields of a Python line the renderer does not write, given a
 /// display input, as paths from the line; `*` stands for every item of a
 /// list.
-fn gaps(line: &Value, hash_out_of_reach: bool) -> Vec<&'static str> {
+fn gaps(line: &Value) -> Vec<&'static str> {
     match line["event"].as_str() {
-        // The 1.x document holds the Python's frontmatter messages and trust
-        // reasons (flyingrobots/taskalisk#46), or a cycle's discovery
-        // findings (flyingrobots/taskalisk#44).
-        Some("plan") if hash_out_of_reach => vec!["artifact_hash"],
         Some("finding") => match line["code"].as_str() {
             // The trust gate's reasons: flyingrobots/taskalisk#46.
             Some("issue.untrusted") => vec![
@@ -210,13 +210,9 @@ fn display_fields(line: &Value) -> Vec<&'static str> {
     let codeowners = line
         .pointer("/source/trust/codeowners")
         .is_some_and(|c| !c.is_null());
-    let hashed = line.get("artifact_hash").is_some();
     match line["event"].as_str() {
         Some("plan") => {
             let mut out = Vec::new();
-            if hashed {
-                out.push("artifact_hash");
-            }
             if codeowners {
                 out.extend([
                     "source/trust/codeowners",
@@ -236,6 +232,23 @@ fn display_fields(line: &Value) -> Vec<&'static str> {
         },
         _ => Vec::new(),
     }
+}
+
+/// Checks a plan line's `artifact_hash` is 64 lower-case hexadecimal
+/// digits, and removes it: the caller compares the rest.
+fn hash_removed(mut plan: Value, what: &str, problems: &mut Vec<String>) -> Value {
+    let hash = plan.as_object_mut().and_then(|o| o.remove("artifact_hash"));
+    let well_formed = hash.as_ref().and_then(Value::as_str).is_some_and(|h| {
+        h.len() == 64
+            && h.bytes()
+                .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+    });
+    if !well_formed {
+        problems.push(format!(
+            "{what}: artifact_hash is not 64 hex digits: {hash:?}"
+        ));
+    }
+    plan
 }
 
 /// Removes one path from a value; whether anything was there.
@@ -334,7 +347,8 @@ fn every_agreed_case_renders_as_the_python_does() {
     let names = cases();
     assert!(names.len() > 100, "too few cases: {}", names.len());
     let mut failures = Vec::new();
-    let mut hashed = 0;
+    // The cases whose artifact_hash must equal the Python's.
+    let mut equal_hashes = 0;
     for case in &names {
         let python_text =
             fs::read_to_string(fixtures().join("python").join(format!("{case}.jsonl")))
@@ -362,28 +376,38 @@ fn every_agreed_case_renders_as_the_python_does() {
             ));
         }
         let got = lines(&text);
-        if got[0].get("artifact_hash").is_some() {
-            hashed += 1;
-        }
 
         // With a display input, against the Python.
         let compiled = python[0]["outcome"] == "compiled";
-        let out_of_reach = hash_out_of_reach(&python);
-        let want: Vec<Value> = python
+        let mut want: Vec<Value> = python
             .iter()
             .filter(|l| compiled || !is_discovery_finding(l))
-            .map(|l| without(l, &gaps(l, out_of_reach), &mut problems))
+            .map(|l| without(l, &gaps(l), &mut problems))
             .collect();
-        compare(want, got.clone(), "python", &mut problems);
+        let mut theirs = got.clone();
+        if hash_differs(&python) {
+            want[0] = hash_removed(want[0].clone(), "python", &mut problems);
+            theirs[0] = hash_removed(theirs[0].clone(), "rust", &mut problems);
+        } else {
+            equal_hashes += 1;
+        }
+        compare(want, theirs, "python", &mut problems);
 
-        // Without one, against the rendering with one.
+        // Without one, against the rendering with one. The hash digests a
+        // different document, so only its form is compared.
         match rendered(case, None) {
             Ok(bare) => {
-                let want = got
+                if rendered(case, None).as_deref() != Ok(bare.as_str()) {
+                    problems.push("two renderings without display differ".to_owned());
+                }
+                let mut want: Vec<Value> = got
                     .iter()
                     .map(|l| without(l, &display_fields(l), &mut problems))
                     .collect();
-                compare(want, lines(&bare), "without display", &mut problems);
+                let mut bare = lines(&bare);
+                want[0] = hash_removed(want[0].clone(), "with display", &mut problems);
+                bare[0] = hash_removed(bare[0].clone(), "without display", &mut problems);
+                compare(want, bare, "without display", &mut problems);
             }
             Err(why) => problems.push(format!("without display: {why}")),
         }
@@ -398,7 +422,11 @@ fn every_agreed_case_renders_as_the_python_does() {
         names.len(),
         failures.join("\n")
     );
-    assert!(hashed > 50, "only {hashed} cases have an artifact_hash");
+    // 71 corpus cases, and the one planned again with hostile titles.
+    assert_eq!(
+        equal_hashes, 72,
+        "the cases whose artifact_hash is the Python's"
+    );
 }
 
 #[test]
