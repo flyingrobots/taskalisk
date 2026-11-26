@@ -89,6 +89,32 @@ fn ob3_parameters_have_exactly_their_members() {
 }
 
 #[test]
+fn ob3_and_ob13_scope_owners_are_names_of_rule_l1() {
+    // The home owner `o` satisfies the scope check, so only the name of the
+    // second owner can reject the bundle. Names are never trimmed.
+    for bad in [
+        "bad owner",
+        " o2",
+        "o2\t",
+        "ówner",
+        "o\u{a0}2",
+        "o!",
+        "o#1",
+        "",
+    ] {
+        let mut b = example();
+        b["parameters"]["read_scope"]["owners"] = json!(["o", bad]);
+        reject(&b);
+    }
+    for good in ["o", "team_name", "a.b-c", "x9"] {
+        let mut b = example();
+        b["parameters"]["read_scope"]["owners"] = json!(["o", good]);
+        let bundle = load(&b.to_string()).expect("a valid owner name loads");
+        assert!(bundle.parameters.read_scope.owners.contains(good));
+    }
+}
+
+#[test]
 fn ob3_roots_and_policy_are_recorded_unvalidated() {
     let mut b = example();
     b["parameters"]["roots"] = json!(["not a reference"]);
