@@ -1382,8 +1382,8 @@ def _md_code(text: str, in_table: bool) -> str:
         return "\u2014"  # nothing left to show
     fence = "`" * (max((len(r) for r in re.findall("`+", text)), default=0) + 1)
     # GFM strips one space from each end when both are spaces, and a backtick at an end would join
-    # the fence: padding either keeps the text as written.
-    pad = " " if (text[0] in "` " or text[-1] in "` ") and text.strip(" ") else ""  # an all-space span is never stripped
+    # the fence: padding either keeps the text as written. An all-space span is never stripped.
+    pad = " " if (text[0] in "` " or text[-1] in "` ") and text.strip(" ") else ""
     return f"{fence}{pad}{text}{pad}{fence}"
 
 
