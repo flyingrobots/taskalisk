@@ -6,7 +6,7 @@
 use std::collections::BTreeSet;
 use std::process::Command;
 
-use issue_dag_core::{Forge, Observed, Repo};
+use issue_dag_core::{Forge, IssueRef, MAX_NUMBER, NotFound, Observed, Repo};
 use issue_dag_gh::GhForge;
 use serde_json::Value;
 
@@ -74,5 +74,35 @@ fn every_open_issue_reads_with_its_body() {
         matches!(&body, Ok(Observed::Value(body)) if !body.text.is_empty()),
         "{first}: body {body:?}"
     );
+    assert!(forge.failures().is_empty(), "{:?}", forge.failures());
+}
+
+/// #51: a reference GitHub cannot find records the part not found, owner,
+/// repository or number, by read-only lookups. The owner is a login no
+/// account is expected to hold; it is printed so a surprise can be checked.
+#[test]
+#[ignore = "needs the network and an authenticated gh"]
+fn a_reference_github_cannot_find_records_the_part_not_found() {
+    let name = live_repo();
+    let home = Repo::parse(&name).expect("owner/repo");
+    let forge = GhForge::new(home.clone());
+    for (text, cause) in [
+        ("issue-dag-no-such-owner-51/x#1".to_owned(), NotFound::Owner),
+        (
+            format!("{}/issue-dag-no-such-repository-51#1", home.owner()),
+            NotFound::Repository,
+        ),
+        (format!("{home}#{MAX_NUMBER}"), NotFound::Number),
+    ] {
+        let reference = IssueRef::parse(&text).expect("a reference");
+        let slot = forge.issue(&reference);
+        assert!(
+            matches!(slot, Ok(Observed::Unavailable(_))),
+            "{text}: {slot:?}"
+        );
+        let found = forge.not_found(&reference);
+        println!("{text}: not_found {found:?}");
+        assert_eq!(found, Some(cause), "{text}: {:?}", forge.failures());
+    }
     assert!(forge.failures().is_empty(), "{:?}", forge.failures());
 }

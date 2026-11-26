@@ -957,3 +957,52 @@ fn a_gitignore_is_judged_as_the_python_writer_judges_it() {
         assert_eq!(run.status(), *status, "{gitignore:?}: {}", run.explain());
     }
 }
+
+/// #51: a reference gh cannot find ends the run with `issue.not_found`,
+/// naming the reference and the part not found, by lookups of the owner and
+/// the repository; every line validates against its schema.
+#[test]
+fn a_reference_gh_cannot_find_is_issue_not_found_with_the_reference() {
+    for (args, reference, not_found, rule) in [
+        (
+            &["--trust-owner", "nobody", "--root", "nobody/x#1"][..],
+            "nobody/x#1",
+            "owner",
+            "D11",
+        ),
+        (
+            &["--root", "flyingrobots/nothere#1"][..],
+            "flyingrobots/nothere#1",
+            "repository",
+            "D12",
+        ),
+        (
+            &["--root", "flyingrobots/geordi#404"][..],
+            "flyingrobots/geordi#404",
+            "number",
+            "D13",
+        ),
+    ] {
+        let fixture = Fixture::new("plan_state()");
+        let run = fixture.plan(args);
+        assert_eq!(run.status(), 2, "{}", run.explain());
+        let (out, err) = (run.stdout(), run.stderr());
+        assert_valid(&out);
+        assert_valid(&err);
+        assert_valid(&run.receipt());
+        assert!(of(&out, "taskalisk.plan").is_empty(), "{}", run.explain());
+        let errors = of(&err, "parley.error");
+        assert_eq!(errors.len(), 1, "{}", run.explain());
+        assert_eq!(errors[0]["code"], "issue.not_found", "{}", run.explain());
+        assert_eq!(errors[0]["detail"]["reference"], reference);
+        assert_eq!(errors[0]["detail"]["not_found"], not_found);
+        assert_eq!(errors[0]["detail"]["rule"], rule);
+        assert_eq!(errors[0]["detail"]["source"], "gh");
+        let message = errors[0]["problem"].as_str().expect("a problem");
+        assert_eq!(
+            message.contains("private repository"),
+            not_found == "repository",
+            "{message}"
+        );
+    }
+}

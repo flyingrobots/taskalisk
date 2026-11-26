@@ -405,7 +405,9 @@ It differs from the Python in these ways, each tested in `crates/taskalisk/tests
   (bundle rule OB17), the run's `parley.error` is `issue.not_found`, with `detail.rule` the
   profile rule (`D11` no such owner, `D12` no such repository, `D13` no such number),
   `detail.not_found` the cause (`owner`, `repository` or `number`) and `detail.reference` the
-  reference read, when the reason names one; exit 2. The core's catalogued codes (`profile.D11`
+  reference whose lookup recorded the cause, as the core reports it, never parsed out of the
+  reason; exit 2. For `repository` the problem says that a private repository the token cannot
+  see looks the same as a missing one. The core's catalogued codes (`profile.D11`
   and the rest) are not used as error codes, because a `parley.error` code is lower case. Without
   a recorded cause it is `gh.response_invalid`.
 - **Symlinks are followed**, as the Python writer follows them: `.parley`, `receipts/` and `--repo`

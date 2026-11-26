@@ -29,7 +29,7 @@ use std::path::{Component, Path, PathBuf};
 
 use issue_dag_bundle::{Evaluator, unretained};
 use issue_dag_core::{
-    Identity, IssueRef, IssueState, NotFound, Observations, Observed, Outcome, Parameters,
+    Cause, Identity, IssueRef, IssueState, NotFound, Observations, Observed, Outcome, Parameters,
     ReadScope, Rejection, Repo, TRUST_POLICY, TrustParameters, codeowners_persons, is_name, plan,
 };
 use issue_dag_gh::{GhError, GhForge, Shown, repository_of};
@@ -964,24 +964,39 @@ fn plan_live(run: &mut Run<'_>, arguments: &Arguments, repo_dir: &Path) {
     conclude(run, &parameters, &outcome, &failures, &display);
 }
 
-/// A reference that resolves to nothing, for the recorded reason (profile
-/// rules D11 to D13), read from `source`. The catalogued code `profile.D11`
-/// has an upper-case letter, which a parley.error code may not, so the code
-/// is `issue.not_found` and the rule is in the detail.
-pub(crate) fn not_found(run: &mut Run<'_>, unavailable: &str, cause: NotFound, source: &str) {
-    let reference = unavailable
-        .split_whitespace()
-        .find_map(IssueRef::parse)
-        .map(|r| r.to_string());
+/// A reference that resolves to nothing, for the recorded cause (profile
+/// rules D11 to D13), read from `source`. The reference is the cause's,
+/// never one read out of the reason (flyingrobots/taskalisk#51). The
+/// catalogued code `profile.D11` has an upper-case letter, which a
+/// parley.error code may not, so the code is `issue.not_found` and the rule
+/// is in the detail.
+pub(crate) fn not_found(run: &mut Run<'_>, unavailable: &str, cause: &Cause, source: &str) {
+    let reference = &cause.reference;
+    let repo = Repo::of(reference);
+    let problem = match cause.not_found {
+        NotFound::Owner => format!(
+            "{reference}: no account named {} was found",
+            reference.owner()
+        ),
+        // OB17: GitHub answers a repository the token cannot see as one
+        // that does not exist.
+        NotFound::Repository => format!(
+            "{reference}: the repository {repo} was not found; a private repository the token cannot see looks the same"
+        ),
+        NotFound::Number => format!(
+            "{reference}: {repo} has no issue or pull request numbered {} that the token can see",
+            reference.number()
+        ),
+    };
     run.error(
         "issue.not_found",
-        &one_sentence(unavailable),
+        &one_sentence(&problem),
         Some("fix the reference: its owner, repository or number names nothing gh can see"),
         Some(false),
         Some(json!({
-            "rule": cause.label(),
-            "not_found": cause.as_str(),
-            "reference": reference,
+            "rule": cause.not_found.label(),
+            "not_found": cause.not_found.as_str(),
+            "reference": reference.to_string(),
             "source": source,
             "error": unavailable,
             "phase": "discovery",
@@ -1035,7 +1050,7 @@ fn conclude(
             unavailable,
             cause: Some(cause),
         } => {
-            not_found(run, unavailable, *cause, "gh");
+            not_found(run, unavailable, cause, "gh");
             for failure in failures {
                 Failure::gh(failure).report(run);
             }
@@ -1120,7 +1135,8 @@ mod tests {
     use crate::parley::{Run, Start};
     use crate::render::Display;
     use issue_dag_core::{
-        Graph, NotFound, Outcome, Parameters, ReadScope, Repo, TRUST_POLICY, TrustParameters,
+        Cause, Graph, IssueRef, NotFound, Outcome, Parameters, ReadScope, Repo, TRUST_POLICY,
+        TrustParameters,
     };
     use issue_dag_gh::GhError;
     use serde_json::json;
@@ -1228,9 +1244,14 @@ mod tests {
             (NotFound::Repository, "D12"),
             (NotFound::Number, "D13"),
         ] {
+            // The reason names another reference: the one reported is the
+            // cause's, never one parsed out of the reason (#51).
             let incomplete = Outcome::Incomplete {
-                unavailable: "o/r#9 resolves to no issue gh can see (HTTP 404)".to_owned(),
-                cause: Some(cause),
+                unavailable: "o/r#1 resolves to no issue gh can see (HTTP 404)".to_owned(),
+                cause: Some(Cause {
+                    not_found: cause,
+                    reference: IssueRef::parse("o/r#9").expect("a reference"),
+                }),
             };
             let (status, _, err) = concluded(&incomplete, &[]);
             assert_eq!(status, 2, "{err}");
@@ -1241,6 +1262,15 @@ mod tests {
             assert_eq!(errors[0]["detail"]["rule"], rule, "{err}");
             assert_eq!(errors[0]["detail"]["not_found"], cause.as_str(), "{err}");
             assert_eq!(errors[0]["detail"]["reference"], "o/r#9", "{err}");
+            let message = errors[0]["problem"].as_str().expect("a problem");
+            assert!(message.contains("o/r#9"), "{message}");
+            // D12: a private repository the token cannot see answers as one
+            // that does not exist, and the message says so.
+            assert_eq!(
+                message.contains("private repository"),
+                cause == NotFound::Repository,
+                "{message}"
+            );
         }
         // Without a cause, an unavailable read the adapter did not record is
         // a malformed answer.

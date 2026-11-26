@@ -27,7 +27,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use issue_dag_bundle::{in_result_order, load, outcome_json};
-use issue_dag_core::{NotFound, Outcome, RecordedForge, plan};
+use issue_dag_core::{Outcome, RecordedForge, plan};
 use serde_json::{Map, Value, json};
 
 /// The members that describe the graph (CC6), its ranking and its batch,
@@ -86,7 +86,10 @@ fn result_json(bundle_text: &str) -> Result<(Map<String, Value>, Option<Dispatch
             // (OB17) as the label of its rule, or null, which a normative case
             // may state (CC6).
             out.insert("unavailable".into(), json!(unavailable));
-            out.insert("cause".into(), json!(cause.map(NotFound::label)));
+            out.insert(
+                "cause".into(),
+                json!(cause.as_ref().map(|c| c.not_found.label())),
+            );
             None
         }
         Outcome::Rejected(_) => None,

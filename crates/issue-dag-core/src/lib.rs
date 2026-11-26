@@ -44,7 +44,7 @@ pub use forge::{Bundle, Forge, LocalRepository, NoLocalRepository, Observations,
 pub use label::Label;
 pub use local::{AheadBehind, Branch, BranchScope, Checkout, Worktree};
 pub use observation::{
-    Actor, Body, CodeownersFile, Issue, IssueState, Lookup, Missing, NotFound, Observed,
+    Actor, Body, Cause, CodeownersFile, Issue, IssueState, Lookup, Missing, NotFound, Observed,
     Parameters, PullRequest, ReadScope, Repo, TRUST_POLICY, TrustParameters,
 };
 pub use plan::{

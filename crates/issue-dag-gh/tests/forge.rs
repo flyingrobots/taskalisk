@@ -8,8 +8,8 @@ use std::collections::BTreeMap;
 
 use fake::Fake;
 use issue_dag_core::{
-    Actor, Body, CodeownersFile, Forge, Issue, IssueRef, IssueState, Observations, Observed,
-    Outcome, Parameters, PullRequest, ReadScope, RecordedForge, Repo, TRUST_POLICY,
+    Actor, Body, CodeownersFile, Forge, Issue, IssueRef, IssueState, NotFound, Observations,
+    Observed, Outcome, Parameters, PullRequest, ReadScope, RecordedForge, Repo, TRUST_POLICY,
     TrustParameters, plan,
 };
 use issue_dag_gh::{GhError, GhForge, Limits};
@@ -193,8 +193,9 @@ fn recorded() -> Observations {
             pull(12, None, None, Observed::Value(true), &["o/r#2"]),
         ])),
         issues,
-        // The adapter records no cause yet (flyingrobots/taskalisk#51).
-        not_found: BTreeMap::new(),
+        // o/r#404: the owner and the repository were found, the number was
+        // not (OB17, flyingrobots/taskalisk#51).
+        not_found: BTreeMap::from([(reference("o/r#404"), NotFound::Number)]),
         bodies,
         permissions,
         codeowners: Some(BTreeMap::from([
@@ -955,4 +956,185 @@ fn a_home_repository_gh_cannot_resolve_is_an_error() {
         .repository_of(&std::env::temp_dir())
         .expect_err("not owner/repo");
     assert_eq!(error.code(), "gh.response_invalid");
+}
+
+/// The lookups of an owner (`users/<owner>`) or a repository
+/// (`repos/<owner>/<repo>`) the fake was asked, as their paths, in order.
+fn follow_ups(fake: &Fake) -> Vec<String> {
+    fake.calls()
+        .iter()
+        .filter(|c| c[0] == "api")
+        .map(|c| c[1].clone())
+        .filter(|path| {
+            path.starts_with("users/")
+                || (path.starts_with("repos/") && path.matches('/').count() == 2)
+        })
+        .collect()
+}
+
+/// The cause the gh forge records for `target`, read through the port and
+/// through its recording, with the follow-up lookups it made.
+fn cause_of(state: &Value, target: &str) -> (Option<NotFound>, Vec<String>, Vec<GhError>) {
+    let fake = Fake::new(state);
+    let forge = fake.forge("o/r");
+    let target = reference(target);
+    let slot = forge.issue(&target).expect("never missing");
+    assert!(matches!(slot, Observed::Unavailable(_)), "{slot:?}");
+    let cause = forge.not_found(&target);
+    // OB17: the cause is in the recording, beside the unavailable slot, and
+    // the in-memory forge answers it from there.
+    let recorded = forge.observations();
+    assert_eq!(recorded.not_found.get(&target).copied(), cause);
+    assert_eq!(RecordedForge::new(&recorded).not_found(&target), cause);
+    (cause, follow_ups(&fake), forge.failures())
+}
+
+/// D11 to D13 (#51): the owner, then the repository, then the number,
+/// each told apart by a lookup the token can make.
+#[test]
+fn d11_to_d13_a_reference_gh_cannot_find_records_the_part_not_found() {
+    for (target, cause, lookups) in [
+        ("nobody/r#1", NotFound::Owner, &["users/nobody"][..]),
+        (
+            "o/gone#1",
+            NotFound::Repository,
+            &["users/o", "repos/o/gone"][..],
+        ),
+        ("o/r#404", NotFound::Number, &["users/o", "repos/o/r"][..]),
+    ] {
+        let (found, made, failures) = cause_of(&state(), target);
+        assert_eq!(found, Some(cause), "{target}");
+        assert_eq!(made, lookups, "{target}");
+        assert_eq!(failures, Vec::new(), "{target}");
+    }
+}
+
+/// D12: GitHub answers a private repository the token cannot see as it
+/// answers one that does not exist, so it is recorded as not found.
+#[test]
+fn d12_a_private_repository_the_token_cannot_see_is_recorded_as_not_found() {
+    let mut private = with(&json!({"private_repositories": ["o/secret"]}));
+    private["issues"]["o/secret#1"] = json!({"id": 77, "title": "t", "state": "open", "body": ""});
+    let (found, made, failures) = cause_of(&private, "o/secret#1");
+    assert_eq!(found, Some(NotFound::Repository));
+    assert_eq!(made, ["users/o", "repos/o/secret"]);
+    assert_eq!(failures, Vec::new());
+}
+
+/// Fail closed: a follow-up lookup that fails other than with a 404 leaves
+/// the slot unavailable with no cause, and is a recorded failure. The
+/// adapter never guesses the part.
+#[test]
+fn a_follow_up_lookup_that_fails_records_no_cause_and_a_failure() {
+    for (path, target) in [("users/o", "o/r#404"), ("repos/o/r", "o/r#404")] {
+        let failing = with(&json!({"fail_paths": {path: "gh: Bad Gateway (HTTP 502)"}}));
+        let (found, made, failures) = cause_of(&failing, target);
+        assert_eq!(found, None, "{path}");
+        assert_eq!(made.last().map(String::as_str), Some(path), "{path}");
+        assert_eq!(failures.len(), 1, "{path}: {failures:?}");
+        assert_eq!(failures[0].code(), "gh.command_failed", "{path}");
+        assert!(failures[0].to_string().contains(path), "{}", failures[0]);
+        assert!(
+            failures[0].to_string().contains("HTTP 502"),
+            "{}",
+            failures[0]
+        );
+    }
+}
+
+/// The slot of a reference whose follow-up failed keeps the 404's reason:
+/// the failure is reported on its own, never as the reason of the slot.
+#[test]
+fn a_failed_follow_up_leaves_the_slot_unavailable_for_the_404() {
+    let failing = with(&json!({"fail_paths": {"users/o": "gh: Bad Gateway (HTTP 502)"}}));
+    let fake = Fake::new(&failing);
+    let forge = fake.forge("o/r");
+    assert_eq!(
+        forge.issue(&reference("o/r#404")),
+        Ok(Observed::Unavailable(
+            "o/r#404 resolves to no issue gh can see (HTTP 404)".to_owned()
+        ))
+    );
+}
+
+/// An owner that cannot be a GitHub login is never put in a request path:
+/// no lookup, no cause, a failure (fail closed).
+#[test]
+fn an_owner_that_is_not_a_github_login_is_never_looked_up() {
+    let (found, made, failures) = cause_of(&state(), "no.body/r#1");
+    assert_eq!(found, None);
+    assert_eq!(made, Vec::<String>::new());
+    assert_eq!(failures.len(), 1, "{failures:?}");
+    assert_eq!(failures[0].code(), "gh.response_invalid");
+}
+
+/// Cost: each owner and each repository is looked up once per run, a
+/// failed lookup included, and only after a reference answered 404.
+#[test]
+fn each_owner_and_repository_is_looked_up_once_per_run() {
+    let fake = Fake::new(&state());
+    let forge = fake.forge("o/r");
+    for target in [
+        "o/r#404",
+        "o/r#405",
+        "o/gone#1",
+        "o/gone#2",
+        "nobody/r#1",
+        "nobody/s#2",
+    ] {
+        let _ = forge.issue(&reference(target));
+        assert!(forge.not_found(&reference(target)).is_some(), "{target}");
+    }
+    assert_eq!(
+        follow_ups(&fake),
+        ["users/o", "repos/o/r", "repos/o/gone", "users/nobody"]
+    );
+    let failing = with(&json!({"fail_paths": {"users/o": "gh: Bad Gateway (HTTP 502)"}}));
+    let fake = Fake::new(&failing);
+    let forge = fake.forge("o/r");
+    for target in ["o/r#404", "o/gone#1"] {
+        let _ = forge.issue(&reference(target));
+        assert_eq!(forge.not_found(&reference(target)), None, "{target}");
+    }
+    assert_eq!(follow_ups(&fake), ["users/o"]);
+    assert_eq!(forge.failures().len(), 1, "{:?}", forge.failures());
+}
+
+/// C15: an issue that is found, a stranger's included, costs no follow-up.
+#[test]
+fn an_issue_that_is_found_costs_no_follow_up_lookup() {
+    let fake = Fake::new(&state());
+    let forge = fake.forge("o/r");
+    for target in ["o/r#1", "o/r#2", "o/r#3", "o/r#5"] {
+        assert!(matches!(
+            forge.issue(&reference(target)),
+            Ok(Observed::Value(_))
+        ));
+        assert_eq!(forge.not_found(&reference(target)), None, "{target}");
+    }
+    assert_eq!(follow_ups(&fake), Vec::<String>::new());
+}
+
+/// The cause reaches the outcome with the reference whose lookup recorded
+/// it (#51), and the recording replays it.
+#[test]
+fn a_run_over_a_reference_not_found_reports_the_cause_and_the_reference() {
+    let fake = Fake::new(&state());
+    let forge = fake.forge("o/r");
+    let outcome = plan(&parameters(&["o/r#404"]), &forge).expect("never missing");
+    let Outcome::Incomplete {
+        cause: Some(cause), ..
+    } = &outcome
+    else {
+        panic!("expected a cause, got {outcome:?}");
+    };
+    assert_eq!(cause.not_found, NotFound::Number);
+    assert_eq!(cause.reference, reference("o/r#404"));
+    assert_eq!(
+        plan(
+            &parameters(&["o/r#404"]),
+            &RecordedForge::new(&forge.observations())
+        ),
+        Ok(outcome)
+    );
 }

@@ -20,9 +20,9 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use issue_dag_core::{
-    Actor, Body, CODES, Finding, Issue, IssueRef, IssueState, NotFound, Observations, Observed,
-    Outcome, Parameters, ReadScope, RecordedForge, Repo, Severity, TRUST_POLICY, TrustParameters,
-    plan,
+    Actor, Body, CODES, Cause, Finding, Issue, IssueRef, IssueState, NotFound, Observations,
+    Observed, Outcome, Parameters, ReadScope, RecordedForge, Repo, Severity, TRUST_POLICY,
+    TrustParameters, plan,
 };
 
 fn reference(text: &str) -> IssueRef {
@@ -259,7 +259,17 @@ fn not_found(observations: &mut Observations, key: &str, reason: &str, cause: Op
 
 /// The incomplete run's reason and cause, or a panic.
 fn incomplete(roots: &[&str], observations: &Observations) -> (String, Option<NotFound>) {
-    let outcome = plan(&parameters(roots), &RecordedForge::new(observations));
+    let (unavailable, cause) = incomplete_with(&parameters(roots), observations);
+    (unavailable, cause.map(|c| c.not_found))
+}
+
+/// The incomplete run's reason, and its cause with the reference whose
+/// lookup recorded it, or a panic.
+fn incomplete_with(
+    parameters: &Parameters,
+    observations: &Observations,
+) -> (String, Option<Cause>) {
+    let outcome = plan(parameters, &RecordedForge::new(observations));
     let Ok(Outcome::Incomplete { unavailable, cause }) = outcome else {
         panic!("expected an incomplete run, got {outcome:?}");
     };
@@ -279,11 +289,60 @@ fn scoped(roots: &[&str]) -> Parameters {
 }
 
 fn incomplete_in_scope(roots: &[&str], observations: &Observations) -> (String, Option<NotFound>) {
-    let outcome = plan(&scoped(roots), &RecordedForge::new(observations));
-    let Ok(Outcome::Incomplete { unavailable, cause }) = outcome else {
-        panic!("expected an incomplete run, got {outcome:?}");
-    };
-    (unavailable, cause)
+    let (unavailable, cause) = incomplete_with(&scoped(roots), observations);
+    (unavailable, cause.map(|c| c.not_found))
+}
+
+/// #51: the cause carries the reference whose lookup recorded it, so a
+/// reader names it without parsing the reason.
+#[test]
+fn a_cause_names_the_reference_whose_lookup_recorded_it() {
+    for (target, cause) in [
+        (OWNER, NotFound::Owner),
+        (REPOSITORY, NotFound::Repository),
+        (NUMBER, NotFound::Number),
+    ] {
+        let mut obs = observations();
+        issue(&mut obs, "o/r#1", &task(1, &[target]));
+        // The reason names another reference: it is never read.
+        not_found(&mut obs, target, "o/r#9 (HTTP 404)", Some(cause));
+        assert_eq!(
+            incomplete_with(&scoped(&["o/r#1"]), &obs),
+            (
+                "o/r#9 (HTTP 404)".to_owned(),
+                Some(Cause {
+                    not_found: cause,
+                    reference: reference(target),
+                })
+            ),
+            "{target}"
+        );
+    }
+}
+
+/// OB16 and D2: of two slots with the same reason and the same cause, the
+/// least reference is the one named, whatever the order of the roots.
+#[test]
+fn of_two_references_with_one_reason_and_cause_the_least_is_named() {
+    let mut obs = observations();
+    issue(&mut obs, "o/r#2", &task(2, &["o/r#30"]));
+    issue(&mut obs, "o/r#3", &task(3, &["o/r#20"]));
+    not_found(&mut obs, "o/r#30", "HTTP 404", Some(NotFound::Number));
+    not_found(&mut obs, "o/r#20", "HTTP 404", Some(NotFound::Number));
+    let expected = (
+        "HTTP 404".to_owned(),
+        Some(Cause {
+            not_found: NotFound::Number,
+            reference: reference("o/r#20"),
+        }),
+    );
+    for roots in [["o/r#2", "o/r#3"], ["o/r#3", "o/r#2"]] {
+        assert_eq!(
+            incomplete_with(&parameters(&roots), &obs),
+            expected,
+            "{roots:?}"
+        );
+    }
 }
 
 /// D10 to D13: each cause keeps the run incomplete, and the run reports it

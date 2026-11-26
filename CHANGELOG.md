@@ -9,6 +9,22 @@ schema version under `Unreleased` is a draft and may change in place.
 
 ### Added
 
+- **Why a reference lookup failed** (flyingrobots/taskalisk#51). When an issue lookup answers HTTP
+  404, the `gh` adapter now looks up the owner (`users/<owner>`), then the repository
+  (`repos/<owner>/<repo>`), and records the part not found beside the slot (bundle rule OB17):
+  `owner` (D11), `repository` (D12) or `number` (D13). A private repository the token cannot see
+  answers like a missing one, so it is recorded as `repository`. `GhForge::not_found` answers what
+  was recorded, `observations()` and captured bundles carry it, and a replay reports it. The
+  extra lookups run only after a 404, never for an issue that was found, and each owner and
+  repository is looked up once per run, a failed lookup included. A follow-up that fails other
+  than with 404 records no cause and a `gh.` failure (fail closed). An owner that is not a GitHub
+  login is never put in a request path. In `issue-dag-core`, `Outcome::Incomplete::cause` is now
+  an `Option<Cause>`: the `NotFound` part and the `reference` whose lookup recorded it (OB16 names
+  the least reference among slots with the same reason and cause). The binary's `issue.not_found`
+  takes `detail.reference` from it rather than parsing the reason, and its problem text names the
+  part not found; for `repository` it says a private repository looks the same. The fake `gh`
+  answers `users/<login>` and `repos/<owner>/<repo>`, with `private_repositories` and `fail_paths`.
+
 - **Trust findings** (flyingrobots/taskalisk#46). The admission policy now returns why it does not
   trust an actor alongside the decision: the login as recorded and the rule that decided
   (`Distrust`: `AD5.1` a deleted account, `AD2` outside the scope, `AD5.3` a bot, `AD5.6` an

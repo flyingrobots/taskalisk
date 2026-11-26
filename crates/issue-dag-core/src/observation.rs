@@ -122,6 +122,23 @@ impl NotFound {
     }
 }
 
+/// The cause an incomplete run reports (bundle rules OB16 and OB17), with
+/// the reference whose lookup recorded it, so that a reader names the
+/// reference without reading it out of the free-text reason.
+///
+/// Causes are ordered by `not_found` first, the order OB16 compares them
+/// in, then by reference, so that of two slots with the same reason and the
+/// same cause the least reference is the one named, whatever the order of
+/// reading (profile rule D2). The order of the fields is that order; do not
+/// move them.
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct Cause {
+    /// Which part of the reference was not found.
+    pub not_found: NotFound,
+    /// The reference whose unavailable slot records the cause.
+    pub reference: IssueRef,
+}
+
 impl fmt::Display for NotFound {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(self.as_str())

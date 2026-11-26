@@ -6,7 +6,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use crate::forge::Forge;
 use crate::observation::{
-    Actor, Body, Lookup, Missing, NotFound, Observed, PullRequest, ReadScope, Repo,
+    Actor, Body, Cause, Lookup, Missing, Observed, PullRequest, ReadScope, Repo,
 };
 
 /// An actor's identity (rule AD3): whether it is a bot, and its name in
@@ -107,8 +107,8 @@ pub enum Undecided {
     /// A reference resolves to no issue, and its unavailable slot records
     /// which part was not found (bundle rule OB17, profile rules D10 to
     /// D13): the run is incomplete, as for [`Undecided::Unavailable`], with
-    /// the reason and the cause.
-    NotFound(String, NotFound),
+    /// the reason and the cause, which names the reference.
+    NotFound(String, Cause),
     /// A lookup the rules reach was not recorded (bundle rule OB5).
     Missing(Missing),
 }
@@ -125,12 +125,13 @@ impl From<Missing> for Undecided {
 /// unavailable one (AD10, profile rule F1). The one reported is the least
 /// of its kind (bundle rule OB16): of missing slots, the least path from
 /// `observations`; of unavailable ones, the least reason, and of those with
-/// that reason the least cause (OB17), no cause first. So the order of
-/// reading never changes the result (profile rule D2).
+/// that reason the least cause (OB17), no cause first, and of those with
+/// that cause the least reference ([`Cause`]). So the order of reading
+/// never changes the result (profile rule D2).
 #[derive(Debug, Default)]
 pub struct Gaps {
     /// Each reason with its cause; `None` sorts before every cause.
-    unavailable: BTreeSet<(String, Option<NotFound>)>,
+    unavailable: BTreeSet<(String, Option<Cause>)>,
     missing: BTreeSet<Missing>,
 }
 
