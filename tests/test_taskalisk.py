@@ -664,14 +664,41 @@ class Trust(Harness):
         tk = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(tk)
         # a link start not broken by a zero-width space; any @ before a non-space counts, not only a letter
-        live = re.compile(r"(?i)(?<![a-z0-9])(?:https?://|www\.)|@(?=[^\s\u200b])")
+        live = re.compile(r"(?i)(?:https?://|www\.)|@(?=[^\s\u200b])")  # anywhere: a digit or letter before it is no guard
         for title in ("_www.evil.invalid", "_http://evil.invalid", "\u00e9http://evil.invalid", "\u00e9www.evil.invalid",
+                      "1https://evil.invalid", "1www.evil.invalid", "x9http://evil.invalid",
                       "a@evil.invalid", "a@-evil.invalid", "a@_evil.invalid", "a@.evil.invalid", "mailto:a@evil.invalid", "xmpp:a@evil.invalid", "ping @someone", "(https://evil.invalid)"):
             with self.subTest(ascii(title)):
                 self.assertIsNone(live.search(tk._md_cell(title)), ascii(tk._md_cell(title)))
         for ch in ("\u202a", "\u202b", "\u202c", "\u202d", "\u202e", "\u2066", "\u2067", "\u2068", "\u2069", "\u200e", "\u200f", "\u061c"):
             with self.subTest(ascii(ch)):
                 self.assertEqual(tk._md_cell(f"a{ch}b"), "ab")
+
+    def test_a_character_reference_in_a_title_stays_text(self):
+        """GFM decodes `&#64;` to `@` before it looks for links, so a reference must not stay live."""
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("taskalisk_md_cell_refs", SCRIPT)
+        tk = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(tk)
+        for title, expected in (("a&#64;evil.invalid", "a&amp;#64;evil.invalid"), ("a&#x40;evil.invalid", "a&amp;#x40;evil.invalid"),
+                                ("a&#X40;evil.invalid", "a&amp;#X40;evil.invalid"), ("a&commat;evil.invalid", "a&amp;commat;evil.invalid"),
+                                ("&lt;b&gt;", "&amp;lt;b&amp;gt;"), ("a & b", "a & b"), ("a &b c", "a &b c"), ("R&D; 5&6", "R&amp;D; 5&6")):
+            with self.subTest(title):
+                self.assertEqual(tk._md_cell(title), expected)
+
+    def test_a_resource_key_in_a_code_span_is_shown_as_written(self):
+        """A code span shows its text literally: a key keeps its one backslash, and only a table needs `\\|`."""
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("taskalisk_md_code", SCRIPT)
+        tk = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(tk)
+        meters = [{"name": "gpu", "slots": 2}]
+        self.assertEqual(tk._resources_cell(["src\\cache", "a|b", "x[1]<y>"], meters, "-", in_table=True),
+                         "`src\\cache`, `a\\|b`, `x[1]<y>`, `gpu*2`")
+        self.assertEqual(tk._resources_cell(["src\\cache", "a|b"], [], "-", in_table=False), "`src\\cache`, `a|b`")
+        self.assertEqual(tk._resources_cell(["a`b", "``c"], [], "-", in_table=False), "``a`b``, ``` ``c ```")
+        self.assertEqual(tk._resources_cell(["a\rb c\x1bd‮e"], [], "-", in_table=False), "`a b cde`")
+        self.assertEqual(tk._resources_cell([], [], "none", in_table=False), "none")
 
     def test_a_plain_title_renders_byte_for_byte_as_before(self):
         import importlib.util
