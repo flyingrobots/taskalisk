@@ -25,7 +25,10 @@ State shape:
    "patch_fail": bool,                                # every PATCH of an issue body fails (HTTP 502)
    "patch_fail_after": int,                           # that many PATCHes succeed, then every later one fails
    "issues_list_fail_message": str,                   # the REST issue list fails with this text; {GH_TOKEN}, {$NAME} (any variable) and {HOME} expand
-   "issues_list_drop_number": bool}                   # the REST issue list omits "number" (a malformed response)
+   "issues_list_drop_number": bool,                   # the REST issue list omits "number" (a malformed response)
+   "issues_list_pages": [["owner/repo#N", ...], ...], # the REST issue list as these pages; --paginate writes every one
+   "graphql_page_info": {...},                        # replaces the edit history's pageInfo as given
+   "record_env": [str, ...]}                          # appends these variables' values, JSON, to $FAKE_GH_LOG.env
 """
 import json, os, re, sys
 
@@ -100,6 +103,8 @@ def graphql(state, args):
     edits = None if state.get("graphql_null_edits") else {
         "pageInfo": {"hasNextPage": has_next, "endCursor": None if state.get("graphql_no_cursor") else ("0" if state.get("graphql_repeat_cursor") else str(start + page))},
         "nodes": [node(e) for e in chunk]}
+    if edits is not None and "graphql_page_info" in state:
+        edits["pageInfo"] = state["graphql_page_info"]
     out = {"data": {"repository": {"issue": {"body": it.get("graphql_body", it.get("body", "")), "userContentEdits": edits}}}}
     print(json.dumps(out))
 
@@ -107,6 +112,9 @@ def main(argv):
     with open(os.environ["FAKE_GH_LOG"], "a") as f:
         f.write(json.dumps(argv) + "\n")
     state = load()
+    if state.get("record_env"):
+        with open(os.environ["FAKE_GH_LOG"] + ".env", "a") as f:
+            f.write(json.dumps({k: os.environ.get(k) for k in state["record_env"]}) + "\n")
     if argv[:2] == ["repo", "view"]:
         print(state["home"]); return
     if argv[:2] == ["issue", "list"]:
@@ -148,6 +156,12 @@ def main(argv):
         if state.get("issues_list_fail_message"):
             message = state["issues_list_fail_message"].replace("{GH_TOKEN}", os.environ.get("GH_TOKEN", "")).replace("{HOME}", os.path.expanduser("~"))
             fail(re.sub(r"\{\$([A-Z_]+)\}", lambda m: os.environ.get(m.group(1), ""), message))
+        if "issues_list_pages" in state:
+            # Like the real gh, --paginate writes each page's array in turn.
+            pages = state["issues_list_pages"] if "--paginate" in argv else state["issues_list_pages"][:1]
+            for keys in pages:
+                print(json.dumps([issue_obj(state, k) for k in keys]))
+            return
         out = [issue_obj(state, k) for k, v in state["issues"].items() if k.lower().startswith(m.group(1).lower() + "#") and v["state"] == "open"]
         if state.get("issues_list_drop_number"):
             out = [{k: v for k, v in o.items() if k != "number"} for o in out]

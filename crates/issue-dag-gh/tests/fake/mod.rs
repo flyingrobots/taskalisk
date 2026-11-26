@@ -64,6 +64,18 @@ impl Fake {
     }
 }
 
+impl Fake {
+    /// For each run, the variables the state's `record_env` names, as `gh`
+    /// saw them (`null` when unset).
+    pub fn environments(&self) -> Vec<Value> {
+        fs::read_to_string(self.dir.join("log.env"))
+            .unwrap_or_default()
+            .lines()
+            .map(|line| serde_json::from_str(line).expect("a logged environment"))
+            .collect()
+    }
+}
+
 impl Drop for Fake {
     fn drop(&mut self) {
         let _ = fs::remove_dir_all(&self.dir);

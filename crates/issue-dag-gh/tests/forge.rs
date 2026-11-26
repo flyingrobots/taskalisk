@@ -683,3 +683,128 @@ fn c15_a_run_over_a_trusted_issue_reads_its_edit_history() {
         Ok(outcome)
     );
 }
+
+#[test]
+fn ob6_a_listing_reads_every_page_gh_paginates() {
+    let fake = Fake::new(&with(
+        &json!({"issues_list_pages": [["o/r#1", "o/r#3"], ["o/r#4"]]}),
+    ));
+    let forge = fake.forge("o/r");
+    assert_eq!(
+        forge.home_open_issues(),
+        Ok(Observed::Value(vec![
+            reference("o/r#1"),
+            reference("o/r#4")
+        ]))
+    );
+    assert_eq!(forge.failures(), Vec::new());
+}
+
+#[test]
+fn ob6_an_issue_listed_on_two_pages_makes_the_listing_unavailable() {
+    // GitHub's pages shift under a concurrent change: an issue seen twice
+    // means another may have been missed.
+    let fake = Fake::new(&with(
+        &json!({"issues_list_pages": [["o/r#1", "o/r#4"], ["o/r#4"]]}),
+    ));
+    let forge = fake.forge("o/r");
+    let slot = forge.home_open_issues().expect("never missing");
+    let error = failed(&forge, &slot);
+    assert_eq!(error.code(), "gh.response_invalid");
+    assert!(error.to_string().contains("o/r#4"), "{error}");
+}
+
+#[test]
+fn a_has_next_page_that_is_missing_or_not_a_boolean_is_refused() {
+    for page_info in [
+        json!({"endCursor": "2"}),
+        json!({"hasNextPage": "false", "endCursor": "2"}),
+        json!({"hasNextPage": null, "endCursor": "2"}),
+    ] {
+        let fake = Fake::new(&with(&json!({ "graphql_page_info": page_info })));
+        let forge = fake.forge("o/r");
+        let body = forge.body(&reference("o/r#1")).expect("never missing");
+        let error = failed(&forge, &body);
+        assert_eq!(error.code(), "gh.response_invalid", "{page_info}");
+        assert!(error.to_string().contains("hasNextPage"), "{error}");
+    }
+}
+
+#[test]
+fn gh_runs_without_a_terminal_colour_debug_or_prompts() {
+    let fake = Fake::new(&with(&json!({"record_env": [
+        "GH_FORCE_TTY", "CLICOLOR_FORCE", "GH_DEBUG", "DEBUG",
+        "GH_PROMPT_DISABLED", "NO_COLOR", "GH_NO_UPDATE_NOTIFIER", "GH_PAGER", "GH_HOST"
+    ]})));
+    // What the caller gives cannot turn the hardening off; the rest passes.
+    let forge = fake
+        .forge("o/r")
+        .env("GH_FORCE_TTY", "1")
+        .env("CLICOLOR_FORCE", "1")
+        .env("GH_DEBUG", "api")
+        .env("DEBUG", "1")
+        .env("GH_PROMPT_DISABLED", "")
+        .env("NO_COLOR", "")
+        .env("GH_PAGER", "less")
+        .env("GH_HOST", "example.com");
+    let _ = forge.home_open_pull_requests();
+    assert_eq!(
+        fake.environments(),
+        [json!({
+            "GH_FORCE_TTY": null, "CLICOLOR_FORCE": null, "GH_DEBUG": null, "DEBUG": null,
+            "GH_PROMPT_DISABLED": "1", "NO_COLOR": "1", "GH_NO_UPDATE_NOTIFIER": "1",
+            "GH_PAGER": "cat", "GH_HOST": "example.com"
+        })]
+    );
+}
+
+#[test]
+fn server_text_never_reaches_a_reason() {
+    let secret = "server-said-sekrit";
+    let prs = json!([{"number": 10, "isDraft": false, "closingIssuesReferences": [
+        {"number": 1, "repository": {"name": format!("{secret} x"), "owner": {"login": "o"}}}
+    ]}]);
+    let fake = Fake::new(&with(&json!({ "prs": prs })));
+    let forge = fake.forge("o/r");
+    let slot = forge.home_open_pull_requests().expect("never missing");
+    let reason = failed(&forge, &slot).to_string();
+    assert!(!reason.contains(secret), "{reason}");
+
+    let mut odd = state();
+    odd["issues"]["o/r#1"]["state"] = json!(secret);
+    let fake = Fake::new(&odd);
+    let forge = fake.forge("o/r");
+    let slot = forge.issue(&reference("o/r#1")).expect("never missing");
+    let error = failed(&forge, &slot);
+    assert_eq!(error.code(), "gh.response_invalid");
+    assert!(!error.to_string().contains(secret), "{error}");
+}
+
+#[test]
+fn a_draft_flag_that_is_not_a_boolean_is_unavailable_not_a_failure() {
+    for flag in [json!("maybe"), json!(null), json!(1)] {
+        let prs = json!([{"number": 10, "isDraft": flag, "isCrossRepository": false,
+                          "author": null, "closingIssuesReferences": []}]);
+        let fake = Fake::new(&with(&json!({ "prs": prs })));
+        let forge = fake.forge("o/r");
+        let Ok(Observed::Value(pulls)) = forge.home_open_pull_requests() else {
+            panic!("the list itself was read ({flag})");
+        };
+        assert_eq!(
+            pulls[0].draft,
+            Observed::Unavailable("pull request 10 has no boolean isDraft".to_owned()),
+            "{flag}"
+        );
+        assert_eq!(forge.failures(), Vec::new(), "{flag}");
+    }
+}
+
+#[test]
+fn an_empty_permission_is_unavailable_never_none() {
+    let fake = Fake::new(&with(&json!({"collaborators": {"o/r": {"dev": ""}}})));
+    let forge = fake.forge("o/r");
+    let slot = forge
+        .permission(&repo("o/r"), "dev")
+        .expect("never missing");
+    assert_eq!(failed(&forge, &slot).code(), "gh.response_invalid");
+}
