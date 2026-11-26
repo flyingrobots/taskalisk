@@ -253,6 +253,7 @@ fn a_record_that_contradicts_its_bundle_is_refused() {
         ),
         ("not_observed", json!({"value": []})),
         ("formats", json!(["issue-dag/3"])),
+        ("profile", json!("issue-dag-planning/3")),
     ] {
         let mut record = record_of(&example());
         record[member] = value;
