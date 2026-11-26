@@ -3,7 +3,6 @@
 
 use std::ffi::OsString;
 use std::fs;
-use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -29,13 +28,11 @@ impl Fake {
         fs::create_dir_all(dir.join("bin")).expect("a temporary directory");
         let script = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fake_gh.py");
         let script = script.canonicalize().expect("tests/fake_gh.py");
-        let gh = dir.join("bin/gh");
-        fs::write(
-            &gh,
-            format!("#!/bin/sh\nexec python3 '{}' \"$@\"\n", script.display()),
-        )
-        .expect("the gh wrapper");
-        fs::set_permissions(&gh, fs::Permissions::from_mode(0o755)).expect("an executable gh");
+        // A symlink, never a written file: Linux refuses to exec a file that
+        // any process holds open for writing, and a child forked by another
+        // test thread would hold a written gh open (ETXTBSY, #122). The
+        // checked-in fake is executable and names its own interpreter.
+        std::os::unix::fs::symlink(&script, dir.join("bin/gh")).expect("the gh link");
         fs::write(dir.join("state.json"), state.to_string()).expect("the state");
         fs::write(dir.join("log"), "").expect("the log");
         Self { dir }

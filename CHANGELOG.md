@@ -200,6 +200,13 @@ schema version under `Unreleased` is a draft and may change in place.
 
 ### Fixed
 
+- **The gh adapter's tests no longer fail on Linux with "Text file busy"** (flyingrobots/taskalisk#122).
+  Each forge test wrote its fake `gh` as a new executable file while other test threads spawned
+  processes. Linux refuses to run a file that any process holds open for writing, and a child
+  forked by another thread held it, so about 1 run in 25 failed (8 of 200 in
+  `rust:1.100.0-bookworm`). The fake `gh` is now a symlink to `tests/fake_gh.py`, which is
+  executable in git, so no test writes an executable. 200 runs: 0 failures.
+
 - **Review findings on the Rust graph core** (flyingrobots/taskalisk#105, merged before its review
   finished). Each fix has a test that failed before it. The planner no longer stops at the first
   lookup it cannot make. It reads every slot the rules reach, so neither the order of the roots
