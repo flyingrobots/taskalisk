@@ -48,6 +48,21 @@ schema version under `Unreleased` is a draft and may change in place.
   and `[bot]` suffix are matched without regard to case; a bundle with an `observations` member
   the bundle rules do not define is rejected.
 
+- **The gh adapter** (flyingrobots/taskalisk#56). A new crate, `crates/issue-dag-gh`, implements
+  the core's `Forge` port by running `gh` (an argument vector, never a shell string; `gh` on `PATH`
+  unless another program is configured). It makes the Python compiler's reads with its limits: the
+  REST issue list (`--paginate`, 1,000 issues) and issue, the body edit history in GraphQL (a page
+  that claims another without a cursor, a repeated cursor, or more than 1,000 pages is refused),
+  `gh pr list` with closing references (`--limit 500`), the collaborator permission and the first
+  CODEOWNERS file. It fails closed: a failed read, an answer in the wrong shape, or a list that
+  fills its limit is a `GhError` with the Python's code (`gh.command_failed`,
+  `gh.response_invalid`, `gh.list_limit_reached`), and its slot is answered unavailable, so the run
+  is incomplete and exits 2, never planned from an empty answer. HTTP 404 means "none" only for a
+  permission (not a collaborator) and a CODEOWNERS path; an issue that answers 404 is unavailable
+  (D10). Each slot is read once, and what was read replays through `RecordedForge`. Unlike the
+  Python, the body's edit history is read with the issue, before admission, and a pull request's
+  head repository is not observed.
+
 - **Repeated keys, warnings and refusal order in the specification** (flyingrobots/taskalisk#104).
   The vendored issue-dag specification now states the rulings the Rust core implements: no rule of
   sections 3 to 5 labels a repeated key, so labels never depend on line order, while its lines keep
