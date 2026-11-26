@@ -1,0 +1,12 @@
+{
+  "cites": [
+    "OB16",
+    "OB5",
+    "AD5"
+  ],
+  "id": "graph/ob16-least-of-two-permissions-roots-reversed",
+  "kind": "normative",
+  "level": "graph",
+  "source": "constructed from the rule text",
+  "title": "Of two missing permissions, the one on o/r comes first, whatever the logins, with the roots in the other order"
+}

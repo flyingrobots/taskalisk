@@ -159,6 +159,23 @@ schema version under `Unreleased` is a draft and may change in place.
   `--python` twin is now its disagreement note, what the compiler does, rather than the normative
   claim it disagrees with.
 
+- **Which lookup a run reports when several could not be made** (flyingrobots/taskalisk#117).
+  The vendored issue-dag specification states the rule the Rust core follows (new bundle rule
+  OB16): a run reads every slot the rules reach, reports a missing slot before an unavailable one,
+  and reports the least of each kind (missing slots by their path from `observations`,
+  unavailable ones by reason), so the order of the roots never changes the result. Corpus rule
+  CC6 gains the outcome `unusable` with the `missing` slot, and the `unavailable` reason of an
+  incomplete run in normative cases. The corpus gains 22 normative graph cases, `graph/ob16-*`,
+  each in both orders of its roots, and 16 `--python` twins (differences 25 and 26, compatibility
+  exceptions), digest `sha256:5d8d5e86…`. `issue-dag-core`: a `Missing` slot carries its path and
+  is ordered by it, and every unavailable draft flag S2 reads is read, the least reason reported,
+  instead of stopping at the first. `scripts/corpus/` replays a normative case or twin whose bundle
+  lacks a slot as `unusable`, and still refuses any other case with a lacking slot; its bundle
+  validator accepts an issue without a body (OB8, OB14) and a bundle without the home pull
+  requests (OB5, OB15), as the Rust reader does. The evaluation-record test of #118 now also
+  requires each `unusable` case to be refused for want of exactly its `missing` slot, and counts
+  both kinds.
+
 - **Document findings with stable codes** (flyingrobots/taskalisk#43). `issue-dag-core`
   judges a body with its issue's address, so rule X1 always applies, and returns findings: a stable
   code, a severity (error, or warning for the V10 advisory), the address as subject, and a message.

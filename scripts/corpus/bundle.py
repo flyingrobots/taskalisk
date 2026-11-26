@@ -101,7 +101,8 @@ def validate(bundle: Any) -> list[str]:
         if not isinstance(caps, dict) or not all(isinstance(k, str) and k and type(v) is int and v >= 1 for k, v in caps.items()):
             p.append("parameters.capacities: names to positive integers (OB3)")
     obs = bundle.get("observations")
-    if not _keys(p, "observations", obs, {"home_open_pull_requests", "issues", "permissions"}, {"home_open_issues", "codeowners"}):
+    # OB5: a bundle without the pull-request list is still a bundle; a run that reads it is unusable.
+    if not _keys(p, "observations", obs, {"issues", "permissions"}, {"home_open_pull_requests", "home_open_issues", "codeowners"}):
         if not isinstance(obs, dict):
             return p
     params = params if isinstance(params, dict) else {}
@@ -157,7 +158,8 @@ def validate(bundle: Any) -> list[str]:
         if not _in_scope(params, ref.split("#", 1)[0]):
             p.append(f"{where}: a reference outside the read scope is never read (OB8)")
         ok, it = _slot(p, where, slot)
-        if not ok or not _keys(p, where, it, {"address", "pull_request", "state", "state_reason", "author", "author_association", "body"}):
+        # OB8, OB14: `body` may be left out when the run does not read it.
+        if not ok or not _keys(p, where, it, {"address", "pull_request", "state", "state_reason", "author", "author_association"}, {"body"}):
             continue
         _ref(p, f"{where}.address", it["address"])
         if not isinstance(it["pull_request"], bool):
@@ -169,6 +171,8 @@ def validate(bundle: Any) -> list[str]:
         _actor(p, f"{where}.author", it["author"])
         if it["author_association"] is not None and not isinstance(it["author_association"], str):
             p.append(f"{where}.author_association: a string or null (OB8)")
+        if "body" not in it:
+            continue
         ok, body = _slot(p, f"{where}.body", it["body"])
         if ok and _keys(p, f"{where}.body", body, {"text", "editors"}):
             if not isinstance(body["text"], str):

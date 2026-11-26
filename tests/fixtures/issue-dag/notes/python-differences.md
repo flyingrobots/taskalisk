@@ -29,7 +29,9 @@ the amended rules C7 and V10 (`flyingrobots/taskalisk#104`) found
 differences 20, 21 and 22, and two more instances of differences 4 and 19.
 Also on 2026-11-26 the normative cases added for the amended rules I4, I5,
 D8, AD3, AD4 and CC6 (`flyingrobots/taskalisk#110`) found differences 23 and
-24; the compiler agrees with the amended AD3, AD4 and CC6.
+24; the compiler agrees with the amended AD3, AD4 and CC6. Also on
+2026-11-26 the normative cases added for bundle rule OB16
+(`flyingrobots/taskalisk#117`) found differences 25 and 26.
 
 None of these differences changes the verdict on any document in the
 [census of 2026-11-12](../evidence/2026-11-12-frontmatter-shapes.md): the
@@ -94,6 +96,8 @@ for its warnings.
 | 18 | A plan with a container | The container is reported with its children | The container is reported without its children: the compiler computes them but `containers_excluded`, and so the `container.excluded` finding, keeps only the identifier, number and title | W1 | defect |
 | 23 | An admitted pull request of `H` whose draft flag is not a boolean, and that closes no open node | The draft flag is not read (S2 reads it only for a linked pull request of an open node); the run is planned | Every admitted pull request that closes an issue must have a boolean draft flag; the run is incomplete | I4, I5, S2 | defect |
 | 24 | A document gives `.blocked_by` (or `.children`) twice, and the first line names an issue whose observation is unavailable | The repeated key contributes no reference: the issue is not read, and the run is invalid under C7 | The first line sets the key, its references are followed, and the run is incomplete | D8, C7, F1 | defect |
+| 25 | A bundle lacks a slot the run reads, and the run reaches another slot it cannot read, missing or unavailable | The run reads every slot it reaches; a missing slot is reported before an unavailable one, and the least missing slot is reported | The compiler stops at the first lookup it cannot make, whatever the order of the roots: an unavailable slot read first makes the run incomplete, and of two missing slots the first read is reported | OB16, OB5 | compatibility-exception |
+| 26 | An incomplete run (any number of unavailable slots) | The run is incomplete and reports the least of their reasons | The run is incomplete and reports no recorded reason | OB16, F1 | compatibility-exception |
 
 Difference 9 also contradicts `docs/frontmatter-model.md` in Taskalisk,
 which says a referenced issue without frontmatter becomes an opaque node. The
@@ -126,6 +130,19 @@ name the document's violation. The normative case
 `graph/d8-repeated-blocked-by-is-not-followed` shows it. Where every issue
 the first line names is available, both runs are invalid under C7; the
 Python's also reads and reports those issues.
+
+Differences 25 and 26 are compatibility exceptions. Their scope: which
+lookup a run reports when it cannot make several (bundle rule OB16). Where
+every slot the run reads is recorded, the outcome is the same; only a bundle
+that breaks OB14 has a missing slot, and only the corpus replays the Python
+against a bundle. The Python's offline forge answers an unavailable slot with
+one fixed failure, never the recorded reason, so that a reason such as
+`HTTP 404` cannot read as an observed answer; the Python therefore cannot
+report a reason. The normative cases `graph/ob16-*` show both, each with the
+roots in either order. The Python agrees with
+`graph/ob16-missing-issue-before-a-later-body`,
+`graph/ob16-missing-pull-requests-before-missing-issue` and
+`graph/ob16-least-of-two-permissions`: the slot it reads first is the least.
 
 ## Edge edit
 

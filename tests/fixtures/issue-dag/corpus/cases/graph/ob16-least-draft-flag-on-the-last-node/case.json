@@ -1,0 +1,17 @@
+{
+  "cites": [
+    "OB16",
+    "S2",
+    "I5"
+  ],
+  "disagreement": {
+    "classification": "compatibility-exception",
+    "difference": 26,
+    "note": "the compiler reports an incomplete run without the reason recorded in any slot"
+  },
+  "id": "graph/ob16-least-draft-flag-on-the-last-node",
+  "kind": "normative",
+  "level": "graph",
+  "source": "constructed from the rule text",
+  "title": "Of two unavailable draft flags, the least reason is reported, on the later node"
+}
