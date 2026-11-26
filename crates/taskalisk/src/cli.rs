@@ -51,7 +51,7 @@ const RETENTION: usize = 50;
 /// The declared input of a plan: the issues discovery observed.
 const OBSERVATIONS_INPUT: &str = "github:issues";
 /// Every token variable `gh help environment` names.
-const SECRETS: [&str; 4] = [
+pub(crate) const SECRETS: [&str; 4] = [
     "GH_TOKEN",
     "GITHUB_TOKEN",
     "GH_ENTERPRISE_TOKEN",
@@ -420,6 +420,9 @@ pub fn main(args: &[OsString], cwd: &Path, stdout: &mut dyn Write, stderr: &mut 
         let failure = usage("an argument is not UTF-8");
         return parley::startup_failed(TOOL, VERSION, &failure, human_asked, &secrets, stderr);
     }
+    if raw.first().is_some_and(|c| c == "doctor") {
+        return crate::doctor::main(&raw[1..], cwd, &secrets, secret_names, stdout, stderr);
+    }
     let arguments = match parse(&raw) {
         Ok(arguments) => arguments,
         Err(failure) => {
@@ -558,7 +561,7 @@ fn resolved(arguments: &Arguments, cwd: &Path, repo_dir: &Path) -> Value {
 }
 
 /// `path` relative to `base`, both resolved, as `os.path.relpath` writes it.
-fn relative(path: &Path, base: &Path) -> String {
+pub(crate) fn relative(path: &Path, base: &Path) -> String {
     let resolve = |p: &Path| p.canonicalize().unwrap_or_else(|_| p.to_owned());
     let (path, base) = (resolve(path), resolve(base));
     let to: Vec<Component<'_>> = path.components().collect();
@@ -604,7 +607,7 @@ fn help(run: &mut Run<'_>) {
 }
 
 /// The version a schema document pins in `_schema`.
-fn schema_version(text: &str) -> String {
+pub(crate) fn schema_version(text: &str) -> String {
     serde_json::from_str::<Value>(text)
         .ok()
         .and_then(|doc| {

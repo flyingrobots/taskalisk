@@ -1,0 +1,88 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://flyingrobots.dev/taskalisk/schemas/taskalisk.doctor/1.0.0",
+  "title": "Taskalisk doctor summary",
+  "description": "The first result of doctor --bundle: the outcome of planning the recorded bundle, how many error and warning findings the taskalisk.doctor.issue lines after it carry, and whether the bundle is ok. ok is false when there is an error finding, or a warning finding under --strict; the run then exits 1.",
+  "type": "object",
+  "required": [
+    "event",
+    "t",
+    "seq",
+    "run",
+    "home",
+    "outcome",
+    "errors",
+    "warnings",
+    "strict",
+    "ok",
+    "_schema"
+  ],
+  "properties": {
+    "event": {
+      "const": "doctor"
+    },
+    "t": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "POSIX time in milliseconds (Parley spec 1.3)."
+    },
+    "seq": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "The run's single counter (Parley spec 1.3)."
+    },
+    "run": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The execution this line belongs to (Parley spec 2.1)."
+    },
+    "home": {
+      "type": "string",
+      "minLength": 3,
+      "description": "The bundle's home repository, owner/repo."
+    },
+    "outcome": {
+      "enum": [
+        "planned",
+        "invalid",
+        "incomplete"
+      ],
+      "description": "The outcome of planning the bundle (profile rule F1): planned (warnings only), invalid (an error finding), or incomplete (a reference resolves to nothing, for the cause the bundle records)."
+    },
+    "errors": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "The error findings over every taskalisk.doctor.issue line."
+    },
+    "warnings": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "The warning findings over every taskalisk.doctor.issue line."
+    },
+    "strict": {
+      "type": "boolean",
+      "description": "Whether --strict was given: a warning then counts as an error for ok and the exit status."
+    },
+    "ok": {
+      "type": "boolean",
+      "description": "True when there is no error finding, and under --strict no warning finding either."
+    },
+    "_schema": {
+      "type": "object",
+      "required": [
+        "id",
+        "version"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "const": "taskalisk.doctor"
+        },
+        "version": {
+          "const": "1.0.0",
+          "description": "Full validation is against the schema for this exact id and version (Parley spec 4.5)."
+        }
+      }
+    }
+  }
+}

@@ -202,9 +202,7 @@ fn parse(bytes: &[u8]) -> Vec<Value> {
     std::str::from_utf8(bytes)
         .expect("UTF-8")
         .lines()
-        .map(|line| {
-            serde_json::from_str(line).unwrap_or_else(|e| panic!("not JSON ({e}): {line}"))
-        })
+        .map(|line| serde_json::from_str(line).unwrap_or_else(|e| panic!("not JSON ({e}): {line}")))
         .collect()
 }
 
@@ -235,8 +233,7 @@ fn validate(lines: &[Value]) {
 
 /// The sections every canonical template opens with, so a task body draws
 /// no body warning.
-const SECTIONS: &str =
-    "\n## Outcome\n\nThe thing works.\n\n## Scope\n\n- The thing.\n\n## Acceptance\n\n- [ ] It works.\n";
+const SECTIONS: &str = "\n## Outcome\n\nThe thing works.\n\n## Scope\n\n- The thing.\n\n## Acceptance\n\n- [ ] It works.\n";
 
 /// A frontmatter document at `id` with the entry `lines`, then `rest`.
 fn document(id: &str, lines: &str, rest: &str) -> String {
@@ -302,7 +299,11 @@ fn bundle(roots: &[&str], issues: Vec<(String, Value)>, logins: &[(&str, Value)]
 
 /// One well-written task: no finding at all.
 fn clean() -> Value {
-    bundle(&["o/r#1"], vec![issue("o/r#1", &task("o/r#1", ""), &[])], &[])
+    bundle(
+        &["o/r#1"],
+        vec![issue("o/r#1", &task("o/r#1", ""), &[])],
+        &[],
+    )
 }
 
 /// One task with no estimate: one warning (`taskalisk.estimate-missing`).
@@ -315,27 +316,16 @@ fn one_warning() -> Value {
     bundle(&["o/r#1"], vec![issue("o/r#1", &text, &[])], &[])
 }
 
-/// One error (`profile.X1`: a copied `.id`) and one warning (the estimate
-/// the other task lacks).
+/// One task with one error (`profile.X1`: a copied `.id`) and one warning
+/// (`taskalisk.estimate-missing`). A single task keeps the graph's own
+/// warnings (isolation, density) out.
 fn one_error_one_warning() -> Value {
-    let copied = document(
+    let text = document(
         "o/r#7",
-        ".kind: task\n.type: feature\n.blocked_by: []\n.size_hours: 2\n",
-        SECTIONS,
-    );
-    let unestimated = document(
-        "o/r#2",
         ".kind: task\n.type: feature\n.blocked_by: []\n",
         SECTIONS,
     );
-    bundle(
-        &["o/r#1", "o/r#2"],
-        vec![
-            issue("o/r#1", &copied, &[]),
-            issue("o/r#2", &unestimated, &[]),
-        ],
-        &[],
-    )
+    bundle(&["o/r#1"], vec![issue("o/r#1", &text, &[])], &[])
 }
 
 /// Document findings: a task over eight hours (`format.V10`), and a
@@ -464,10 +454,20 @@ fn every_finding_family_is_printed_grouped_by_issue() {
         (
             "document",
             documents(),
-            &["o/r#1 format.V10", "o/r#2 format.V2"],
+            // Two tasks and one edge: a density of 1, above the band.
+            &[
+                "o/r#1 format.V10",
+                "o/r#2 format.V2",
+                "(plan) taskalisk.edge-density",
+            ],
             1,
         ),
-        ("profile", profile(), &["o/r#1 profile.D3"], 1),
+        (
+            "profile",
+            profile(),
+            &["o/r#1 profile.D3", "o/r#1 profile.X3"],
+            1,
+        ),
         (
             "body",
             bodies(),
@@ -498,7 +498,17 @@ fn every_finding_family_is_printed_grouped_by_issue() {
             ],
             0,
         ),
-        ("trust", trust(), &["o/r#2 taskalisk.untrusted-editor"], 0),
+        (
+            "trust",
+            trust(),
+            // #2 stays in the graph as an opaque blocker: one edge, two
+            // nodes, a density of 1.
+            &[
+                "o/r#2 taskalisk.untrusted-editor",
+                "(plan) taskalisk.edge-density",
+            ],
+            0,
+        ),
         ("cause", cause(), &["gone/r#2 profile.D11"], 1),
     ];
     for (name, bundle, expected, status) in cases {
@@ -511,9 +521,7 @@ fn every_finding_family_is_printed_grouped_by_issue() {
         let summary = run.summary();
         let errors = expected
             .iter()
-            .filter(|f| {
-                f.contains(" format.V2") || f.contains(" profile.")
-            })
+            .filter(|f| f.contains(" format.V2") || f.contains(" profile."))
             .count();
         assert_eq!(summary["errors"], errors, "{name}: {}", run.explain());
         assert_eq!(
@@ -578,7 +586,7 @@ fn an_error_exits_1_and_a_warning_only_under_strict() {
     assert_eq!(run.status(), 1, "{}", run.explain());
     assert_eq!(
         run.findings(),
-        ["o/r#1 profile.X1", "o/r#2 taskalisk.estimate-missing"],
+        ["o/r#1 profile.X1", "o/r#1 taskalisk.estimate-missing"],
         "{}",
         run.explain()
     );
@@ -730,14 +738,24 @@ fn human_output_is_grouped_by_issue_and_escapes_github_text() {
     let (three, four, plan) = (at("o/r#3"), at("o/r#4"), at("the plan"));
     assert!(three < four && four < plan, "{text}");
     assert!(
-        lines[three + 1].trim_start().starts_with("warning taskalisk.redundant-edge"),
+        lines[three + 1]
+            .trim_start()
+            .starts_with("warning taskalisk.redundant-edge"),
         "{text}"
     );
     assert!(
-        lines[four + 1].trim_start().starts_with("warning taskalisk.small-container"),
+        lines[four + 1]
+            .trim_start()
+            .starts_with("warning taskalisk.small-container"),
         "{text}"
     );
-    assert!(text.lines().next().expect("a line").contains("3 warning(s)"), "{text}");
+    assert!(
+        text.lines()
+            .next()
+            .expect("a line")
+            .contains("3 warning(s)"),
+        "{text}"
+    );
     for line in &lines {
         assert!(!line.starts_with('{'), "a JSON line under --human: {text}");
     }
@@ -760,7 +778,12 @@ fn doctor_refuses_arguments_it_cannot_honour() {
     ] {
         let run = fixture.run("work", args);
         assert_eq!(run.status(), 3, "{args:?}: {}", run.explain());
-        assert_eq!(run.stderr()[0]["code"], "startup.arguments_invalid");
+        // With --human the one line is prose; it names the code either way.
+        assert!(
+            String::from_utf8_lossy(&run.output.stderr).contains("startup.arguments_invalid"),
+            "{args:?}: {}",
+            run.explain()
+        );
         assert!(run.output.stdout.is_empty(), "{args:?}: {}", run.explain());
     }
     let file = fixture.bundle("clean.json", &clean());
