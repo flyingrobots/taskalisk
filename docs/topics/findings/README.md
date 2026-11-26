@@ -657,13 +657,13 @@ rule [G5](../../../tests/fixtures/issue-dag/profiles/issue-dag-planning-2.md#5-t
 removes it, because a longer path of `.blocked_by` edges between open nodes
 already orders the two issues. The warning's subject is the dependent, whose
 `.blocked_by` declares the edge; it concerns the prerequisite. Its detail is
-the path that implies the edge: the shortest path through the reduced graph,
-from the prerequisite to the dependent, both included. The Python compiler
-reports the same edge as `edge.redundant`.
+the node the edge is implied via: the first child of the prerequisite, in the
+text order of references (so `o/r#10` comes before `o/r#2`), other than the
+dependent, from which the dependent is reachable. The Python compiler reports
+the same edge as `edge.redundant`, with the same `implied_via`.
 
 In a plan where `o/r#2` is blocked by `o/r#1` and `o/r#3` by both, `o/r#3`
-receives `taskalisk.redundant-edge` concerning `o/r#1`, with the path
-`o/r#1`, `o/r#2`, `o/r#3`.
+receives `taskalisk.redundant-edge` concerning `o/r#1`, implied via `o/r#2`.
 
 To fix: nothing is required; the plan already ignores the edge. Keep it as
 evidence, or remove `o/r#1` from `o/r#3`'s `.blocked_by` if it adds nothing.

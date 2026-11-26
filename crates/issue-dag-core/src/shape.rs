@@ -7,8 +7,10 @@
 //! warnings never make a run invalid. [`shape_warnings`] reads them from a
 //! [`Graph`] that [`crate::plan`] returned.
 
+use std::collections::BTreeMap;
+
 use crate::finding::{Code, Finding, Severity};
-use crate::plan::Graph;
+use crate::plan::{Edge, Graph, Indexed};
 use crate::reference::IssueRef;
 
 /// Declares [`ShapeWarning`], its code and message, its list
@@ -85,15 +87,16 @@ pub struct ShapeFinding {
 ///
 /// - `taskalisk.redundant-edge`, for each edge the reduction removes (G5):
 ///   the subject is the dependent, whose `.blocked_by` declares the edge,
-///   the finding concerns the prerequisite, and the detail is the path
-///   through the reduced graph that implies the edge.
+///   the finding concerns the prerequisite, and the detail is the node the
+///   edge is implied via ([`Detail::ImpliedVia`]).
 #[must_use]
 pub fn shape_warnings(graph: &Graph) -> Vec<ShapeFinding> {
     let mut found = Vec::new();
+    let mut via = Via::of(graph);
     for edge in &graph.redundant {
         found.push(ShapeFinding {
             finding: finding(ShapeWarning::RedundantEdge, &edge.to, Some(&edge.from)),
-            detail: Detail::ImpliedVia(edge.from.clone()),
+            detail: Detail::ImpliedVia(via.of_edge(edge)),
         });
     }
     found.sort_by(|a, b| a.finding.cmp(&b.finding));
@@ -108,4 +111,76 @@ fn finding(warning: ShapeWarning, subject: &IssueRef, concerns: Option<&IssueRef
         concerns.cloned(),
         warning.message(),
     )
+}
+
+/// What each open node reaches, built once for a graph, and the children of
+/// each prerequisite in the text order of their references, built when
+/// first asked for: enough to name the node each redundant edge is implied
+/// via without a search per edge.
+struct Via {
+    indexed: Indexed,
+    position: BTreeMap<IssueRef, usize>,
+    /// For each open node, by position, a bit set of the nodes it reaches.
+    descendants: Vec<Vec<u64>>,
+    /// The children of a node, by position, in reference text order.
+    sorted: BTreeMap<usize, Vec<usize>>,
+}
+
+impl Via {
+    /// The descendant sets of `graph`'s open nodes, over all its edges, in
+    /// reverse topological order. Empty when nothing is redundant, which
+    /// includes a graph with a cycle (G5 reduces only an acyclic one).
+    fn of(graph: &Graph) -> Self {
+        let indexed = Indexed::of(graph);
+        let mut descendants = Vec::new();
+        if !graph.redundant.is_empty() {
+            let (order, _) = indexed.kahn();
+            let words = indexed.ids.len().div_ceil(64);
+            descendants = vec![vec![0_u64; words]; indexed.ids.len()];
+            for &u in order.iter().rev() {
+                let mut set = vec![0_u64; words];
+                for &c in &indexed.children[u] {
+                    set[c / 64] |= 1 << (c % 64);
+                    for (word, child_word) in set.iter_mut().zip(&descendants[c]) {
+                        *word |= child_word;
+                    }
+                }
+                descendants[u] = set;
+            }
+        }
+        let position = indexed
+            .ids
+            .iter()
+            .enumerate()
+            .map(|(i, id)| (id.clone(), i))
+            .collect();
+        Self {
+            indexed,
+            position,
+            descendants,
+            sorted: BTreeMap::new(),
+        }
+    }
+
+    /// The node the redundant `edge` is implied via: the first child of its
+    /// prerequisite, in the text order of references, other than its
+    /// dependent, that reaches its dependent. The Python compiler picks its
+    /// `implied_via` so. A redundant edge always has one; if it had none,
+    /// the prerequisite itself is named.
+    fn of_edge(&mut self, edge: &Edge) -> IssueRef {
+        let (Some(&u), Some(&v)) = (self.position.get(&edge.from), self.position.get(&edge.to))
+        else {
+            return edge.from.clone();
+        };
+        let indexed = &self.indexed;
+        let children = self.sorted.entry(u).or_insert_with(|| {
+            let mut children = indexed.children[u].clone();
+            children.sort_by_cached_key(|&c| indexed.ids[c].to_string());
+            children
+        });
+        children
+            .iter()
+            .find(|&&w| w != v && self.descendants[w][v / 64] & (1 << (v % 64)) != 0)
+            .map_or_else(|| edge.from.clone(), |&w| self.indexed.ids[w].clone())
+    }
 }

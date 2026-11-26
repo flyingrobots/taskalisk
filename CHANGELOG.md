@@ -224,8 +224,11 @@ schema version under `Unreleased` is a draft and may change in place.
   after the body warnings: Taskalisk's advisories from the skill's doctrine on graph health, which
   never make a run invalid. Its first code, `taskalisk.redundant-edge`, is given once per edge the
   transitive reduction removes (G5): the subject is the dependent, the finding concerns the
-  prerequisite, and its detail is the shortest path through the reduced graph that implies the
-  edge. The Python compiler reports the same edge as `edge.redundant`.
+  prerequisite, and its detail is the node the edge is implied via: the first child of the
+  prerequisite, in reference text order, that reaches the dependent, the Python compiler's
+  `implied_via` for the same edge, `edge.redundant`. The descendant sets are built once, so the
+  4,998 redundant edges of a 5,000-task chain whose every task is also blocked by its first take
+  well under a second; a `perf_` test guards it, and the CI perf guard now expects 7.
 
 - **A provenance check for the vendored Parley writer** (flyingrobots/taskalisk#77).
   `scripts/check_vendored_writer.py` fetches the writer from flyingrobots/parley at the pinned
