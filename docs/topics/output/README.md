@@ -212,8 +212,7 @@ it emits: the result document in the 1.x shape, built from its own lines, writte
 surrogate pairs). The schema requires the field, so it is always present. It equals the Python's
 hash only when that document holds no intended difference and no gap: no frontmatter finding (whose
 message is prose the core writes as fixed text, one per rule), no untrusted issue or pull request
-(whose trust reasons the core does not keep), a compiled graph (a cycle or an unknown prerequisite
-leaves out what discovery read), and a display input that supplies the titles, URLs and branches
+(whose trust reasons the core does not keep), and a display input that supplies the titles, URLs and branches
 (flyingrobots/taskalisk#31 fills it from the adapters). Otherwise it is a different, equally
 deterministic hash of a different document. Compare `artifact_hash` values from one implementation
 only. The parity tests (`crates/taskalisk/tests/parity.rs`) assert equality where it holds and,
