@@ -9,7 +9,8 @@ use std::fs;
 use std::path::Path;
 
 use issue_dag_core::{
-    BODY_WARNINGS, CODES, Finding, IssueRef, LABELS, Label, PROFILE_RULES, Severity, code, findings,
+    BODY_WARNINGS, CODES, Finding, IssueRef, LABELS, Label, PLAN_WARNINGS, PROFILE_RULES, Severity,
+    code, findings,
 };
 
 /// Marker text placed in the values of every fixture.
@@ -241,7 +242,8 @@ fn codes_are_stable_strings_one_per_label() {
 /// `CODES` is the one public catalogue: the document codes in `LABELS`
 /// order with their severities, then the planning profile's in
 /// `PROFILE_RULES` order, all errors, then Taskalisk's body warnings in
-/// `BODY_WARNINGS` order (flyingrobots/taskalisk#48), each code once.
+/// `BODY_WARNINGS` order (flyingrobots/taskalisk#48), then its plan warnings in
+/// `PLAN_WARNINGS` order (flyingrobots/taskalisk#61), each code once.
 #[test]
 fn codes_catalogue_registers_every_finding_family() {
     let expected: Vec<(&str, Severity)> = LABELS
@@ -256,6 +258,7 @@ fn codes_catalogue_registers_every_finding_family() {
         })
         .chain(PROFILE_RULES.iter().map(|r| (r.code(), Severity::Error)))
         .chain(BODY_WARNINGS.iter().map(|w| (w.code(), Severity::Warning)))
+        .chain(PLAN_WARNINGS.iter().map(|c| (*c, Severity::Warning)))
         .collect();
     assert_eq!(CODES, expected.as_slice());
     let mut distinct: Vec<&str> = CODES.iter().map(|(c, _)| *c).collect();
