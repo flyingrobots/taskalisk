@@ -347,9 +347,9 @@ struct Document {
     reading: Reading,
 }
 
-/// For each issue, the draft flags of the admitted pull requests that
-/// close it (S1).
-type Linked = BTreeMap<IssueRef, Vec<bool>>;
+/// For each issue, the draft slots of the admitted pull requests that close
+/// it (S1). A slot is read only where S2 needs it (I5).
+type Linked = BTreeMap<IssueRef, Vec<Observed<bool>>>;
 
 /// The closure of a run (D2): every reference visited, and the documents
 /// that name each one.
@@ -410,11 +410,11 @@ impl<'a, F: Forge + ?Sized> Run<'a, F> {
         let closure = self.closure(seeds, has_roots)?;
         let mut assembly = Assembly::new(&closure, untrusted_pull_requests);
         assembly.prerequisites();
-        assembly.statuses(&linked, &self.parameters.home);
+        assembly.statuses(&linked, &self.parameters.home)?;
         Ok(assembly.outcome())
     }
 
-    /// I4 and AD9: for each issue, the draft flags of the admitted pull
+    /// I4 and AD9: for each issue, the draft slots of the admitted pull
     /// requests that close it; and the numbers of those not admitted.
     fn pull_requests(&mut self) -> Result<(Linked, BTreeSet<u64>), Undecided> {
         let mut linked = Linked::new();
@@ -425,9 +425,8 @@ impl<'a, F: Forge + ?Sized> Run<'a, F> {
                 continue;
             }
             if self.admission.pull_request_admitted(&pull, home)? {
-                let draft = value(pull.draft.clone())?;
                 for closed in pull.closes {
-                    linked.entry(closed).or_default().push(draft);
+                    linked.entry(closed).or_default().push(pull.draft.clone());
                 }
             } else {
                 untrusted.insert(pull.number);
@@ -655,16 +654,22 @@ impl<'c> Assembly<'c> {
     }
 
     /// S1 and S2: the status of each open node, from the draft flags of the
-    /// admitted pull requests that close each issue.
-    fn statuses(&mut self, linked: &Linked, home: &Repo) {
+    /// admitted pull requests that close it. Those flags are read here, and
+    /// only here: an unavailable one makes the run incomplete (I5).
+    fn statuses(&mut self, linked: &Linked, home: &Repo) -> Result<(), Undecided> {
         for (id, node) in &mut self.graph.nodes {
             if node.complete {
                 continue;
             }
-            let drafts: &[bool] = if Repo::of(id) == *home && !node.untrusted {
-                linked.get(id).map_or(&[], Vec::as_slice)
+            let drafts: Vec<bool> = if Repo::of(id) == *home && !node.untrusted {
+                linked
+                    .get(id)
+                    .into_iter()
+                    .flatten()
+                    .map(|slot| value(slot.clone()))
+                    .collect::<Result<_, _>>()?
             } else {
-                &[]
+                Vec::new()
             };
             node.status = Some(if drafts.iter().any(|draft| !draft) {
                 NodeStatus::InReview
@@ -681,23 +686,32 @@ impl<'c> Assembly<'c> {
                 }
             });
         }
+        Ok(())
     }
 
     /// G4, G5, Q1 and F1.
     fn outcome(mut self) -> Outcome {
-        for node in cyclic(&self.graph) {
-            self.finding(&node, Rule::G4, None);
+        let indexed = Indexed::of(&self.graph);
+        let (order, cyclic) = indexed.kahn();
+        for node in &cyclic {
+            self.finding(node, Rule::G4, None);
         }
         let unresolved = self
             .findings
             .iter()
             .any(|f| matches!(f.rule, Rule::X3 | Rule::G4));
+        let redundant = if cyclic.is_empty() {
+            indexed.redundant(&order)
+        } else {
+            BTreeSet::new()
+        };
         let mut graph = self.graph;
-        graph.redundant = redundant(&graph.edges);
+        graph.redundant = redundant;
+        let targets: BTreeSet<&IssueRef> = graph.edges.iter().map(|e| &e.to).collect();
         graph.ready = graph
             .nodes
             .iter()
-            .filter(|(id, n)| !n.complete && !graph.edges.iter().any(|e| e.to == **id))
+            .filter(|(id, n)| !n.complete && !targets.contains(id))
             .map(|(id, _)| id.clone())
             .collect();
         let findings = self.findings;
@@ -712,76 +726,113 @@ impl<'c> Assembly<'c> {
     }
 }
 
-/// G4: the open nodes left after repeatedly removing every open node with no
-/// incoming edge.
-fn cyclic(graph: &Graph) -> BTreeSet<IssueRef> {
-    let mut left: BTreeSet<&IssueRef> = graph
-        .nodes
-        .iter()
-        .filter(|(_, n)| !n.complete)
-        .map(|(id, _)| id)
-        .collect();
-    loop {
-        let sources: Vec<&IssueRef> = left
-            .iter()
-            .copied()
-            .filter(|id| {
-                !graph
-                    .edges
-                    .iter()
-                    .any(|e| e.to == **id && left.contains(&e.from))
-            })
-            .collect();
-        if sources.is_empty() {
-            return left.into_iter().cloned().collect();
-        }
-        for id in sources {
-            left.remove(id);
-        }
-    }
+/// The open nodes and the edges between them, by position, for Kahn's
+/// algorithm (G4) and the reduction (G5).
+struct Indexed {
+    ids: Vec<IssueRef>,
+    children: Vec<Vec<usize>>,
+    in_degree: Vec<usize>,
 }
 
-/// G5: the edges `(u, v)` for which another path leads from `u` to `v`.
-fn redundant(edges: &BTreeSet<Edge>) -> BTreeSet<Edge> {
-    let mut children: BTreeMap<&IssueRef, Vec<&IssueRef>> = BTreeMap::new();
-    for e in edges {
-        children.entry(&e.from).or_default().push(&e.to);
-    }
-    let reaches = |start: &IssueRef, target: &IssueRef| {
-        let mut stack = vec![start];
-        let mut seen = BTreeSet::new();
-        while let Some(u) = stack.pop() {
-            if u == target {
-                return true;
-            }
-            if seen.insert(u) {
-                stack.extend(children.get(u).into_iter().flatten().copied());
+impl Indexed {
+    fn of(graph: &Graph) -> Self {
+        let ids: Vec<IssueRef> = graph
+            .nodes
+            .iter()
+            .filter(|(_, n)| !n.complete)
+            .map(|(id, _)| id.clone())
+            .collect();
+        let position: BTreeMap<&IssueRef, usize> =
+            ids.iter().enumerate().map(|(i, id)| (id, i)).collect();
+        let mut children = vec![Vec::new(); ids.len()];
+        let mut in_degree = vec![0; ids.len()];
+        for edge in &graph.edges {
+            // Every edge joins two open nodes (G3); `edges` holds each once.
+            if let (Some(&from), Some(&to)) = (position.get(&edge.from), position.get(&edge.to)) {
+                children[from].push(to);
+                in_degree[to] += 1;
             }
         }
-        false
-    };
-    edges
-        .iter()
-        .filter(|e| {
-            children
-                .get(&e.from)
-                .into_iter()
-                .flatten()
-                .any(|w| *w != &e.to && reaches(w, &e.to))
-        })
-        .cloned()
-        .collect()
+        Self {
+            ids,
+            children,
+            in_degree,
+        }
+    }
+
+    /// Kahn's algorithm: the open nodes in a topological order, and (G4)
+    /// those left after repeatedly removing every node with no incoming
+    /// edge: the members of every cycle and every node downstream of one.
+    fn kahn(&self) -> (Vec<usize>, BTreeSet<IssueRef>) {
+        let mut in_degree = self.in_degree.clone();
+        let mut sources: Vec<usize> = (0..self.ids.len()).filter(|&i| in_degree[i] == 0).collect();
+        let mut order = Vec::with_capacity(self.ids.len());
+        while let Some(u) = sources.pop() {
+            order.push(u);
+            for &v in &self.children[u] {
+                in_degree[v] -= 1;
+                if in_degree[v] == 0 {
+                    sources.push(v);
+                }
+            }
+        }
+        let left = (0..self.ids.len())
+            .filter(|&i| in_degree[i] > 0)
+            .map(|i| self.ids[i].clone())
+            .collect();
+        (order, left)
+    }
+
+    /// G5, for an acyclic graph with this topological order: `(u, v)` is
+    /// redundant when `v` descends from another child of `u`. Descendant
+    /// sets are bit sets built in reverse topological order.
+    fn redundant(&self, order: &[usize]) -> BTreeSet<Edge> {
+        let words = self.ids.len().div_ceil(64);
+        let mut descendants = vec![vec![0_u64; words]; self.ids.len()];
+        for &u in order.iter().rev() {
+            let mut set = vec![0_u64; words];
+            for &c in &self.children[u] {
+                set[c / 64] |= 1 << (c % 64);
+                for (word, child_word) in set.iter_mut().zip(&descendants[c]) {
+                    *word |= child_word;
+                }
+            }
+            descendants[u] = set;
+        }
+        let mut redundant = BTreeSet::new();
+        for (u, children) in self.children.iter().enumerate() {
+            // What the children of `u` reach; a child is never its own
+            // descendant in an acyclic graph.
+            let mut below = vec![0_u64; words];
+            for &c in children {
+                for (word, child_word) in below.iter_mut().zip(&descendants[c]) {
+                    *word |= child_word;
+                }
+            }
+            for &v in children {
+                if below[v / 64] & (1 << (v % 64)) != 0 {
+                    redundant.insert(Edge {
+                        from: self.ids[u].clone(),
+                        to: self.ids[v].clone(),
+                    });
+                }
+            }
+        }
+        redundant
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use std::collections::{BTreeMap, BTreeSet};
 
-    use super::{NodeStatus, Outcome, plan};
+    use std::time::{Duration, Instant};
+
+    use super::{Edge, NodeStatus, Outcome, plan};
     use crate::forge::{Observations, RecordedForge};
     use crate::observation::{
-        Actor, Body, Issue, IssueState, Observed, Parameters, ReadScope, Repo, TRUST_POLICY,
-        TrustParameters,
+        Actor, Body, Issue, IssueState, Observed, Parameters, PullRequest, ReadScope, Repo,
+        TRUST_POLICY, TrustParameters,
     };
     use crate::reference::IssueRef;
 
@@ -851,5 +902,159 @@ mod tests {
         };
         let outcome = plan(&parameters(&["o/r#1"]), &RecordedForge::new(&observations));
         assert!(outcome.is_err(), "got {outcome:?}");
+    }
+
+    /// The body of an open task `o/r#n` with these prerequisites.
+    fn task(n: u32, blocked_by: &[u32]) -> String {
+        let items: Vec<String> = blocked_by.iter().map(|b| format!("o/r#{b}")).collect();
+        format!(
+            "```yaml\n.dag: issue-dag/2\n.id: o/r#{n}\n.kind: task\n.type: feature\n.blocked_by: [{}]\n```\n",
+            items.join(", ")
+        )
+    }
+
+    fn tasks(bodies: Vec<(u32, String)>) -> Observations {
+        Observations {
+            home_open_pull_requests: Some(Observed::Value(Vec::new())),
+            issues: bodies
+                .into_iter()
+                .map(|(n, body)| {
+                    let address = format!("o/r#{n}");
+                    (reference(&address), owned_issue(&address, &body))
+                })
+                .collect(),
+            ..Observations::default()
+        }
+    }
+
+    /// The bound the large graphs below must plan within, in a debug build.
+    const LARGE_GRAPH_BOUND: Duration = Duration::from_secs(1);
+    const LARGE: u32 = 5_000;
+
+    #[test]
+    fn a_chain_of_5000_tasks_plans_within_the_bound() {
+        let observations = tasks(
+            (1..=LARGE)
+                .map(|n| {
+                    let before: Vec<u32> = (n > 1).then(|| n - 1).into_iter().collect();
+                    (n, task(n, &before))
+                })
+                .collect(),
+        );
+        let root = format!("o/r#{LARGE}");
+        let start = Instant::now();
+        let outcome = plan(&parameters(&[&root]), &RecordedForge::new(&observations));
+        let took = start.elapsed();
+        let Ok(Outcome::Planned { graph, .. }) = outcome else {
+            panic!("expected a plan, got {outcome:?}");
+        };
+        assert_eq!(graph.nodes.len(), LARGE as usize);
+        assert_eq!(graph.edges.len(), LARGE as usize - 1);
+        assert!(graph.redundant.is_empty());
+        assert_eq!(graph.ready, BTreeSet::from([reference("o/r#1")]));
+        assert!(took < LARGE_GRAPH_BOUND, "a chain took {took:?}");
+    }
+
+    #[test]
+    fn a_wide_graph_of_5000_tasks_plans_within_the_bound() {
+        // o/r#1 blocks every middle task; the sink waits on all of them and
+        // on o/r#1 too, an edge the reduction removes (G5).
+        let sink = LARGE + 2;
+        let mut bodies: Vec<(u32, String)> = vec![(1, task(1, &[]))];
+        bodies.extend((2..=LARGE + 1).map(|n| (n, task(n, &[1]))));
+        let all: Vec<u32> = (1..=LARGE + 1).collect();
+        bodies.push((sink, task(sink, &all)));
+        let observations = tasks(bodies);
+        let root = format!("o/r#{sink}");
+        let start = Instant::now();
+        let outcome = plan(&parameters(&[&root]), &RecordedForge::new(&observations));
+        let took = start.elapsed();
+        let Ok(Outcome::Planned { graph, .. }) = outcome else {
+            panic!("expected a plan, got {outcome:?}");
+        };
+        assert_eq!(graph.edges.len(), 2 * LARGE as usize + 1);
+        assert_eq!(
+            graph.redundant,
+            BTreeSet::from([Edge {
+                from: reference("o/r#1"),
+                to: reference(&root),
+            }])
+        );
+        assert_eq!(graph.ready, BTreeSet::from([reference("o/r#1")]));
+        assert!(took < LARGE_GRAPH_BOUND, "a wide graph took {took:?}");
+    }
+
+    #[test]
+    fn g4_a_long_cycle_and_what_is_downstream_of_it_are_reported() {
+        // 1 <- 2 <- ... <- 3000 <- 1 is a cycle; 3001 waits on it.
+        let n = 3_000;
+        let mut bodies: Vec<(u32, String)> = (1..=n)
+            .map(|i| (i, task(i, &[if i == 1 { n } else { i - 1 }])))
+            .collect();
+        bodies.push((n + 1, task(n + 1, &[n])));
+        bodies.push((n + 2, task(n + 2, &[])));
+        let observations = tasks(bodies);
+        let roots = [format!("o/r#{}", n + 1), format!("o/r#{}", n + 2)];
+        let start = Instant::now();
+        let outcome = plan(
+            &parameters(&[&roots[0], &roots[1]]),
+            &RecordedForge::new(&observations),
+        );
+        let took = start.elapsed();
+        let Ok(Outcome::Invalid { findings, graph }) = outcome else {
+            panic!("expected an invalid run, got {outcome:?}");
+        };
+        assert!(graph.is_none());
+        let cyclic: BTreeSet<u32> = findings
+            .iter()
+            .filter(|f| f.rule == super::Rule::G4)
+            .map(|f| f.subject.number())
+            .collect();
+        assert_eq!(cyclic, (1..=n + 1).collect());
+        assert!(took < LARGE_GRAPH_BOUND, "a cycle took {took:?}");
+    }
+
+    fn pull(closes: &str, draft: Observed<bool>) -> PullRequest {
+        PullRequest {
+            number: 8,
+            repository: Repo::parse("o/r").expect("a repository"),
+            head_repository: Repo::parse("o/r"),
+            cross_repository: Some(false),
+            author: Some(Actor {
+                login: "o".to_owned(),
+                actor_type: "User".to_owned(),
+            }),
+            draft,
+            closes: vec![reference(closes)],
+        }
+    }
+
+    #[test]
+    fn i5_the_draft_flag_of_a_pull_request_closing_no_node_is_not_read() {
+        let mut observations = tasks(vec![(1, task(1, &[]))]);
+        observations.home_open_pull_requests = Some(Observed::Value(vec![pull(
+            "o/r#9",
+            Observed::Unavailable("not a boolean".to_owned()),
+        )]));
+        let mut owner = BTreeMap::new();
+        owner.insert("o".to_owned(), Observed::Value(Some("admin".to_owned())));
+        observations
+            .permissions
+            .insert(Repo::parse("o/r").expect("repo"), owner);
+        let outcome = plan(&parameters(&["o/r#1"]), &RecordedForge::new(&observations));
+        assert!(
+            matches!(outcome, Ok(Outcome::Planned { .. })),
+            "got {outcome:?}"
+        );
+        // The same flag on a pull request that closes an open node is read.
+        observations.home_open_pull_requests = Some(Observed::Value(vec![pull(
+            "o/r#1",
+            Observed::Unavailable("not a boolean".to_owned()),
+        )]));
+        let outcome = plan(&parameters(&["o/r#1"]), &RecordedForge::new(&observations));
+        assert!(
+            matches!(outcome, Ok(Outcome::Incomplete { .. })),
+            "got {outcome:?}"
+        );
     }
 }
