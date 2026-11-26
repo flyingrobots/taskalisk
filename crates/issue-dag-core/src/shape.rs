@@ -95,7 +95,7 @@ pub fn shape_warnings(graph: &Graph) -> Vec<ShapeFinding> {
         .filter(|(_, node)| !node.complete)
         .map(|(id, _)| id)
         .collect();
-    if open.len() > usize::MAX {
+    if open.len() > 1 {
         let joined: BTreeSet<&IssueRef> =
             graph.edges.iter().flat_map(|e| [&e.from, &e.to]).collect();
         for id in open.into_iter().filter(|id| !joined.contains(id)) {
