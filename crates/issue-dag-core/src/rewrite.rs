@@ -1,7 +1,9 @@
 //! The `.blocked_by` rewrite of the edge-edit contract (rule E4).
 
+use crate::carrier::{Parse, parse};
 use crate::label::Label;
 use crate::reference::IssueRef;
+use crate::validate::decode;
 
 /// One edge edit on a child's `.blocked_by` (rule E1).
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -24,6 +26,9 @@ pub enum Refusal {
     Invalid(Vec<Label>),
     /// The parent equals the child (rule E1).
     SelfEdge,
+    /// The document is not a task. A valid container has no `.blocked_by`
+    /// line, so this follows only a change to the rules above.
+    NotATask,
 }
 
 /// A rewritten body.
@@ -44,15 +49,58 @@ pub struct Rewrite {
 /// Returns a [`Refusal`] when the body is not a valid task document for that
 /// address, when its block does not have exactly one `.blocked_by` line, or
 /// when the parent equals the child.
-// RED: a stub until the rewrite is written.
-#[allow(clippy::missing_const_for_fn)]
 pub fn rewrite_blocked_by(
     body: &str,
     address: &IssueRef,
     edit: &EdgeEdit,
 ) -> Result<Rewrite, Refusal> {
-    let _ = (body, address, edit);
-    Err(Refusal::NoDocument)
+    let block = match parse(body) {
+        Parse::NoDocument => return Err(Refusal::NoDocument),
+        Parse::Unreadable => return Err(Refusal::Invalid(vec![Label::C4])),
+        Parse::Block(block) => block,
+    };
+    let lines: Vec<_> = block
+        .entries()
+        .iter()
+        .filter(|e| e.key == ".blocked_by")
+        .collect();
+    let [line] = lines.as_slice() else {
+        return Err(Refusal::BlockedByLines(lines.len()));
+    };
+    let parent = match edit {
+        EdgeEdit::Add(parent) | EdgeEdit::Remove(parent) => parent,
+    };
+    if parent == address {
+        return Err(Refusal::SelfEdge);
+    }
+    let (validation, record) = decode(&block, Some(address));
+    if !validation.violations.is_empty() {
+        return Err(Refusal::Invalid(
+            validation.violations.into_iter().collect(),
+        ));
+    }
+    let Some(mut references) = record.and_then(|r| r.blocked_by) else {
+        return Err(Refusal::NotATask);
+    };
+    match edit {
+        EdgeEdit::Add(parent) => {
+            if !references.contains(parent) {
+                references.push(parent.clone());
+            }
+        }
+        EdgeEdit::Remove(parent) => references.retain(|r| r != parent),
+    }
+    let written: Vec<String> = references.iter().map(ToString::to_string).collect();
+    let new_line = format!(".blocked_by: [{}]", written.join(", "));
+    let mut new_body = String::with_capacity(body.len() + new_line.len());
+    new_body.push_str(&body[..line.line.start]);
+    new_body.push_str(&new_line);
+    new_body.push_str(&body[line.line.end..]);
+    let changed = new_body != body;
+    Ok(Rewrite {
+        body: new_body,
+        changed,
+    })
 }
 
 #[cfg(test)]
