@@ -31,7 +31,11 @@ Also on 2026-11-26 the normative cases added for the amended rules I4, I5,
 D8, AD3, AD4 and CC6 (`flyingrobots/taskalisk#110`) found differences 23 and
 24; the compiler agrees with the amended AD3, AD4 and CC6. Also on
 2026-11-26 the normative cases added for bundle rule OB16
-(`flyingrobots/taskalisk#117`) found differences 25 and 26.
+(`flyingrobots/taskalisk#117`) found differences 25 and 26. Also on
+2026-11-26 the normative cases added for bundle rule OB17 and profile rules
+D11 to D13 (`flyingrobots/taskalisk#126`) found more instances of difference
+26, and difference 27, which a review of `flyingrobots/taskalisk#114` had
+found by reading the code.
 
 None of these differences changes the verdict on any document in the
 [census of 2026-11-12](../evidence/2026-11-12-frontmatter-shapes.md): the
@@ -97,7 +101,8 @@ for its warnings.
 | 23 | An admitted pull request of `H` whose draft flag is not a boolean, and that closes no open node | The draft flag is not read (S2 reads it only for a linked pull request of an open node); the run is planned | Every admitted pull request that closes an issue must have a boolean draft flag; the run is incomplete | I4, I5, S2 | defect |
 | 24 | A document gives `.blocked_by` (or `.children`) twice, and the first line names an issue whose observation is unavailable | The repeated key contributes no reference: the issue is not read, and the run is invalid under C7 | The first line sets the key, its references are followed, and the run is incomplete | D8, C7, F1 | defect |
 | 25 | A bundle lacks a slot the run reads, and the run reaches another slot it cannot read, missing or unavailable | The run reads every slot it reaches; a missing slot is reported before an unavailable one, and the least missing slot is reported | The compiler stops at the first lookup it cannot make, whatever the order of the roots: an unavailable slot read first makes the run incomplete, and of two missing slots the first read is reported | OB16, OB5 | compatibility-exception |
-| 26 | An incomplete run (any number of unavailable slots) | The run is incomplete and reports the least of their reasons | The run is incomplete and reports no recorded reason | OB16, F1 | compatibility-exception |
+| 26 | An incomplete run (any number of unavailable slots) | The run is incomplete and reports the least of their reasons, and the cause recorded with it (OB17, D11 to D13) | The run is incomplete and reports no recorded reason and no cause | OB16, OB17, F1 | compatibility-exception |
+| 27 | A task's `.blocked_by` names the same unknown prerequisite twice | One X3 finding for the task, concerning it | One X3 finding per occurrence | F5, X3 | compatibility-exception |
 
 Difference 9 also contradicts `docs/frontmatter-model.md` in Taskalisk,
 which says a referenced issue without frontmatter becomes an opaque node. The
@@ -143,6 +148,18 @@ roots in either order. The Python agrees with
 `graph/ob16-missing-issue-before-a-later-body`,
 `graph/ob16-missing-pull-requests-before-missing-issue` and
 `graph/ob16-least-of-two-permissions`: the slot it reads first is the least.
+For the same reason the Python reports no cause (bundle rule OB17): the
+normative cases `graph/d11-*`, `graph/d12-*` and `graph/d13-*` show it, and
+`graph/d10-not-found-with-no-cause` shows that both report none when the
+slot records none.
+
+Difference 27 is a compatibility exception, with the scope of difference
+10: the list of findings (F5). The outcome, the task that receives the
+finding and the reference it concerns are the same; the Python lists the
+finding once per occurrence in `.blocked_by`, where F5 makes two findings
+with the same identity one. The normative case
+`graph/x3-unknown-prerequisite-named-twice` shows it; its twin lists the
+finding twice, as corpus rule CC6 allows a characterisation case to.
 
 ## Edge edit
 

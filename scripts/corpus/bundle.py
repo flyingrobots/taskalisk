@@ -25,8 +25,20 @@ STATES = ("open", "closed")
 # --------------------------------------------------------------------------- #
 
 
-def _slot(problems: list[str], where: str, slot: Any) -> tuple[bool, Any]:
-    """OB4: a slot is {"value": v} or {"unavailable": "reason"}. Returns (observed, value)."""
+NOT_FOUND = ("owner", "repository", "number")
+
+
+def _slot(problems: list[str], where: str, slot: Any, may_record_cause: bool = False) -> tuple[bool, Any]:
+    """OB4: a slot is {"value": v} or {"unavailable": "reason"}. Returns (observed, value).
+
+    OB17: with `may_record_cause`, the slot of an issue, an unavailable slot may also hold `not_found`,
+    one of NOT_FOUND. Any other slot that holds it, and any other value, is refused."""
+    if isinstance(slot, dict) and "not_found" in slot:
+        if not may_record_cause or "unavailable" not in slot:
+            problems.append(f"{where}: only the unavailable slot of an issue records which part was not found (OB17)")
+        elif slot["not_found"] not in NOT_FOUND:
+            problems.append(f"{where}.not_found: one of {', '.join(NOT_FOUND)} (OB17)")
+        slot = {k: v for k, v in slot.items() if k != "not_found"}
     if not isinstance(slot, dict) or len(slot) != 1 or not ({"value", "unavailable"} & set(slot)):
         problems.append(f"{where}: an observation is exactly one of {{\"value\": ...}} or {{\"unavailable\": \"reason\"}} (OB4)")
         return False, None
@@ -157,7 +169,7 @@ def validate(bundle: Any) -> list[str]:
             continue
         if not _in_scope(params, ref.split("#", 1)[0]):
             p.append(f"{where}: a reference outside the read scope is never read (OB8)")
-        ok, it = _slot(p, where, slot)
+        ok, it = _slot(p, where, slot, may_record_cause=True)
         # OB8, OB14: `body` may be left out when the run does not read it.
         if not ok or not _keys(p, where, it, {"address", "pull_request", "state", "state_reason", "author", "author_association"}, {"body"}):
             continue

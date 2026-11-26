@@ -1,0 +1,17 @@
+{
+  "cites": [
+    "OB16",
+    "OB17",
+    "D10"
+  ],
+  "disagreement": {
+    "classification": "compatibility-exception",
+    "difference": 26,
+    "note": "the compiler reports an incomplete run without the reason recorded in any slot"
+  },
+  "id": "graph/ob16-no-cause-before-a-cause",
+  "kind": "normative",
+  "level": "graph",
+  "source": "constructed from the rule text",
+  "title": "Of two slots with one reason, one that records no cause is reported before one that records a cause"
+}

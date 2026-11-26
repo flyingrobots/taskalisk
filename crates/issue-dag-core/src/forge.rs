@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 
 use crate::local::{AheadBehind, Branch, Worktree};
 use crate::observation::{
-    Body, CodeownersFile, Issue, Lookup, Missing, Observed, Parameters, PullRequest, Repo,
+    Body, CodeownersFile, Issue, Lookup, Missing, NotFound, Observed, Parameters, PullRequest, Repo,
 };
 use crate::reference::IssueRef;
 
@@ -39,6 +39,20 @@ pub trait Forge {
     ///
     /// [`Missing`] when the issue was not recorded.
     fn issue(&self, reference: &IssueRef) -> Lookup<Issue>;
+
+    /// Which part of `reference` the lookup did not find, when
+    /// [`Forge::issue`] answered unavailable and recorded a cause (bundle
+    /// rule OB17, profile rules D11 to D13); `None` otherwise. A forge that
+    /// records no cause, such as one whose lookups cannot tell the parts
+    /// apart, answers `None`: the run is incomplete just the same (D10).
+    ///
+    /// A forge that wraps another must forward this method as well as
+    /// [`Forge::issue`]: the default answers `None`, so a wrapper that
+    /// forwards only `issue` silently drops the cause.
+    fn not_found(&self, reference: &IssueRef) -> Option<NotFound> {
+        let _ = reference;
+        None
+    }
 
     /// The body of the issue a reference resolves to, and the actor of
     /// every edit of it (bundle rule OB8). A separate read from
@@ -131,6 +145,9 @@ pub struct Observations {
     pub home_open_pull_requests: Option<Observed<Vec<PullRequest>>>,
     /// `issues`, keyed by the reference read (OB8).
     pub issues: BTreeMap<IssueRef, Observed<Issue>>,
+    /// The cause recorded beside an unavailable `issues` slot (OB17), keyed
+    /// as `issues`. A reference whose slot records no cause has no key.
+    pub not_found: BTreeMap<IssueRef, NotFound>,
     /// The `body` slot of each issue whose body was read, keyed as
     /// `issues` (OB8). A body the run never read, such as that of an issue
     /// whose author is not trusted, has no key (OB14).
@@ -204,6 +221,13 @@ impl Forge for RecordedForge<'_> {
                 format!("the issue {reference}"),
             )
         })
+    }
+
+    fn not_found(&self, reference: &IssueRef) -> Option<NotFound> {
+        match self.observations.issues.get(reference) {
+            Some(Observed::Unavailable(_)) => self.observations.not_found.get(reference).copied(),
+            _ => None,
+        }
     }
 
     fn body(&self, reference: &IssueRef) -> Lookup<Body> {

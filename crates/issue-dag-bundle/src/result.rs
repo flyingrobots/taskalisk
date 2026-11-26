@@ -157,7 +157,8 @@ pub fn outcome_json(outcome: &Outcome, capacities: &BTreeMap<String, u64>) -> Ma
 }
 
 /// A list of `findings`, or of any CC6 member that is a set, in the order
-/// [`outcome_json`] writes it, so that two results compare as sets.
+/// [`outcome_json`] writes it, so that two results compare as sorted lists,
+/// repeats kept (CC8).
 #[must_use]
 pub fn in_result_order(items: Vec<Value>) -> Value {
     sorted(items)

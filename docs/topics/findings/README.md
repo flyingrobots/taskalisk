@@ -76,19 +76,38 @@ the observations say why. Three causes have a finding of their own:
 A reference in the read scope that resolves to no issue the planner can see
 has no finding: rule
 [D10](../../../tests/fixtures/issue-dag/profiles/issue-dag-planning-2.md#3-discovery)
-makes the run incomplete, and the run reports the reason recorded for it. The
-bundle records that reason as free text
-([OB8](../../../tests/fixtures/issue-dag/corpus/bundle.md#2-observations)), so
-the crate does not tell an owner, a repository or an issue number that was not
-found apart; that needs a change to the specification first, which is
-flyingrobots/taskalisk#126 (decision D17). The test
-`crates/issue-dag-core/tests/unreadable_references.rs` pins all four cases.
+makes the run incomplete, and the run reports the reason recorded for it.
+Beside that free-text reason, the bundle may record which part of the
+reference the lookup did not find
+([OB17](../../../tests/fixtures/issue-dag/corpus/bundle.md#2-observations)).
+The run then reports that cause too, with a code of its own, as
+`Outcome::Incomplete`'s `cause`:
+
+| Cause | `not_found` | Code |
+| --- | --- | --- |
+| owner not found | `owner` | `profile.D11` |
+| repository not found | `repository` | `profile.D12` |
+| issue number not found | `number` | `profile.D13` |
+
+A cause is not a finding: no issue receives it, however many documents name
+the reference, and the run stays incomplete
+([F2](../../../tests/fixtures/issue-dag/profiles/issue-dag-planning-2.md#2-outcome)).
+GitHub answers a repository or an issue the token cannot see as it answers
+one that does not exist, so a cause says what the lookup did not find, not
+what does not exist: a private repository looks the same as a missing one.
+A slot that records no cause gives no cause, and the crate never reads one
+out of the reason. When several lookups fail, the run reports the least
+reason, and of the slots with that reason the least cause, a slot with no
+cause first ([OB16](../../../tests/fixtures/issue-dag/corpus/bundle.md#3-what-a-run-reports)).
+The `gh` adapter does not record a cause yet (flyingrobots/taskalisk#51). The
+test `crates/issue-dag-core/tests/unreadable_references.rs` pins every case.
 
 ## Entries
 
 The entries are in the catalogue's order (`CODES`): the document codes in the
 order of the labels' text, so `V10` comes before `V2`; then the planning
-profile's codes; then the body warnings; then the shape warnings; then the
+profile's codes; then the causes of a reference not found, which are not
+findings but the cause an incomplete run reports; then the body warnings; then the shape warnings; then the
 plan warnings. The test
 `crates/issue-dag-core/tests/finding_reference.rs` fails when a code has no
 entry here, an entry names no code, or a link or anchor here does not
@@ -583,7 +602,11 @@ reference, and the run is invalid. It usually comes with the finding that says
 why the reference is not a node.
 
 In case `d4-pull-request`, `o/r#1` names the pull request `o/r#5`: `o/r#1`
-receives `profile.X3` concerning `o/r#5`.
+receives `profile.X3` concerning `o/r#5`. A task that names the same unknown
+prerequisite twice receives one finding for it
+([F5](../../../tests/fixtures/issue-dag/profiles/issue-dag-planning-2.md#2-outcome)),
+as in case `x3-unknown-prerequisite-named-twice`; the Python compiler reports
+one per occurrence (difference 27).
 
 To fix: fix the finding that comes with it (see `profile.D3`, `profile.D4` and
 `profile.D5`), or remove the prerequisite.
@@ -604,6 +627,64 @@ the cycle receives it too.
 To fix: find the cycle among the reported nodes and remove the edge that is
 wrong, usually one that points the wrong way. The nodes downstream recover
 once the cycle is gone.
+
+### `profile.D13`
+
+**Severity:** error. **Rule:** [D13](../../../tests/fixtures/issue-dag/profiles/issue-dag-planning-2.md#3-discovery), issue number not found, of the planning profile.
+
+Not a finding: the cause an incomplete run reports with its reason, when the
+slot it reports records `not_found: number`
+([OB17](../../../tests/fixtures/issue-dag/corpus/bundle.md#2-observations)).
+The owner and the repository were found, and no issue or pull request the
+planner can see has the reference's number. No issue receives it, and the run
+has no graph.
+
+In case `d13-issue-number-not-found`, `o/r#1` names `o/r#2`, which the lookup
+did not find: the run is incomplete, with the reason `HTTP 404` and the cause
+`profile.D13`. In case `d13-cause-is-not-read-from-the-reason`, the reason
+says the owner was not found and the slot records `number`: the cause is
+`profile.D13`.
+
+To fix: check the number in every `.blocked_by` and `.children` that names
+the reference; or, if the issue exists, give the planner's token access to
+it, since GitHub answers an issue it cannot see as one that does not exist.
+
+### `profile.D11`
+
+**Severity:** error. **Rule:** [D11](../../../tests/fixtures/issue-dag/profiles/issue-dag-planning-2.md#3-discovery), owner not found, of the planning profile.
+
+Not a finding: the cause an incomplete run reports with its reason, when the
+slot it reports records `not_found: owner`
+([OB17](../../../tests/fixtures/issue-dag/corpus/bundle.md#2-observations)):
+no account has the reference's owner as its login. No issue receives it, and
+the run has no graph.
+
+In case `d11-owner-not-found`, `o/r#1` names `gone/r#2`, and the lookup found
+no account `gone`: the run is incomplete, with the reason `HTTP 404` and the
+cause `profile.D11`.
+
+To fix: check the spelling of the owner in every reference to it, or the
+read scope that admits it; an account that was renamed needs its new login.
+
+### `profile.D12`
+
+**Severity:** error. **Rule:** [D12](../../../tests/fixtures/issue-dag/profiles/issue-dag-planning-2.md#3-discovery), repository not found, of the planning profile.
+
+Not a finding: the cause an incomplete run reports with its reason, when the
+slot it reports records `not_found: repository`
+([OB17](../../../tests/fixtures/issue-dag/corpus/bundle.md#2-observations)):
+the owner was found, and it has no repository of that name that the planner
+can see. A private repository the token cannot read looks the same as a
+missing one. No issue receives it, however many documents name the reference.
+
+In case `d12-repository-not-found`, `o/r#1` names `o/gone#2`: the run is
+incomplete, with the reason `HTTP 404` and the cause `profile.D12`. In case
+`d12-not-found-named-by-two-documents`, two tasks name it, and the run still
+reports one cause and no finding.
+
+To fix: check the repository name in every reference to it; if it was
+renamed or transferred, name its new address; if it is private, give the
+planner's token read access to it.
 
 ### `taskalisk.acceptance-missing`
 

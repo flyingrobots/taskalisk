@@ -304,9 +304,11 @@ def _finding(subject: str, rule: str, concerns: str | None = None) -> dict[str, 
     return f
 
 
-def _sorted_unique(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _sorted_unique(items: list[dict[str, Any]], repeated: list[dict[str, Any]] = ()) -> list[dict[str, Any]]:
+    """`items` once each and `repeated` as often as given, in one canonical order (corpus rule CC6)."""
     seen = {json.dumps(i, sort_keys=True): i for i in items}
-    return [seen[k] for k in sorted(seen)]
+    keyed = list(seen.items()) + [(json.dumps(i, sort_keys=True), i) for i in repeated]
+    return [i for _, i in sorted(keyed, key=lambda kv: kv[0])]
 
 
 def project_outcome(out: Any) -> dict[str, Any]:
@@ -333,11 +335,12 @@ def project_outcome(out: Any) -> dict[str, Any]:
     for nid, messages in fm.get("warnings", {}).items():
         for m in messages:
             findings.append(_finding(nid, label_for(m, fields_of(nid))[0]))
-    for u in result.get("unknown_dependencies", []):
-        findings.append(_finding(u["node"], "X3", u["unknown_prerequisite"]))
+    # CC6: an unknown prerequisite as often as the compiler reports it, once per occurrence in
+    # `.blocked_by` (difference 27); a message per value of one rule is still one finding.
+    unknown = [_finding(u["node"], "X3", u["unknown_prerequisite"]) for u in result.get("unknown_dependencies", [])]
     for nid in result.get("cyclic_nodes", []):
         findings.append(_finding(nid, "G4"))
-    projected: dict[str, Any] = {"outcome": "planned" if result.get("ok") else "invalid", "findings": _sorted_unique(findings)}
+    projected: dict[str, Any] = {"outcome": "planned" if result.get("ok") else "invalid", "findings": _sorted_unique(findings, unknown)}
     if "metrics" not in result:
         return projected
 

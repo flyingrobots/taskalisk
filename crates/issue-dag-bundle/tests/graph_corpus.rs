@@ -15,7 +15,7 @@
 //! reported as `missing`; an incomplete run reports its `unavailable` reason
 //! (OB16), which only a normative case states (CC6).
 //!
-//! `findings` compare as a set (CC6), and in a normative planned case every
+//! `findings` compare as sorted lists with repeats (CC8), and in a normative planned case every
 //! member of the expected batch must be dispatchable (Q2). Every other
 //! member compares exactly: `ready` in rank order (K6), `scores` (K5),
 //! `waves` (K7), `critical_path` (K8), `batch` in order of selection,
@@ -27,7 +27,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use issue_dag_bundle::{in_result_order, load, outcome_json};
-use issue_dag_core::{Outcome, RecordedForge, plan};
+use issue_dag_core::{NotFound, Outcome, RecordedForge, plan};
 use serde_json::{Map, Value, json};
 
 /// The members that describe the graph (CC6), its ranking and its batch,
@@ -81,9 +81,12 @@ fn result_json(bundle_text: &str) -> Result<(Map<String, Value>, Option<Dispatch
     let graph = match &outcome {
         Outcome::Invalid { graph, .. } => graph.as_ref(),
         Outcome::Planned { graph, .. } => Some(graph),
-        Outcome::Incomplete { unavailable } => {
-            // OB16: the reason reported, which a normative case may state.
+        Outcome::Incomplete { unavailable, cause } => {
+            // OB16: the reason reported, and the cause recorded with it
+            // (OB17) as the label of its rule, or null, which a normative case
+            // may state (CC6).
             out.insert("unavailable".into(), json!(unavailable));
+            out.insert("cause".into(), json!(cause.map(NotFound::label)));
             None
         }
         Outcome::Rejected(_) => None,
@@ -114,7 +117,7 @@ fn batch_not_dispatchable(
 }
 
 /// Brings a member of an expected result into the form it is compared in:
-/// `findings` as a set.
+/// `findings` as a sorted list with repeats (CC8).
 fn comparable(member: &str, value: &Value) -> Value {
     match (member, value) {
         ("findings", Value::Array(items)) => in_result_order(items.clone()),
@@ -233,9 +236,10 @@ fn every_graph_case_of_the_corpus() {
             }
             (Some("characterisation"), None) => {
                 // CC6: only a normative case states the unavailable slot
-                // reported; the Python reports none.
+                // reported and its cause; the Python reports neither.
                 let mut actual = actual;
                 actual.remove("unavailable");
+                actual.remove("cause");
                 let expected = read_json(&dir.join("expected.json"));
                 exact_mismatch(expected.as_object().expect("object"), &actual)
             }

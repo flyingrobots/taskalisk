@@ -1,0 +1,12 @@
+{
+  "cites": [
+    "D10",
+    "OB17",
+    "OB16"
+  ],
+  "id": "graph/d10-not-found-with-no-cause",
+  "kind": "normative",
+  "level": "graph",
+  "source": "constructed from the rule text",
+  "title": "A reference not found, with no cause recorded: the run is incomplete and reports no cause"
+}

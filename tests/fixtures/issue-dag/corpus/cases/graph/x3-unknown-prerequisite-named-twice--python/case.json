@@ -1,0 +1,18 @@
+{
+  "cites": [
+    "F5",
+    "X3",
+    "D3"
+  ],
+  "disagreement": {
+    "classification": "compatibility-exception",
+    "difference": 27,
+    "note": "the compiler reports one X3 finding per occurrence in `.blocked_by`"
+  },
+  "id": "graph/x3-unknown-prerequisite-named-twice--python",
+  "kind": "characterisation",
+  "level": "graph",
+  "normative_case": "graph/x3-unknown-prerequisite-named-twice",
+  "source": "the Python compiler, on the bundle of graph/x3-unknown-prerequisite-named-twice",
+  "title": "Where graph/x3-unknown-prerequisite-named-twice differs: the compiler reports one X3 finding per occurrence in `.blocked_by`"
+}

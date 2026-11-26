@@ -929,6 +929,79 @@ NORMATIVE_GRAPHS += [
 ]
 
 
+# Which part of a reference was not found: bundle rule OB17, profile rules D10 to D13
+# (flyingrobots/taskalisk#126). `gone/r` is an owner in the read scope that no lookup finds, `o/gone` a
+# repository of the home owner that no lookup finds.
+GONE_OWNER, GONE_REPO = "gone/r#2", "o/gone#2"
+NO_CAUSE = f"{NO_REASON}, and no cause (OB17)"
+
+
+def not_found(changes: dict[str, tuple[str, str | None]]) -> Callable[[dict[str, Any]], None]:
+    """For each reference, records its issue as unavailable with the reason, and with `not_found` set
+    to the cause unless it is None (OB17)."""
+    def go(b: dict[str, Any]) -> None:
+        for ref, (reason, cause) in changes.items():
+            slot: dict[str, Any] = {"unavailable": reason}
+            if cause is not None:
+                slot["not_found"] = cause
+            b["observations"]["issues"][ref] = slot
+    return go
+
+
+def blocked_on(target: str, reason: str, cause: str | None, **opts: Any) -> dict[str, Any]:
+    """A run from the root o/r#1, a task blocked by `target`, whose issue was not found."""
+    return bundle({R1: i(d(R1, (target,)))}, roots=(R1,), mutate=not_found({target: (reason, cause)}), **opts)
+
+
+NORMATIVE_GRAPHS += [
+    G("d11-owner-not-found", "A reference whose owner was not found: the run is incomplete, with cause D11",
+      blocked_on(GONE_OWNER, "HTTP 404", "owner", owners=("gone",)),
+      {"outcome": "incomplete", "unavailable": "HTTP 404", "cause": "D11"}, ["D11", "D10", "OB17", "OB16", "F2"],
+      disagreement=exception(26, NO_CAUSE)),
+    G("d12-repository-not-found", "A reference whose repository was not found: the run is incomplete, with cause D12",
+      blocked_on(GONE_REPO, "HTTP 404", "repository"),
+      {"outcome": "incomplete", "unavailable": "HTTP 404", "cause": "D12"}, ["D12", "D10", "OB17", "OB16", "F2"],
+      disagreement=exception(26, NO_CAUSE)),
+    G("d13-issue-number-not-found", "A reference whose issue number was not found: the run is incomplete, with cause D13",
+      blocked_on(R2, "HTTP 404", "number"),
+      {"outcome": "incomplete", "unavailable": "HTTP 404", "cause": "D13"}, ["D13", "D10", "OB17", "OB16", "F2"],
+      disagreement=exception(26, NO_CAUSE)),
+    G("d10-not-found-with-no-cause", "A reference not found, with no cause recorded: the run is incomplete and reports no cause",
+      blocked_on(R2, "HTTP 404", None), {"outcome": "incomplete", "cause": None}, ["D10", "OB17", "OB16"]),
+    G("d13-cause-is-not-read-from-the-reason", "The cause is `not_found`, never read out of the reason: a reason that says "
+      "the owner was not found, with `not_found: number`, is cause D13",
+      blocked_on(R2, "owner not found (HTTP 404)", "number"),
+      {"outcome": "incomplete", "unavailable": "owner not found (HTTP 404)", "cause": "D13"}, ["OB17", "D13", "D11"],
+      disagreement=exception(26, NO_CAUSE)),
+    G("d12-not-found-named-by-two-documents", "A reference not found that two documents name: the run is incomplete, "
+      "with the cause once and no finding for either document",
+      bundle({R1: i(d(R1, (R2, GONE_REPO))), R2: i(d(R2, (GONE_REPO,)))}, roots=(R1,),
+             mutate=not_found({GONE_REPO: ("HTTP 404", "repository")})),
+      {"outcome": "incomplete", "unavailable": "HTTP 404", "cause": "D12"}, ["D12", "D10", "F2", "F5", "OB16"],
+      disagreement=exception(26, NO_CAUSE)),
+    # OB16: of slots with the least reason, no cause first, then the causes by their values' bytes.
+    *both_orders("ob16-least-cause-of-one-reason", "Of two slots with one reason, the least cause is reported: "
+                 "`owner` before `repository`", R2, R3,
+                 not_found({GONE_REPO: ("HTTP 404", "repository"), GONE_OWNER: ("HTTP 404", "owner")}),
+                 {"outcome": "incomplete", "unavailable": "HTTP 404", "cause": "D11"}, ["OB16", "OB17", "D11", "D12"],
+                 exception(26, NO_CAUSE), issues={R2: i(d(R2, (GONE_REPO,))), R3: i(d(R3, (GONE_OWNER,)))}, owners=("gone",)),
+    *both_orders("ob16-no-cause-before-a-cause", "Of two slots with one reason, one that records no cause is reported "
+                 "before one that records a cause", R2, R3,
+                 not_found({GONE_REPO: ("HTTP 404", None), GONE_OWNER: ("HTTP 404", "owner")}),
+                 {"outcome": "incomplete", "unavailable": "HTTP 404", "cause": None}, ["OB16", "OB17", "D10"],
+                 exception(26, NO_REASON), issues={R2: i(d(R2, (GONE_REPO,))), R3: i(d(R3, (GONE_OWNER,)))}, owners=("gone",)),
+    *both_orders("ob16-cause-goes-with-the-least-reason", "The cause reported is that of the least reason, not the least cause",
+                 R2, R3, not_found({GONE_REPO: ("HTTP 404", "repository"), GONE_OWNER: ("timeout", "owner")}),
+                 {"outcome": "incomplete", "unavailable": "HTTP 404", "cause": "D12"}, ["OB16", "OB17", "D12"],
+                 exception(26, NO_CAUSE), issues={R2: i(d(R2, (GONE_REPO,))), R3: i(d(R3, (GONE_OWNER,)))}, owners=("gone",)),
+    # F5: findings with one identity are one finding.
+    G("x3-unknown-prerequisite-named-twice", "A task that names the same unknown prerequisite twice receives one X3 finding",
+      bundle({R1: i(d(R1, ("x/y#1", "x/y#1")))}, roots=(R1,)),
+      invalid_run(f(R1, "D3", "x/y#1"), f(R1, "X3", "x/y#1")), ["F5", "X3", "D3"],
+      disagreement=exception(27, "the compiler reports one X3 finding per occurrence in `.blocked_by`")),
+]
+
+
 # --------------------------------------------------------------------------- #
 # Scenarios from the compiler's tests
 # --------------------------------------------------------------------------- #
