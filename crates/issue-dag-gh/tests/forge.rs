@@ -220,7 +220,19 @@ fn assert_fixture<F: Forge + ?Sized>(forge: &F) {
         Ok(want.home_open_pull_requests.clone().expect("recorded"))
     );
     for (key, slot) in &want.issues {
-        assert_eq!(forge.issue(key), Ok(slot.clone()), "{key}");
+        // The issue is answered without its body, which is its own read.
+        let (issue, body) = match slot.clone() {
+            Observed::Value(mut issue) => {
+                let body = issue.body.take().expect("the fixture records every body");
+                (Observed::Value(issue), body)
+            }
+            Observed::Unavailable(why) => (
+                Observed::Unavailable(why.clone()),
+                Observed::Unavailable(why),
+            ),
+        };
+        assert_eq!(forge.issue(key), Ok(issue), "{key}");
+        assert_eq!(forge.body(key), Ok(body), "the body of {key}");
     }
     for (on, table) in &want.permissions {
         for (login, slot) in table {
@@ -578,4 +590,96 @@ fn a_failure_ends_the_run_incomplete_which_exits_2() {
     assert!(matches!(outcome, Outcome::Incomplete { .. }), "{outcome:?}");
     assert_eq!(forge.failures()[0].code(), "gh.command_failed");
     assert_eq!(GhError::EXIT_STATUS, 2);
+}
+
+/// The run parameters of the fixture's home, with these roots.
+fn parameters(roots: &[&str]) -> Parameters {
+    Parameters {
+        home: repo("o/r"),
+        roots: roots.iter().map(|r| (*r).to_owned()).collect(),
+        read_scope: ReadScope {
+            owners: ["o".to_owned()].into(),
+            repositories: [repo("o/r")].into(),
+        },
+        trust: TrustParameters {
+            policy: TRUST_POLICY.to_owned(),
+            logins: Vec::new(),
+            codeowners: false,
+        },
+        capacities: BTreeMap::new(),
+    }
+}
+
+/// The edit-history queries the fake was asked, as the issue number each
+/// one names.
+fn edit_history_calls(fake: &Fake) -> Vec<String> {
+    fake.calls()
+        .iter()
+        .filter(|c| c[..2] == ["api", "graphql"])
+        .filter_map(|c| c.iter().find(|a| a.starts_with("number=")).cloned())
+        .collect()
+}
+
+#[test]
+fn c15_an_issue_read_costs_no_edit_history_query() {
+    let fake = Fake::new(&state());
+    let forge = fake.forge("o/r");
+    assert!(matches!(
+        forge.issue(&reference("o/r#2")),
+        Ok(Observed::Value(Issue { body: None, .. }))
+    ));
+    assert_eq!(edit_history_calls(&fake), Vec::<String>::new());
+    // The body is read when asked for, once, every page of it.
+    let body = forge.body(&reference("o/r#2"));
+    assert_eq!(forge.body(&reference("o/r#2")), body);
+    assert_eq!(edit_history_calls(&fake), ["number=2", "number=2"]);
+}
+
+#[test]
+fn c15_a_run_over_a_strangers_issue_makes_no_edit_history_query() {
+    let stranger = with(&json!({"issues": {
+        "o/r#7": {"id": 7, "title": "t", "state": "open", "author": "stranger",
+                  "association": "NONE",
+                  "body": "```yaml\n.dag: issue-dag/2\n.id: o/r#7\n.kind: task\n.type: feature\n```\n"}
+    }, "prs": []}));
+    let fake = Fake::new(&stranger);
+    let forge = fake.forge("o/r");
+    let outcome = plan(&parameters(&["o/r#7"]), &forge).expect("never missing");
+    let Outcome::Planned { graph, .. } = outcome else {
+        panic!("expected a plan, got {outcome:?}");
+    };
+    assert!(graph.unmodeled.is_empty() && !graph.nodes.contains_key(&reference("o/r#7")));
+    assert_eq!(edit_history_calls(&fake), Vec::<String>::new());
+    assert_eq!(forge.failures(), Vec::new());
+    // The recording leaves the body out: it was never read (bundle OB14).
+    let recorded = forge.observations();
+    let Some(Observed::Value(issue)) = recorded.issues.get(&reference("o/r#7")) else {
+        panic!("o/r#7 was read");
+    };
+    assert_eq!(issue.body, None);
+}
+
+#[test]
+fn c15_a_run_over_a_trusted_issue_reads_its_edit_history() {
+    let fake = Fake::new(&with(&json!({"prs": []})));
+    let forge = fake.forge("o/r");
+    let outcome = plan(&parameters(&["o/r#1"]), &forge).expect("never missing");
+    assert!(matches!(outcome, Outcome::Planned { .. }), "{outcome:?}");
+    assert_eq!(edit_history_calls(&fake), ["number=1"]);
+    let recorded = forge.observations();
+    let Some(Observed::Value(issue)) = recorded.issues.get(&reference("o/r#1")) else {
+        panic!("o/r#1 was read");
+    };
+    assert_eq!(
+        issue.body,
+        Some(Observed::Value(Body {
+            text: "B1".to_owned(),
+            editors: vec![Some(actor("o", "User"))],
+        }))
+    );
+    // What the run read replays to the same outcome.
+    assert_eq!(
+        plan(&parameters(&["o/r#1"]), &RecordedForge::new(&recorded)),
+        Ok(outcome)
+    );
 }

@@ -4,7 +4,7 @@ use std::fs;
 use std::path::Path;
 
 use issue_dag_bundle::{BundleError, load};
-use issue_dag_core::{IssueRef, Observed, Repo};
+use issue_dag_core::{IssueRef, Observed, Outcome, RecordedForge, Repo, plan};
 use serde_json::{Value, json};
 
 /// The example of `corpus/bundle.md`, with a complete body.
@@ -258,4 +258,41 @@ fn a_member_given_twice_is_rejected_at_its_path() {
         error.at,
         "observations.issues[\"o/r#1\"].value.body.value.editors[0]"
     );
+}
+
+#[test]
+fn ob14_the_body_of_an_issue_the_run_never_reads_may_be_left_out() {
+    // A stranger's root: the run never reads its body (threat model C15).
+    let mut b = example();
+    b["parameters"]["roots"] = json!(["o/r#3"]);
+    b["observations"]["issues"]["o/r#3"] = json!({"value": {
+        "address": "o/r#3", "pull_request": false, "state": "open", "state_reason": null,
+        "author": {"login": "stranger", "type": "User"}, "author_association": "NONE"
+    }});
+    let bundle = load(&b.to_string()).expect("a bundle without that body loads");
+    let three = IssueRef::parse("o/r#3").expect("reference");
+    let Some(Observed::Value(issue)) = bundle.observations.issues.get(&three) else {
+        panic!("o/r#3 is recorded");
+    };
+    assert_eq!(issue.body, None, "left out, not read as empty");
+    let outcome = plan(
+        &bundle.parameters,
+        &RecordedForge::new(&bundle.observations),
+    );
+    assert!(
+        matches!(outcome, Ok(Outcome::Planned { .. })),
+        "the bundle replays: {outcome:?}"
+    );
+
+    // The body of a trusted root is read, so leaving it out is OB5.
+    let mut b = example();
+    let one = &mut b["observations"]["issues"]["o/r#1"]["value"];
+    one.as_object_mut().expect("an object").remove("body");
+    let bundle = load(&b.to_string()).expect("the bundle loads");
+    let outcome = plan(
+        &bundle.parameters,
+        &RecordedForge::new(&bundle.observations),
+    );
+    let missing = outcome.expect_err("a body the run reads is missing, never empty");
+    assert!(missing.what.contains("body of o/r#1"), "{missing}");
 }

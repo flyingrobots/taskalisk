@@ -762,15 +762,16 @@ impl Indexed {
 
 #[cfg(test)]
 mod tests {
+    use std::cell::RefCell;
     use std::collections::{BTreeMap, BTreeSet};
 
     use std::time::{Duration, Instant};
 
     use super::{Edge, NodeStatus, Outcome, plan};
-    use crate::forge::{Observations, RecordedForge};
+    use crate::forge::{Forge, Observations, RecordedForge};
     use crate::observation::{
-        Actor, Body, Issue, IssueState, Observed, Parameters, PullRequest, ReadScope, Repo,
-        TRUST_POLICY, TrustParameters,
+        Actor, Body, CodeownersFile, Issue, IssueState, Lookup, Observed, Parameters, PullRequest,
+        ReadScope, Repo, TRUST_POLICY, TrustParameters,
     };
     use crate::reference::IssueRef;
 
@@ -830,6 +831,99 @@ mod tests {
         assert!(node.opaque);
         assert_eq!(node.status, Some(NodeStatus::Blocked));
         assert!(graph.dispatchable().is_empty());
+    }
+
+    /// A forge that answers from observations and counts each body read.
+    struct Counting<'a> {
+        inner: RecordedForge<'a>,
+        bodies: RefCell<Vec<IssueRef>>,
+    }
+
+    impl Forge for Counting<'_> {
+        fn home_open_issues(&self) -> Lookup<Vec<IssueRef>> {
+            self.inner.home_open_issues()
+        }
+        fn home_open_pull_requests(&self) -> Lookup<Vec<PullRequest>> {
+            self.inner.home_open_pull_requests()
+        }
+        fn issue(&self, reference: &IssueRef) -> Lookup<Issue> {
+            self.inner.issue(reference)
+        }
+        fn body(&self, reference: &IssueRef) -> Lookup<Body> {
+            self.bodies.borrow_mut().push(reference.clone());
+            self.inner.body(reference)
+        }
+        fn permission(&self, repo: &Repo, login: &str) -> Lookup<Option<String>> {
+            self.inner.permission(repo, login)
+        }
+        fn codeowners(&self, repo: &Repo) -> Lookup<Option<CodeownersFile>> {
+            self.inner.codeowners(repo)
+        }
+    }
+
+    /// An open issue `address` by a stranger, whose body, when given, names
+    /// a valid task document.
+    fn strangers_issue(address: &str, body: Option<&str>) -> Observed<Issue> {
+        let stranger = Actor {
+            login: "stranger".to_owned(),
+            actor_type: "User".to_owned(),
+        };
+        Observed::Value(Issue {
+            address: reference(address),
+            pull_request: false,
+            state: IssueState::Open,
+            state_reason: None,
+            author: Some(stranger.clone()),
+            author_association: Some("NONE".to_owned()),
+            body: body.map(|text| {
+                Observed::Value(Body {
+                    text: text.to_owned(),
+                    editors: vec![Some(stranger)],
+                })
+            }),
+        })
+    }
+
+    #[test]
+    fn c15_the_body_of_an_untrusted_issue_is_never_read() {
+        let mut observations = tasks(vec![(1, task(1, &[2]))]);
+        observations.issues.insert(
+            reference("o/r#2"),
+            strangers_issue("o/r#2", Some(&task(2, &[]))),
+        );
+        let forge = Counting {
+            inner: RecordedForge::new(&observations),
+            bodies: RefCell::new(Vec::new()),
+        };
+        let outcome = plan(&parameters(&["o/r#1"]), &forge);
+        let Ok(Outcome::Planned { graph, .. }) = outcome else {
+            panic!("expected a plan, got {outcome:?}");
+        };
+        assert!(graph.untrusted.contains(&reference("o/r#2")));
+        // The trusted issue's body is read through the port, once; the
+        // stranger's never.
+        assert_eq!(*forge.bodies.borrow(), vec![reference("o/r#1")]);
+    }
+
+    #[test]
+    fn ob14_a_body_the_run_never_reads_need_not_be_recorded() {
+        let mut observations = tasks(vec![(1, task(1, &[2]))]);
+        observations
+            .issues
+            .insert(reference("o/r#2"), strangers_issue("o/r#2", None));
+        let outcome = plan(&parameters(&["o/r#1"]), &RecordedForge::new(&observations));
+        assert!(
+            matches!(outcome, Ok(Outcome::Planned { .. })),
+            "got {outcome:?}"
+        );
+        // The body of a trusted issue the run reads is missing (OB5),
+        // never empty.
+        let Some(Observed::Value(issue)) = observations.issues.get_mut(&reference("o/r#1")) else {
+            panic!("recorded");
+        };
+        issue.body = None;
+        let outcome = plan(&parameters(&["o/r#1"]), &RecordedForge::new(&observations));
+        assert!(outcome.is_err(), "got {outcome:?}");
     }
 
     #[test]

@@ -185,7 +185,7 @@ impl Forge for RecordedForge<'_> {
 #[cfg(test)]
 mod tests {
     use super::{Forge, Observations, RecordedForge};
-    use crate::observation::{Observed, Repo};
+    use crate::observation::{Body, Issue, IssueState, Observed, Repo};
     use crate::reference::IssueRef;
 
     #[test]
@@ -199,6 +199,55 @@ mod tests {
         assert!(forge.issue(&reference).is_err());
         assert!(forge.permission(&repo, "dev").is_err());
         assert!(forge.codeowners(&repo).is_err());
+    }
+
+    fn issue(body: Option<Observed<Body>>) -> Observed<Issue> {
+        Observed::Value(Issue {
+            address: IssueRef::parse("o/r#1").expect("a reference"),
+            pull_request: false,
+            state: IssueState::Open,
+            state_reason: None,
+            author: None,
+            author_association: None,
+            body,
+        })
+    }
+
+    #[test]
+    fn the_body_is_its_own_read_and_never_rides_on_the_issue() {
+        let reference = IssueRef::parse("o/r#1").expect("a reference");
+        let body = Observed::Value(Body {
+            text: "text".to_owned(),
+            editors: vec![None],
+        });
+        let mut observations = Observations::default();
+        observations
+            .issues
+            .insert(reference.clone(), issue(Some(body.clone())));
+        let forge = RecordedForge::new(&observations);
+        assert_eq!(forge.body(&reference), Ok(body));
+        // The issue is answered without its body (threat model C15).
+        assert_eq!(forge.issue(&reference), Ok(issue(None)));
+    }
+
+    #[test]
+    fn a_body_not_recorded_is_missing_never_empty() {
+        let reference = IssueRef::parse("o/r#1").expect("a reference");
+        let mut observations = Observations::default();
+        let forge = RecordedForge::new(&observations);
+        assert!(forge.body(&reference).is_err(), "no issue recorded");
+        observations.issues.insert(reference.clone(), issue(None));
+        let forge = RecordedForge::new(&observations);
+        assert!(forge.body(&reference).is_err(), "no body recorded");
+        observations.issues.insert(
+            reference.clone(),
+            Observed::Unavailable("HTTP 502".to_owned()),
+        );
+        let forge = RecordedForge::new(&observations);
+        assert_eq!(
+            forge.body(&reference),
+            Ok(Observed::Unavailable("HTTP 502".to_owned()))
+        );
     }
 
     #[test]
