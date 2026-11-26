@@ -7,6 +7,13 @@ schema version under `Unreleased` is a draft and may change in place.
 
 ## Unreleased
 
+### Added
+
+- **A provenance check for the vendored Parley writer** (flyingrobots/taskalisk#77).
+  `scripts/check_vendored_writer.py` fetches the writer from flyingrobots/parley at the pinned
+  commit and requires it to equal the pin and the copy; CI runs it. The offline pin test proves
+  only that copy and pin agree, and the output reference now says which check proves what.
+
 ### Fixed
 
 - **A repeated edit-history cursor ends the run** (flyingrobots/taskalisk#76). Reading an
