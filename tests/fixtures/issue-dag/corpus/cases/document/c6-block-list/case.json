@@ -1,0 +1,12 @@
+{
+  "cites": [
+    "C6",
+    "C10",
+    "V5"
+  ],
+  "id": "document/c6-block-list",
+  "kind": "normative",
+  "level": "document",
+  "source": "constructed from the rule text",
+  "title": "A YAML block list is lines of another form; the key's value is the empty string"
+}

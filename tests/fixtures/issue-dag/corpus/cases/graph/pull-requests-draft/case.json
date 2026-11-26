@@ -1,0 +1,8 @@
+{
+  "cites": [],
+  "id": "graph/pull-requests-draft",
+  "kind": "characterisation",
+  "level": "graph",
+  "source": "tests/test_taskalisk.py PullRequestStates.test_trusted_pr_states_keep_priority_and_render",
+  "title": "Scenario pull-requests-draft"
+}

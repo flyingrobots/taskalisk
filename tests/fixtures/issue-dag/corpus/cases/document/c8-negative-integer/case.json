@@ -1,0 +1,11 @@
+{
+  "cites": [
+    "C8",
+    "L4"
+  ],
+  "id": "document/c8-negative-integer",
+  "kind": "normative",
+  "level": "document",
+  "source": "constructed from the rule text",
+  "title": "A negative integer is an integer, which `.size_hours` rejects"
+}

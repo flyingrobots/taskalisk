@@ -1,0 +1,12 @@
+{
+  "cites": [
+    "L2",
+    "V9",
+    "M4"
+  ],
+  "id": "document/l2-duplicate-resource-key",
+  "kind": "normative",
+  "level": "document",
+  "source": "constructed from the rule text",
+  "title": "A resource key may repeat; holds is a set"
+}

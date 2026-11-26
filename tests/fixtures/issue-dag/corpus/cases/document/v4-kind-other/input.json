@@ -1,0 +1,4 @@
+{
+  "address": "o/r#1",
+  "body": "```yaml\n.dag: issue-dag/2\n.id: o/r#1\n.type: feature\n.blocked_by: []\n.kind: epic\n```\n\nFree text.\n"
+}

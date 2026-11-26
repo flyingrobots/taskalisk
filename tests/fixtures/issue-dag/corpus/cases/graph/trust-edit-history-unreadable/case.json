@@ -1,0 +1,8 @@
+{
+  "cites": [],
+  "id": "graph/trust-edit-history-unreadable",
+  "kind": "characterisation",
+  "level": "graph",
+  "source": "tests/test_taskalisk.py Trust.test_null_edit_history_connection_exits_2",
+  "title": "Scenario trust-edit-history-unreadable"
+}

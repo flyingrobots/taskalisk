@@ -1,0 +1,10 @@
+{
+  "cites": [
+    "C6"
+  ],
+  "id": "document/c6-key-starts-with-digit",
+  "kind": "normative",
+  "level": "document",
+  "source": "constructed from the rule text",
+  "title": "A key must start with a letter or `_`"
+}

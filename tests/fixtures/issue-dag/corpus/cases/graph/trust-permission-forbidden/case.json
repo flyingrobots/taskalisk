@@ -1,0 +1,8 @@
+{
+  "cites": [],
+  "id": "graph/trust-permission-forbidden",
+  "kind": "characterisation",
+  "level": "graph",
+  "source": "tests/test_taskalisk.py Trust.test_collaborator_check_that_cannot_run_exits_2",
+  "title": "Scenario trust-permission-forbidden"
+}

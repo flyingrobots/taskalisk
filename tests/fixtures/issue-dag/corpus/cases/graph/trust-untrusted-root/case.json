@@ -1,0 +1,8 @@
+{
+  "cites": [],
+  "id": "graph/trust-untrusted-root",
+  "kind": "characterisation",
+  "level": "graph",
+  "source": "tests/test_taskalisk.py Trust.test_untrusted_root_is_listed_not_a_node",
+  "title": "Scenario trust-untrusted-root"
+}

@@ -1,0 +1,10 @@
+{
+  "findings": [
+    {
+      "concerns": "o/r#6",
+      "rule": "D5",
+      "subject": "o/r#6"
+    }
+  ],
+  "outcome": "invalid"
+}

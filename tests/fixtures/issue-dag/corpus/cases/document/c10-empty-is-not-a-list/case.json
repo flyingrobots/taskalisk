@@ -1,0 +1,11 @@
+{
+  "cites": [
+    "C10",
+    "V5"
+  ],
+  "id": "document/c10-empty-is-not-a-list",
+  "kind": "normative",
+  "level": "document",
+  "source": "constructed from the rule text",
+  "title": "An empty value is a string, not an empty list"
+}

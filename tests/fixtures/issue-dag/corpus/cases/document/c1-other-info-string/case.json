@@ -1,0 +1,11 @@
+{
+  "cites": [
+    "C1",
+    "C3"
+  ],
+  "id": "document/c1-other-info-string",
+  "kind": "normative",
+  "level": "document",
+  "source": "constructed from the rule text",
+  "title": "An info string other than `yaml` opens no block"
+}

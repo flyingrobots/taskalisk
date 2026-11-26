@@ -1,0 +1,12 @@
+{
+  "cites": [
+    "I5",
+    "S1",
+    "S2"
+  ],
+  "id": "graph/i5-draft-flag-unavailable",
+  "kind": "normative",
+  "level": "graph",
+  "source": "constructed from the rule text",
+  "title": "A draft flag that is not a boolean, on an admitted pull request, makes the run incomplete"
+}

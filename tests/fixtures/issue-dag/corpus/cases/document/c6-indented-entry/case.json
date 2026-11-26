@@ -1,0 +1,10 @@
+{
+  "cites": [
+    "C6"
+  ],
+  "id": "document/c6-indented-entry",
+  "kind": "normative",
+  "level": "document",
+  "source": "constructed from the rule text",
+  "title": "An entry must start in the first column"
+}

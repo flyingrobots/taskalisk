@@ -1,0 +1,10 @@
+{
+  "cites": [
+    "V5"
+  ],
+  "id": "document/v5-every-type",
+  "kind": "normative",
+  "level": "document",
+  "source": "constructed from the rule text",
+  "title": "Each `.type` of the enumeration is valid"
+}

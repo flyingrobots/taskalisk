@@ -1,0 +1,8 @@
+{
+  "cites": [],
+  "id": "graph/golden-plan-home",
+  "kind": "characterisation",
+  "level": "graph",
+  "source": "tests/golden_scenarios.py plan_home",
+  "title": "Scenario golden-plan-home"
+}

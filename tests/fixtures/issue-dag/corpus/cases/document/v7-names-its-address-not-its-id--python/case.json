@@ -1,0 +1,17 @@
+{
+  "cites": [
+    "V7",
+    "X1"
+  ],
+  "disagreement": {
+    "classification": "compatibility-exception",
+    "difference": 8,
+    "note": "the compiler compares with the address; the document is invalid either way and the same issue receives the violations (F4)"
+  },
+  "id": "document/v7-names-its-address-not-its-id--python",
+  "kind": "characterisation",
+  "level": "document",
+  "normative_case": "document/v7-names-its-address-not-its-id",
+  "source": "the Python compiler, on the input of document/v7-names-its-address-not-its-id",
+  "title": "What the compiler does: An item equal to the address but not to `.id` is not a self reference"
+}

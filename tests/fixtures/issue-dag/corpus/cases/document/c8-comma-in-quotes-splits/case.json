@@ -1,0 +1,11 @@
+{
+  "cites": [
+    "C8",
+    "C9"
+  ],
+  "id": "document/c8-comma-in-quotes-splits",
+  "kind": "normative",
+  "level": "document",
+  "source": "constructed from the rule text",
+  "title": "A comma splits a list even inside quotes"
+}

@@ -1,0 +1,18 @@
+{
+  "cites": [
+    "D2",
+    "D5",
+    "X3"
+  ],
+  "disagreement": {
+    "classification": "defect",
+    "difference": 16,
+    "note": "the compiler gives the violation only to the documents visited before the reference"
+  },
+  "id": "graph/d5-each-document-naming-it--python",
+  "kind": "characterisation",
+  "level": "graph",
+  "normative_case": "graph/d5-each-document-naming-it",
+  "source": "the Python compiler, on the bundle of graph/d5-each-document-naming-it",
+  "title": "What the compiler does: Every document that names a transferred reference receives a violation, whatever the order of visits"
+}

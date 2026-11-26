@@ -1,0 +1,13 @@
+{
+  "cites": [
+    "D9",
+    "G1",
+    "W1",
+    "K6"
+  ],
+  "id": "graph/d9-container",
+  "kind": "normative",
+  "level": "graph",
+  "source": "constructed from the rule text",
+  "title": "A container is listed with its children and is not a node"
+}

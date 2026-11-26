@@ -1,0 +1,10 @@
+{
+  "cites": [
+    "L3"
+  ],
+  "id": "document/l3-bad-name",
+  "kind": "normative",
+  "level": "document",
+  "source": "constructed from the rule text",
+  "title": "A meter name has no other characters"
+}

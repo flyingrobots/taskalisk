@@ -1,0 +1,11 @@
+{
+  "cites": [
+    "V6",
+    "M4"
+  ],
+  "id": "document/v6-container",
+  "kind": "normative",
+  "level": "document",
+  "source": "constructed from the rule text",
+  "title": "A container with children"
+}

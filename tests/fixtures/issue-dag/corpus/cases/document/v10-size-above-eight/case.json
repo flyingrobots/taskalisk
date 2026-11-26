@@ -1,0 +1,10 @@
+{
+  "cites": [
+    "V10"
+  ],
+  "id": "document/v10-size-above-eight",
+  "kind": "normative",
+  "level": "document",
+  "source": "constructed from the rule text",
+  "title": "A `.size_hours` above 8 is a warning only"
+}

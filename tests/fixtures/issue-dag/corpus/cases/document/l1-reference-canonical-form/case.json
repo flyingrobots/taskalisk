@@ -1,0 +1,11 @@
+{
+  "cites": [
+    "L1",
+    "M4"
+  ],
+  "id": "document/l1-reference-canonical-form",
+  "kind": "normative",
+  "level": "document",
+  "source": "constructed from the rule text",
+  "title": "References are compared and recorded in lower case"
+}

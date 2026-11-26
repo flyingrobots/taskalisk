@@ -1,0 +1,8 @@
+{
+  "cites": [],
+  "id": "graph/trust-collaborator-editor",
+  "kind": "characterisation",
+  "level": "graph",
+  "source": "tests/test_taskalisk.py Trust.test_collaborator_check_trusts_an_editor",
+  "title": "Scenario trust-collaborator-editor"
+}

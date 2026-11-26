@@ -1,0 +1,11 @@
+{
+  "cites": [
+    "C2",
+    "C3"
+  ],
+  "id": "document/c2-no-closing-fence",
+  "kind": "normative",
+  "level": "document",
+  "source": "constructed from the rule text",
+  "title": "Without a closing fence the body has no frontmatter"
+}

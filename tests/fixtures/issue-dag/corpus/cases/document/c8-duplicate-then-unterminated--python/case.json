@@ -1,0 +1,18 @@
+{
+  "cites": [
+    "C7",
+    "C8",
+    "V12"
+  ],
+  "disagreement": {
+    "classification": "compatibility-exception",
+    "difference": 19,
+    "note": "the compiler stops at the duplicate key and does not judge the list"
+  },
+  "id": "document/c8-duplicate-then-unterminated--python",
+  "kind": "characterisation",
+  "level": "document",
+  "normative_case": "document/c8-duplicate-then-unterminated",
+  "source": "the Python compiler, on the input of document/c8-duplicate-then-unterminated",
+  "title": "What the compiler does: A duplicate line that also opens an unterminated list fails both C7 and C8"
+}

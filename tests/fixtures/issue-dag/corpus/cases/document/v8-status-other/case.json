@@ -1,0 +1,10 @@
+{
+  "cites": [
+    "V8"
+  ],
+  "id": "document/v8-status-other",
+  "kind": "normative",
+  "level": "document",
+  "source": "constructed from the rule text",
+  "title": "`.status` outside its values"
+}

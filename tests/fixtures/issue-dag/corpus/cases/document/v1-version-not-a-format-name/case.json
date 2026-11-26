@@ -1,0 +1,12 @@
+{
+  "cites": [
+    "V1",
+    "V12",
+    "P3"
+  ],
+  "id": "document/v1-version-not-a-format-name",
+  "kind": "normative",
+  "level": "document",
+  "source": "constructed from the rule text",
+  "title": "A `.dag` that is not a format name is labelled V1"
+}

@@ -1,0 +1,10 @@
+{
+  "cites": [
+    "D1"
+  ],
+  "id": "graph/d1-roots-are-the-seeds",
+  "kind": "normative",
+  "level": "graph",
+  "source": "constructed from the rule text",
+  "title": "With roots, the seeds are the roots"
+}

@@ -1,0 +1,12 @@
+{
+  "cites": [
+    "I5",
+    "S1",
+    "W1"
+  ],
+  "id": "graph/i5-draft-flag-of-an-unadmitted-pull-request",
+  "kind": "normative",
+  "level": "graph",
+  "source": "constructed from the rule text",
+  "title": "The draft flag of a pull request that is not admitted is not read"
+}

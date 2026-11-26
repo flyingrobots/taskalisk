@@ -1,0 +1,8 @@
+{
+  "cites": [],
+  "id": "graph/validation-unparseable-line",
+  "kind": "characterisation",
+  "level": "graph",
+  "source": "tests/test_taskalisk.py Validation.test_unparseable_line_fails",
+  "title": "Scenario validation-unparseable-line"
+}

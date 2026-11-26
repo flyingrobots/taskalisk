@@ -1,0 +1,20 @@
+{
+  "findings": [
+    {
+      "concerns": "o/r#6",
+      "rule": "D5",
+      "subject": "o/r#1"
+    },
+    {
+      "concerns": "o/r#6",
+      "rule": "X3",
+      "subject": "o/r#1"
+    },
+    {
+      "concerns": "o/r#6",
+      "rule": "X3",
+      "subject": "o/r#2"
+    }
+  ],
+  "outcome": "invalid"
+}

@@ -1,0 +1,11 @@
+{
+  "cites": [
+    "C1",
+    "C3"
+  ],
+  "id": "document/c1-text-before-fence",
+  "kind": "normative",
+  "level": "document",
+  "source": "constructed from the rule text",
+  "title": "Any other text before the fence means no frontmatter"
+}

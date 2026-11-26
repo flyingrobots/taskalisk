@@ -1,0 +1,11 @@
+{
+  "cites": [
+    "C2",
+    "C6"
+  ],
+  "id": "document/c2-indented-fence-is-not-closing",
+  "kind": "normative",
+  "level": "document",
+  "source": "constructed from the rule text",
+  "title": "An indented fence does not close the block; a later one does"
+}

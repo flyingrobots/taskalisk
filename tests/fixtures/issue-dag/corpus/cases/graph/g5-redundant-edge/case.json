@@ -1,0 +1,17 @@
+{
+  "cites": [
+    "G5",
+    "K1",
+    "K2",
+    "K3",
+    "K5",
+    "K7",
+    "K8",
+    "W1"
+  ],
+  "id": "graph/g5-redundant-edge",
+  "kind": "normative",
+  "level": "graph",
+  "source": "constructed from the rule text",
+  "title": "An edge implied by a longer path is redundant"
+}

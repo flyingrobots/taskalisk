@@ -1,0 +1,15 @@
+{
+  "cites": [
+    "C8"
+  ],
+  "disagreement": {
+    "classification": "defect",
+    "difference": 6,
+    "note": "the compiler converts the items to the integers 7 and 0 and back to `7` and `0`"
+  },
+  "id": "document/c8-list-items-are-strings",
+  "kind": "normative",
+  "level": "document",
+  "source": "constructed from the rule text",
+  "title": "A list item spelled as an integer stays a string"
+}

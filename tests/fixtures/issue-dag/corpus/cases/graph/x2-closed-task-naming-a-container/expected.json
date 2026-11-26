@@ -1,0 +1,22 @@
+{
+  "batch": [],
+  "containers": [
+    {
+      "children": [],
+      "id": "o/r#9"
+    }
+  ],
+  "critical_path": [],
+  "edges": [],
+  "findings": [],
+  "nodes": [
+    {
+      "complete": true,
+      "id": "o/r#1",
+      "opaque": false,
+      "untrusted": false
+    }
+  ],
+  "outcome": "planned",
+  "ready": []
+}

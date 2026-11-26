@@ -1,0 +1,8 @@
+{
+  "cites": [],
+  "id": "graph/pull-requests-draft-not-boolean",
+  "kind": "characterisation",
+  "level": "graph",
+  "source": "tests/test_taskalisk.py PullRequestStates.test_missing_or_invalid_draft_state_fails_closed",
+  "title": "Scenario pull-requests-draft-not-boolean"
+}

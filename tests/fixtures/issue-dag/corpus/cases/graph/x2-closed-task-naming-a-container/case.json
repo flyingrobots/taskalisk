@@ -1,0 +1,12 @@
+{
+  "cites": [
+    "X2",
+    "G3",
+    "K8"
+  ],
+  "id": "graph/x2-closed-task-naming-a-container",
+  "kind": "normative",
+  "level": "graph",
+  "source": "constructed from the rule text",
+  "title": "A closed task naming a container is not checked"
+}

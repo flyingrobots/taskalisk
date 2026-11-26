@@ -1,0 +1,16 @@
+{
+  "cites": [
+    "L3"
+  ],
+  "disagreement": {
+    "classification": "defect",
+    "difference": 3,
+    "note": "the compiler's integers are unbounded"
+  },
+  "id": "document/l3-slots-too-large--python",
+  "kind": "characterisation",
+  "level": "document",
+  "normative_case": "document/l3-slots-too-large",
+  "source": "the Python compiler, on the input of document/l3-slots-too-large",
+  "title": "What the compiler does: A slot count above 2147483647 is invalid"
+}

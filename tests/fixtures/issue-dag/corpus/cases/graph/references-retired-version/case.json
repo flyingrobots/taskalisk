@@ -1,0 +1,8 @@
+{
+  "cites": [],
+  "id": "graph/references-retired-version",
+  "kind": "characterisation",
+  "level": "graph",
+  "source": "tests/test_taskalisk.py QualifiedReferences.test_retired_schema_is_invalid",
+  "title": "Scenario references-retired-version"
+}

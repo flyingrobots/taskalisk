@@ -1,0 +1,8 @@
+{
+  "cites": [],
+  "id": "graph/resources-multi-slot",
+  "kind": "characterisation",
+  "level": "graph",
+  "source": "tests/test_taskalisk.py Resources.test_multi_slot_meter_respects_capacity",
+  "title": "Scenario resources-multi-slot"
+}

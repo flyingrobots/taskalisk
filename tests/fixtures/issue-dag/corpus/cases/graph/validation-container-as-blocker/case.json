@@ -1,0 +1,8 @@
+{
+  "cites": [],
+  "id": "graph/validation-container-as-blocker",
+  "kind": "characterisation",
+  "level": "graph",
+  "source": "tests/test_taskalisk.py Validation.test_container_as_blocker_fails",
+  "title": "Scenario validation-container-as-blocker"
+}

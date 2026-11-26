@@ -1,0 +1,12 @@
+{
+  "cites": [
+    "B3",
+    "B4",
+    "B5"
+  ],
+  "id": "graph/b3-unknown-capacity-is-one",
+  "kind": "normative",
+  "level": "graph",
+  "source": "constructed from the rule text",
+  "title": "A semaphore without a capacity has capacity 1 and is reported"
+}

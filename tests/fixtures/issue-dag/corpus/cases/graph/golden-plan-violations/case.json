@@ -1,0 +1,8 @@
+{
+  "cites": [],
+  "id": "graph/golden-plan-violations",
+  "kind": "characterisation",
+  "level": "graph",
+  "source": "tests/golden_scenarios.py plan_violations",
+  "title": "Scenario golden-plan-violations"
+}

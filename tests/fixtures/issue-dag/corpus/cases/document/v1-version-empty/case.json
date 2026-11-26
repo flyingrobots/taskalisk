@@ -1,0 +1,12 @@
+{
+  "cites": [
+    "V1",
+    "V12",
+    "C9"
+  ],
+  "id": "document/v1-version-empty",
+  "kind": "normative",
+  "level": "document",
+  "source": "constructed from the rule text",
+  "title": "An empty `.dag` is not a format name"
+}

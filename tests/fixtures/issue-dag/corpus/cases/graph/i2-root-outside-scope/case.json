@@ -1,0 +1,11 @@
+{
+  "cites": [
+    "I2",
+    "F1"
+  ],
+  "id": "graph/i2-root-outside-scope",
+  "kind": "normative",
+  "level": "graph",
+  "source": "constructed from the rule text",
+  "title": "A root outside the read scope rejects the run"
+}

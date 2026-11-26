@@ -1,0 +1,10 @@
+{
+  "cites": [
+    "B5"
+  ],
+  "id": "graph/b5-holds-conflict-first",
+  "kind": "normative",
+  "level": "graph",
+  "source": "constructed from the rule text",
+  "title": "A key conflict is the reason even when a semaphore is also full"
+}

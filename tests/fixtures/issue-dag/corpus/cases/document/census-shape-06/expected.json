@@ -1,0 +1,19 @@
+{
+  "record": {
+    "blocked_by": null,
+    "children": [
+      "o/r#2",
+      "o/s#3"
+    ],
+    "holds": [],
+    "id": "o/r#1",
+    "kind": "container",
+    "meters": [],
+    "size_hours": null,
+    "status": null,
+    "type": null,
+    "version": "issue-dag/2"
+  },
+  "result": "valid",
+  "warnings": []
+}

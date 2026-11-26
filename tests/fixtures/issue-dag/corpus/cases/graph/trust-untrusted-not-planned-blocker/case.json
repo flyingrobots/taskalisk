@@ -1,0 +1,8 @@
+{
+  "cites": [],
+  "id": "graph/trust-untrusted-not-planned-blocker",
+  "kind": "characterisation",
+  "level": "graph",
+  "source": "tests/test_taskalisk.py Trust.test_closed_not_planned_untrusted_blocker_leaks_no_title",
+  "title": "Scenario trust-untrusted-not-planned-blocker"
+}

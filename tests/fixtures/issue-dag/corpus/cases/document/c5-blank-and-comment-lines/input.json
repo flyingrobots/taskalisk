@@ -1,0 +1,4 @@
+{
+  "address": "o/r#1",
+  "body": "```yaml\n\n.dag: issue-dag/2\n   \n# a comment\n.id: o/r#1\n \t# an indented comment\n.kind: task\n\t\n.type: feature\n.blocked_by: []\n```\n\nFree text.\n"
+}

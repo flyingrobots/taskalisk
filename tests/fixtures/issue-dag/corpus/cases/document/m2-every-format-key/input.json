@@ -1,0 +1,4 @@
+{
+  "address": "o/r#1",
+  "body": "```yaml\n.dag: issue-dag/2\n.id: o/r#1\n.kind: task\n.type: feature\n.size_hours: 3\n.holds: [docs/, src]\n.meters: [gpu*2]\n.status: active\n.blocked_by: [o/s#2, O/S#3]\n```\n\nFree text.\n"
+}

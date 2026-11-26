@@ -1,0 +1,11 @@
+{
+  "cites": [
+    "X2",
+    "X3"
+  ],
+  "id": "graph/x2-container-prerequisite",
+  "kind": "normative",
+  "level": "graph",
+  "source": "constructed from the rule text",
+  "title": "An open task naming a container receives a violation and has no edge"
+}

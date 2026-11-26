@@ -1,0 +1,11 @@
+{
+  "cites": [
+    "W1",
+    "V10"
+  ],
+  "id": "graph/w1-warning",
+  "kind": "normative",
+  "level": "graph",
+  "source": "constructed from the rule text",
+  "title": "A size above 8 is reported and does not invalidate the run"
+}

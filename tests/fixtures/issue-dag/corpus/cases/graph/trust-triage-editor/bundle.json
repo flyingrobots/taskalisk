@@ -1,0 +1,252 @@
+{
+  "bundle": "issue-dag-observations/1",
+  "format": "issue-dag/2",
+  "observations": {
+    "home_open_pull_requests": {
+      "value": []
+    },
+    "issues": {
+      "flyingrobots/bunny#110": {
+        "value": {
+          "address": "flyingrobots/bunny#110",
+          "author": {
+            "login": "owner",
+            "type": "User"
+          },
+          "author_association": "OWNER",
+          "body": {
+            "value": {
+              "editors": [
+                {
+                  "login": "owner",
+                  "type": "User"
+                }
+              ],
+              "text": "Plain body."
+            }
+          },
+          "pull_request": false,
+          "state": "open",
+          "state_reason": null
+        }
+      },
+      "flyingrobots/bunny#7": {
+        "value": {
+          "address": "flyingrobots/bunny#7",
+          "author": {
+            "login": "owner",
+            "type": "User"
+          },
+          "author_association": "OWNER",
+          "body": {
+            "value": {
+              "editors": [
+                {
+                  "login": "owner",
+                  "type": "User"
+                }
+              ],
+              "text": "```yaml\n.dag: issue-dag/2\n.id: flyingrobots/bunny#7\n.kind: task\n.type: feature\n.blocked_by: []\narea: notes are free\n```\n\n# Feature\n\nBody text.\n"
+            }
+          },
+          "pull_request": false,
+          "state": "closed",
+          "state_reason": "completed"
+        }
+      },
+      "flyingrobots/echo#5": {
+        "value": {
+          "address": "flyingrobots/echo#5",
+          "author": {
+            "login": "owner",
+            "type": "User"
+          },
+          "author_association": "OWNER",
+          "body": {
+            "value": {
+              "editors": [
+                {
+                  "login": "owner",
+                  "type": "User"
+                }
+              ],
+              "text": "```yaml\n.dag: issue-dag/2\n.id: flyingrobots/echo#5\n.kind: task\n.type: feature\n.blocked_by: [flyingrobots/bunny#7]\narea: notes are free\n```\n\n# Feature\n\nBody text.\n"
+            }
+          },
+          "pull_request": false,
+          "state": "open",
+          "state_reason": null
+        }
+      },
+      "flyingrobots/echo#6": {
+        "value": {
+          "address": "flyingrobots/echo#6",
+          "author": {
+            "login": "owner",
+            "type": "User"
+          },
+          "author_association": "OWNER",
+          "body": {
+            "value": {
+              "editors": [
+                {
+                  "login": "owner",
+                  "type": "User"
+                }
+              ],
+              "text": "```yaml\n.dag: issue-dag/2\n.id: flyingrobots/echo#6\n.kind: task\n.type: feature\n.blocked_by: [flyingrobots/echo#5]\narea: notes are free\n```\n\n# Feature\n\nBody text.\n"
+            }
+          },
+          "pull_request": false,
+          "state": "open",
+          "state_reason": null
+        }
+      },
+      "flyingrobots/geordi#1": {
+        "value": {
+          "address": "flyingrobots/geordi#1",
+          "author": {
+            "login": "owner",
+            "type": "User"
+          },
+          "author_association": "OWNER",
+          "body": {
+            "value": {
+              "editors": [
+                {
+                  "login": "owner",
+                  "type": "User"
+                },
+                {
+                  "login": "carol",
+                  "type": "User"
+                }
+              ],
+              "text": "```yaml\n.dag: issue-dag/2\n.id: flyingrobots/geordi#1\n.kind: task\n.type: feature\n.blocked_by: [flyingrobots/echo#5]\narea: notes are free\n```\n\n# Feature\n\nBody text.\n"
+            }
+          },
+          "pull_request": false,
+          "state": "open",
+          "state_reason": null
+        }
+      },
+      "flyingrobots/geordi#110": {
+        "value": {
+          "address": "flyingrobots/geordi#110",
+          "author": {
+            "login": "owner",
+            "type": "User"
+          },
+          "author_association": "OWNER",
+          "body": {
+            "value": {
+              "editors": [
+                {
+                  "login": "owner",
+                  "type": "User"
+                }
+              ],
+              "text": "```yaml\n.dag: issue-dag/2\n.id: flyingrobots/geordi#110\n.kind: task\n.type: feature\n.blocked_by: [flyingrobots/bunny#110]\narea: notes are free\n```\n\n# Feature\n\nBody text.\n"
+            }
+          },
+          "pull_request": false,
+          "state": "open",
+          "state_reason": null
+        }
+      },
+      "flyingrobots/geordi#2": {
+        "value": {
+          "address": "flyingrobots/geordi#2",
+          "author": {
+            "login": "owner",
+            "type": "User"
+          },
+          "author_association": "OWNER",
+          "body": {
+            "value": {
+              "editors": [
+                {
+                  "login": "owner",
+                  "type": "User"
+                }
+              ],
+              "text": "```yaml\n.dag: issue-dag/2\n.id: flyingrobots/geordi#2\n.kind: task\n.type: feature\n.blocked_by: [flyingrobots/geordi#1]\narea: notes are free\n```\n\n# Feature\n\nBody text.\n"
+            }
+          },
+          "pull_request": false,
+          "state": "open",
+          "state_reason": null
+        }
+      },
+      "flyingrobots/geordi#9": {
+        "value": {
+          "address": "flyingrobots/geordi#9",
+          "author": {
+            "login": "owner",
+            "type": "User"
+          },
+          "author_association": "OWNER",
+          "body": {
+            "value": {
+              "editors": [
+                {
+                  "login": "owner",
+                  "type": "User"
+                }
+              ],
+              "text": "```yaml\n.dag: issue-dag/2\n.id: flyingrobots/geordi#9\n.kind: container\n.children: [flyingrobots/geordi#1, flyingrobots/geordi#2, flyingrobots/echo#5, flyingrobots/echo#6, flyingrobots/geordi#110]\narea: notes are free\n```\n\n# Feature\n\nBody text.\n"
+            }
+          },
+          "pull_request": false,
+          "state": "open",
+          "state_reason": null
+        }
+      }
+    },
+    "permissions": {
+      "flyingrobots/bunny": {
+        "carol": {
+          "value": null
+        },
+        "owner": {
+          "value": null
+        }
+      },
+      "flyingrobots/echo": {
+        "carol": {
+          "value": null
+        },
+        "owner": {
+          "value": null
+        }
+      },
+      "flyingrobots/geordi": {
+        "carol": {
+          "value": "triage"
+        },
+        "owner": {
+          "value": null
+        }
+      }
+    }
+  },
+  "parameters": {
+    "capacities": {},
+    "home": "flyingrobots/geordi",
+    "read_scope": {
+      "owners": [
+        "flyingrobots"
+      ],
+      "repositories": []
+    },
+    "roots": [
+      "flyingrobots/geordi#9"
+    ],
+    "trust": {
+      "codeowners": false,
+      "logins": [],
+      "policy": "taskalisk/threat-model"
+    }
+  },
+  "profile": "issue-dag-planning/2"
+}

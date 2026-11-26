@@ -1,0 +1,8 @@
+{
+  "cites": [],
+  "id": "graph/pull-requests-active",
+  "kind": "characterisation",
+  "level": "graph",
+  "source": "tests/test_taskalisk.py PullRequestStates.test_active_without_a_pr_stays_in_progress",
+  "title": "Scenario pull-requests-active"
+}

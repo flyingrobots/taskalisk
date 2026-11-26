@@ -1,0 +1,11 @@
+{
+  "cites": [
+    "C8",
+    "V8"
+  ],
+  "id": "document/c8-plus-sign-is-a-string",
+  "kind": "normative",
+  "level": "document",
+  "source": "constructed from the rule text",
+  "title": "A leading `+` makes a string"
+}

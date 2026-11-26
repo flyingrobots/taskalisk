@@ -1,0 +1,136 @@
+{
+  "batch": [
+    "flyingrobots/echo#5"
+  ],
+  "containers": [
+    {
+      "children": [
+        "flyingrobots/geordi#1",
+        "flyingrobots/geordi#2",
+        "flyingrobots/echo#5",
+        "flyingrobots/echo#6",
+        "flyingrobots/geordi#110"
+      ],
+      "id": "flyingrobots/geordi#9"
+    }
+  ],
+  "critical_path": [
+    "flyingrobots/echo#5",
+    "flyingrobots/geordi#1",
+    "flyingrobots/geordi#2"
+  ],
+  "edges": [
+    {
+      "from": "flyingrobots/bunny#110",
+      "status": "open",
+      "to": "flyingrobots/geordi#110"
+    },
+    {
+      "from": "flyingrobots/bunny#7",
+      "status": "satisfied",
+      "to": "flyingrobots/echo#5"
+    },
+    {
+      "from": "flyingrobots/echo#5",
+      "status": "open",
+      "to": "flyingrobots/echo#6"
+    },
+    {
+      "from": "flyingrobots/echo#5",
+      "status": "open",
+      "to": "flyingrobots/geordi#1"
+    },
+    {
+      "from": "flyingrobots/geordi#1",
+      "status": "open",
+      "to": "flyingrobots/geordi#2"
+    }
+  ],
+  "findings": [],
+  "nodes": [
+    {
+      "complete": false,
+      "id": "flyingrobots/bunny#110",
+      "opaque": true,
+      "status": "blocked",
+      "untrusted": false
+    },
+    {
+      "complete": true,
+      "id": "flyingrobots/bunny#7",
+      "opaque": false,
+      "untrusted": false
+    },
+    {
+      "complete": false,
+      "id": "flyingrobots/echo#5",
+      "opaque": false,
+      "status": "open",
+      "untrusted": false
+    },
+    {
+      "complete": false,
+      "id": "flyingrobots/echo#6",
+      "opaque": false,
+      "status": "open",
+      "untrusted": false
+    },
+    {
+      "complete": false,
+      "id": "flyingrobots/geordi#1",
+      "opaque": false,
+      "status": "open",
+      "untrusted": false
+    },
+    {
+      "complete": false,
+      "id": "flyingrobots/geordi#110",
+      "opaque": false,
+      "status": "open",
+      "untrusted": false
+    },
+    {
+      "complete": false,
+      "id": "flyingrobots/geordi#2",
+      "opaque": false,
+      "status": "open",
+      "untrusted": false
+    }
+  ],
+  "not_planned": [],
+  "outcome": "planned",
+  "ready": [
+    "flyingrobots/echo#5",
+    "flyingrobots/bunny#110"
+  ],
+  "redundant": [],
+  "scores": {
+    "flyingrobots/bunny#110": 121,
+    "flyingrobots/echo#5": 332,
+    "flyingrobots/echo#6": 10,
+    "flyingrobots/geordi#1": 121,
+    "flyingrobots/geordi#110": 10,
+    "flyingrobots/geordi#2": 10
+  },
+  "skipped": [],
+  "unknown_capacity": [],
+  "unmodeled": [
+    "flyingrobots/geordi#40"
+  ],
+  "untrusted": [],
+  "untrusted_pull_requests": [],
+  "waves": [
+    [
+      "flyingrobots/echo#5",
+      "flyingrobots/bunny#110"
+    ],
+    [
+      "flyingrobots/geordi#1",
+      "flyingrobots/echo#6",
+      "flyingrobots/geordi#110"
+    ],
+    [
+      "flyingrobots/geordi#2"
+    ]
+  ]
+}

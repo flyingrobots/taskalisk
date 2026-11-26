@@ -1,0 +1,11 @@
+{
+  "cites": [
+    "B2",
+    "B5"
+  ],
+  "id": "graph/b2-one-key-space",
+  "kind": "normative",
+  "level": "graph",
+  "source": "constructed from the rule text",
+  "title": "Equal keys in two repositories conflict"
+}

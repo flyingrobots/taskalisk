@@ -1,0 +1,11 @@
+{
+  "cites": [
+    "C5",
+    "V5"
+  ],
+  "id": "document/c5-hash-after-a-format-value",
+  "kind": "normative",
+  "level": "document",
+  "source": "constructed from the rule text",
+  "title": "A `#` after a value does not start a comment"
+}

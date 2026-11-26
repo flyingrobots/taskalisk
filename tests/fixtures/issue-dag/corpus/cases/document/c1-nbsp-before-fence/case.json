@@ -1,0 +1,16 @@
+{
+  "cites": [
+    "C1",
+    "C3"
+  ],
+  "disagreement": {
+    "classification": "defect",
+    "difference": 5,
+    "note": "the compiler skips any Unicode white space before the fence"
+  },
+  "id": "document/c1-nbsp-before-fence",
+  "kind": "normative",
+  "level": "document",
+  "source": "constructed from the rule text",
+  "title": "U+00A0 before the fence is an ordinary character: no frontmatter"
+}

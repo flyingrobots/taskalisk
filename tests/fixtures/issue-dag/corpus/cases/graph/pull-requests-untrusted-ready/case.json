@@ -1,0 +1,8 @@
+{
+  "cites": [],
+  "id": "graph/pull-requests-untrusted-ready",
+  "kind": "characterisation",
+  "level": "graph",
+  "source": "tests/test_taskalisk.py PullRequestStates.test_untrusted_ready_pr_does_not_promote_a_trusted_draft",
+  "title": "Scenario pull-requests-untrusted-ready"
+}

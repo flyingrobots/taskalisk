@@ -1,0 +1,12 @@
+{
+  "cites": [
+    "C8",
+    "V5",
+    "V12"
+  ],
+  "id": "document/c8-unterminated-key-is-absent",
+  "kind": "normative",
+  "level": "document",
+  "source": "constructed from the rule text",
+  "title": "An unterminated list gives its key no value: a task without another `.blocked_by` lacks one"
+}

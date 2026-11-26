@@ -1,0 +1,10 @@
+{
+  "cites": [
+    "L1"
+  ],
+  "id": "document/l1-leading-zero",
+  "kind": "normative",
+  "level": "document",
+  "source": "constructed from the rule text",
+  "title": "A reference number has no leading zero"
+}

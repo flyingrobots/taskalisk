@@ -1,0 +1,8 @@
+{
+  "cites": [],
+  "id": "graph/trust-pull-request-without-trust-fields",
+  "kind": "characterisation",
+  "level": "graph",
+  "source": "tests/test_taskalisk.py Trust.test_pr_without_trust_fields_is_untrusted",
+  "title": "Scenario trust-pull-request-without-trust-fields"
+}

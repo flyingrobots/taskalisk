@@ -1,0 +1,12 @@
+{
+  "batch": [],
+  "critical_path": [],
+  "edges": [],
+  "findings": [],
+  "nodes": [],
+  "outcome": "planned",
+  "ready": [],
+  "untrusted": [
+    "o/r#3"
+  ]
+}

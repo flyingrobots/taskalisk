@@ -1,0 +1,12 @@
+{
+  "cites": [
+    "D2",
+    "L1",
+    "G3"
+  ],
+  "id": "graph/d2-references-compare-without-case",
+  "kind": "normative",
+  "level": "graph",
+  "source": "constructed from the rule text",
+  "title": "Two spellings of one reference are one node and one edge"
+}

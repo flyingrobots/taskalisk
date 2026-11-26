@@ -1,0 +1,4 @@
+{
+  "address": "o/r#1",
+  "body": "```yaml\n.dag: issue-dag/2\n.id: o/r#1\n.kind: task\n.type: feature\n.blocked_by: [o/r#2]\narea: core\nrelated: [o/r#5, o/r#6]\n```\n\n## Outcome\n\nFree text.\n"
+}

@@ -1,0 +1,10 @@
+{
+  "cites": [
+    "C5"
+  ],
+  "id": "document/c5-blank-and-comment-lines",
+  "kind": "normative",
+  "level": "document",
+  "source": "constructed from the rule text",
+  "title": "Blank lines, blank-only lines and comment lines are skipped"
+}

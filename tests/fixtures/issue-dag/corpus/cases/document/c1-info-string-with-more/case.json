@@ -1,0 +1,11 @@
+{
+  "cites": [
+    "C1",
+    "C3"
+  ],
+  "id": "document/c1-info-string-with-more",
+  "kind": "normative",
+  "level": "document",
+  "source": "constructed from the rule text",
+  "title": "Text after `yaml` on the fence opens no block"
+}

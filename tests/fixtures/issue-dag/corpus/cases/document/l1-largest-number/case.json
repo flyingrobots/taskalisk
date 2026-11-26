@@ -1,0 +1,10 @@
+{
+  "cites": [
+    "L1"
+  ],
+  "id": "document/l1-largest-number",
+  "kind": "normative",
+  "level": "document",
+  "source": "constructed from the rule text",
+  "title": "2147483647 is a reference number"
+}

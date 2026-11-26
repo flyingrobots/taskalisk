@@ -1,0 +1,10 @@
+{
+  "cites": [
+    "V4"
+  ],
+  "id": "document/v4-kind-missing",
+  "kind": "normative",
+  "level": "document",
+  "source": "constructed from the rule text",
+  "title": "`.kind` must be present"
+}

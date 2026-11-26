@@ -1,0 +1,10 @@
+{
+  "cites": [
+    "C6"
+  ],
+  "id": "document/c6-trailing-blanks",
+  "kind": "normative",
+  "level": "document",
+  "source": "constructed from the rule text",
+  "title": "Trailing blanks are removed"
+}

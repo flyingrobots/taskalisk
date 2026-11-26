@@ -1,0 +1,10 @@
+{
+  "cites": [
+    "G3"
+  ],
+  "id": "graph/g3-complete-node-has-no-edges",
+  "kind": "normative",
+  "level": "graph",
+  "source": "constructed from the rule text",
+  "title": "A complete node's prerequisites are not evaluated"
+}

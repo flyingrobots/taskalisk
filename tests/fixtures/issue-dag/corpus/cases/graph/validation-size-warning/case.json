@@ -1,0 +1,8 @@
+{
+  "cites": [],
+  "id": "graph/validation-size-warning",
+  "kind": "characterisation",
+  "level": "graph",
+  "source": "tests/test_taskalisk.py Validation.test_large_size_is_a_warning_only",
+  "title": "Scenario validation-size-warning"
+}

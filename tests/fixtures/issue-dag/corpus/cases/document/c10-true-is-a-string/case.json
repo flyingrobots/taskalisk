@@ -1,0 +1,11 @@
+{
+  "cites": [
+    "C10",
+    "V8"
+  ],
+  "id": "document/c10-true-is-a-string",
+  "kind": "normative",
+  "level": "document",
+  "source": "constructed from the rule text",
+  "title": "`true` is a string"
+}

@@ -1,0 +1,14 @@
+{
+  "cites": [
+    "S2",
+    "K4",
+    "K5",
+    "K6",
+    "Q2"
+  ],
+  "id": "graph/s2-status-values",
+  "kind": "normative",
+  "level": "graph",
+  "source": "constructed from the rule text",
+  "title": "`.status` gives in-progress, parked and blocked"
+}

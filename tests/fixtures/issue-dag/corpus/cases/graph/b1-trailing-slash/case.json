@@ -1,0 +1,10 @@
+{
+  "cites": [
+    "B1"
+  ],
+  "id": "graph/b1-trailing-slash",
+  "kind": "normative",
+  "level": "graph",
+  "source": "constructed from the rule text",
+  "title": "`docs/` and `docs` conflict"
+}

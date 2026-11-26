@@ -1,0 +1,8 @@
+{
+  "cites": [],
+  "id": "graph/graph-cycle",
+  "kind": "characterisation",
+  "level": "graph",
+  "source": "constructed from tests/test_taskalisk.py plan_state: echo#5 waits for home#2, which waits on it through home#1",
+  "title": "Scenario graph-cycle"
+}

@@ -1,0 +1,12 @@
+{
+  "cites": [
+    "I3",
+    "I5",
+    "F2"
+  ],
+  "id": "graph/i5-issue-unavailable",
+  "kind": "normative",
+  "level": "graph",
+  "source": "constructed from the rule text",
+  "title": "An unavailable issue makes the run incomplete, not an empty answer"
+}

@@ -1,0 +1,12 @@
+{
+  "cites": [
+    "C1",
+    "C2",
+    "M4"
+  ],
+  "id": "document/c1-fence-at-start",
+  "kind": "normative",
+  "level": "document",
+  "source": "constructed from the rule text",
+  "title": "A block at the very start of the body is found"
+}

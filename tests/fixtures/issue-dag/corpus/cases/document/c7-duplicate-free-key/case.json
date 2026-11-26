@@ -1,0 +1,10 @@
+{
+  "cites": [
+    "C7"
+  ],
+  "id": "document/c7-duplicate-free-key",
+  "kind": "normative",
+  "level": "document",
+  "source": "constructed from the rule text",
+  "title": "A free key twice makes the document invalid"
+}

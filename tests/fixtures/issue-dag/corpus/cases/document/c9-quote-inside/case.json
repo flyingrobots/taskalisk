@@ -1,0 +1,10 @@
+{
+  "cites": [
+    "C9"
+  ],
+  "id": "document/c9-quote-inside",
+  "kind": "normative",
+  "level": "document",
+  "source": "constructed from the rule text",
+  "title": "A quote character may occur inside a quoted text"
+}

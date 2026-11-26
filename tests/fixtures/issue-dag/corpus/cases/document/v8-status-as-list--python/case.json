@@ -1,0 +1,16 @@
+{
+  "cites": [
+    "V8"
+  ],
+  "disagreement": {
+    "classification": "defect",
+    "difference": 7,
+    "note": "the validator raises TypeError and the run ends without an outcome"
+  },
+  "id": "document/v8-status-as-list--python",
+  "kind": "characterisation",
+  "level": "document",
+  "normative_case": "document/v8-status-as-list",
+  "source": "the Python compiler, on the input of document/v8-status-as-list",
+  "title": "What the compiler does: A list `.status` is invalid"
+}

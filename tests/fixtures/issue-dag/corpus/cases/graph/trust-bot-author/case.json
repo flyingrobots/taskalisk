@@ -1,0 +1,8 @@
+{
+  "cites": [],
+  "id": "graph/trust-bot-author",
+  "kind": "characterisation",
+  "level": "graph",
+  "source": "tests/test_taskalisk.py Trust.test_bot_author_is_untrusted_unless_allowlisted",
+  "title": "Scenario trust-bot-author"
+}

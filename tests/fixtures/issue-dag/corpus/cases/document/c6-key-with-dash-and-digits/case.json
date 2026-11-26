@@ -1,0 +1,11 @@
+{
+  "cites": [
+    "C6",
+    "M3"
+  ],
+  "id": "document/c6-key-with-dash-and-digits",
+  "kind": "normative",
+  "level": "document",
+  "source": "constructed from the rule text",
+  "title": "A key may continue with letters, digits, `_` and `-`"
+}

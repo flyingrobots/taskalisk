@@ -1,0 +1,11 @@
+{
+  "cites": [
+    "C9",
+    "L2"
+  ],
+  "id": "document/c9-quoted-empty-item",
+  "kind": "normative",
+  "level": "document",
+  "source": "constructed from the rule text",
+  "title": "A quoted empty item is the empty string"
+}

@@ -1,0 +1,16 @@
+{
+  "cites": [
+    "D7",
+    "X3"
+  ],
+  "disagreement": {
+    "classification": "defect",
+    "difference": 9,
+    "note": "the compiler lists the issue as unmodeled and the prerequisite as unknown; the run is invalid"
+  },
+  "id": "graph/d7-named-seed-is-opaque",
+  "kind": "normative",
+  "level": "graph",
+  "source": "constructed from the rule text",
+  "title": "A seed without frontmatter that a document names is an opaque node"
+}

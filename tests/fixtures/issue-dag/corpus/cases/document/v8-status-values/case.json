@@ -1,0 +1,10 @@
+{
+  "cites": [
+    "V8"
+  ],
+  "id": "document/v8-status-values",
+  "kind": "normative",
+  "level": "document",
+  "source": "constructed from the rule text",
+  "title": "`.status` may be parked"
+}

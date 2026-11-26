@@ -1,0 +1,11 @@
+{
+  "cites": [
+    "S1",
+    "W1"
+  ],
+  "id": "graph/s1-pull-request-not-admitted",
+  "kind": "normative",
+  "level": "graph",
+  "source": "constructed from the rule text",
+  "title": "A pull request that is not admitted links nothing"
+}

@@ -1,0 +1,8 @@
+{
+  "cites": [],
+  "id": "graph/trust-pull-request-by-stranger",
+  "kind": "characterisation",
+  "level": "graph",
+  "source": "tests/test_taskalisk.py Trust.test_same_repository_pr_by_an_untrusted_or_missing_author_is_untrusted",
+  "title": "Scenario trust-pull-request-by-stranger"
+}

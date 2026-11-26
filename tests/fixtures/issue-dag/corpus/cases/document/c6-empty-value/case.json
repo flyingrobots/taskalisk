@@ -1,0 +1,11 @@
+{
+  "cites": [
+    "C6",
+    "C10"
+  ],
+  "id": "document/c6-empty-value",
+  "kind": "normative",
+  "level": "document",
+  "source": "constructed from the rule text",
+  "title": "A value may be empty"
+}

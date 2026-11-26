@@ -1,0 +1,17 @@
+{
+  "cites": [
+    "C5",
+    "C6"
+  ],
+  "disagreement": {
+    "classification": "defect",
+    "difference": 5,
+    "note": "the compiler strips Unicode white space and skips the line"
+  },
+  "id": "document/c5-nbsp-line--python",
+  "kind": "characterisation",
+  "level": "document",
+  "normative_case": "document/c5-nbsp-line",
+  "source": "the Python compiler, on the input of document/c5-nbsp-line",
+  "title": "What the compiler does: A line holding U+00A0 is not blank: it is a line of another form"
+}

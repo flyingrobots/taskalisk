@@ -1,0 +1,10 @@
+{
+  "cites": [
+    "V7"
+  ],
+  "id": "document/v7-self-child",
+  "kind": "normative",
+  "level": "document",
+  "source": "constructed from the rule text",
+  "title": "A container may not name itself"
+}

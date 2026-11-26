@@ -1,0 +1,15 @@
+{
+  "cites": [
+    "C4"
+  ],
+  "disagreement": {
+    "classification": "defect",
+    "difference": 4,
+    "note": "the compiler treats U+000B as a line break and the line as blank"
+  },
+  "id": "document/c4-vertical-tab",
+  "kind": "normative",
+  "level": "document",
+  "source": "constructed from the rule text",
+  "title": "U+000B inside the block makes the document invalid"
+}

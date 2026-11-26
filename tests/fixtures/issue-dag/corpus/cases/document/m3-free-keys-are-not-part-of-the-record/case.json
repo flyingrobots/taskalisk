@@ -1,0 +1,12 @@
+{
+  "cites": [
+    "M1",
+    "M3",
+    "M4"
+  ],
+  "id": "document/m3-free-keys-are-not-part-of-the-record",
+  "kind": "normative",
+  "level": "document",
+  "source": "constructed from the rule text",
+  "title": "Free keys are notes"
+}

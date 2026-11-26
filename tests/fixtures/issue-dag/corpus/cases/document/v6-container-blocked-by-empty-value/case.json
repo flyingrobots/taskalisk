@@ -1,0 +1,15 @@
+{
+  "cites": [
+    "V6"
+  ],
+  "disagreement": {
+    "classification": "defect",
+    "difference": 1,
+    "note": "the compiler tests whether the value is falsy, not whether the key is present"
+  },
+  "id": "document/v6-container-blocked-by-empty-value",
+  "kind": "normative",
+  "level": "document",
+  "source": "constructed from the rule text",
+  "title": "A container must not have `.blocked_by`, even empty"
+}

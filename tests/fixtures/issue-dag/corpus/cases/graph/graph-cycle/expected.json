@@ -1,0 +1,21 @@
+{
+  "findings": [
+    {
+      "rule": "G4",
+      "subject": "flyingrobots/echo#5"
+    },
+    {
+      "rule": "G4",
+      "subject": "flyingrobots/echo#6"
+    },
+    {
+      "rule": "G4",
+      "subject": "flyingrobots/geordi#1"
+    },
+    {
+      "rule": "G4",
+      "subject": "flyingrobots/geordi#2"
+    }
+  ],
+  "outcome": "invalid"
+}

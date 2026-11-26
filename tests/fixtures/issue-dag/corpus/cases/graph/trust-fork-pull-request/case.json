@@ -1,0 +1,8 @@
+{
+  "cites": [],
+  "id": "graph/trust-fork-pull-request",
+  "kind": "characterisation",
+  "level": "graph",
+  "source": "tests/test_taskalisk.py Trust.test_fork_pr_does_not_mark_a_task_in_flight",
+  "title": "Scenario trust-fork-pull-request"
+}

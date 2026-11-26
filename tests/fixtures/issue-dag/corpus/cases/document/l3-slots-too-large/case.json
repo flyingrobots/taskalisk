@@ -1,0 +1,15 @@
+{
+  "cites": [
+    "L3"
+  ],
+  "disagreement": {
+    "classification": "defect",
+    "difference": 3,
+    "note": "the compiler's integers are unbounded"
+  },
+  "id": "document/l3-slots-too-large",
+  "kind": "normative",
+  "level": "document",
+  "source": "constructed from the rule text",
+  "title": "A slot count above 2147483647 is invalid"
+}

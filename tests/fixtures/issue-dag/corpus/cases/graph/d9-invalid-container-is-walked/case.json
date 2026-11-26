@@ -1,0 +1,11 @@
+{
+  "cites": [
+    "D9",
+    "D8"
+  ],
+  "id": "graph/d9-invalid-container-is-walked",
+  "kind": "normative",
+  "level": "graph",
+  "source": "constructed from the rule text",
+  "title": "Discovery walks an invalid container's children"
+}

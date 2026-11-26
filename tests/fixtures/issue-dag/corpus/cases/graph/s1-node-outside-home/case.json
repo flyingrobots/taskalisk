@@ -1,0 +1,10 @@
+{
+  "cites": [
+    "S1"
+  ],
+  "id": "graph/s1-node-outside-home",
+  "kind": "normative",
+  "level": "graph",
+  "source": "constructed from the rule text",
+  "title": "A node outside the home repository has no linked pull request"
+}

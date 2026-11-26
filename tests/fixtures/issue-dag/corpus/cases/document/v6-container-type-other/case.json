@@ -1,0 +1,16 @@
+{
+  "cites": [
+    "V6",
+    "V5"
+  ],
+  "disagreement": {
+    "classification": "defect",
+    "difference": 2,
+    "note": "the compiler does not check `.type` on a container"
+  },
+  "id": "document/v6-container-type-other",
+  "kind": "normative",
+  "level": "document",
+  "source": "constructed from the rule text",
+  "title": "A container's `.type` must satisfy V5's value rule"
+}

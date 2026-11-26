@@ -1,0 +1,11 @@
+{
+  "cites": [
+    "I5",
+    "F1"
+  ],
+  "id": "graph/i5-permission-unavailable",
+  "kind": "normative",
+  "level": "graph",
+  "source": "constructed from the rule text",
+  "title": "A permission lookup that cannot be made makes the run incomplete"
+}
