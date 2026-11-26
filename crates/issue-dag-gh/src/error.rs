@@ -165,11 +165,13 @@ fn scrub_word(word: &str) -> String {
         if !matches!(c, '?' | '&' | ';' | '#') {
             continue;
         }
-        let tail = &rest[i + 1..];
+        // Compared as bytes: a parameter name is ASCII, and the text after
+        // the separator need not end on a character boundary at its length.
+        let tail = &rest.as_bytes()[i + 1..];
         let Some(name) = SECRET_PARAMETERS.iter().find(|name| {
             tail.len() > name.len()
-                && tail[..name.len()].eq_ignore_ascii_case(name)
-                && tail.as_bytes()[name.len()] == b'='
+                && tail[..name.len()].eq_ignore_ascii_case(name.as_bytes())
+                && tail[name.len()] == b'='
         }) else {
             continue;
         };
@@ -191,6 +193,15 @@ fn scrub_word(word: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::scrub;
+
+    #[test]
+    fn a_url_with_non_ascii_query_text_is_scrubbed_without_a_panic() {
+        assert_eq!(
+            scrub("HTTP 500 at https://host/path?ééééé&token=abc", &[]),
+            "HTTP 500 at https://host/path?ééééé&token=[redacted]"
+        );
+        assert_eq!(scrub("https://h/?é", &[]), "https://h/?é");
+    }
 
     #[test]
     fn a_url_loses_its_credential_and_its_secret_parameters() {
