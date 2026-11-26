@@ -44,9 +44,8 @@ schema version under `Unreleased` is a draft and may change in place.
   Choices the specification leaves open: an admitted pull request's draft flag is read only where
   S2 needs it, for an open node of the home repository the pull request closes (I5); an invalid
   run reports its graph unless a prerequisite is unknown (X3) or the edges form a cycle (G4); a
-  bot's `app/` prefix
-  and `[bot]` suffix are matched without regard to case; a bundle with an `observations` member
-  the bundle rules do not define is rejected. A key repeated in an invalid document contributes
+  bot's `app/` prefix and `[bot]` suffix are matched without regard to case; a bundle with an
+  `observations` member the bundle rules do not define is rejected. A key repeated in an invalid document contributes
   nothing to its reading, as format rule C7 now rules (flyingrobots/taskalisk#104).
 
 - **Repeated keys, warnings and refusal order in the specification** (flyingrobots/taskalisk#104).
@@ -77,8 +76,8 @@ schema version under `Unreleased` is a draft and may change in place.
   it that check is skipped. Each is a warning with fixed text, tabled with the document codes and
   sorted the same way; a body filled minimally from each canonical template has none. A missing
   section's message names the exact heading it requires. `CODES` is the one public catalogue of
-  every finding code with its severity, document codes then body warnings; every family of
-  findings registers there.
+  every finding code with its severity, document codes, then profile codes, then body warnings;
+  every family of findings registers there.
 
 - **A provenance check for the vendored Parley writer** (flyingrobots/taskalisk#77).
   `scripts/check_vendored_writer.py` fetches the writer from flyingrobots/parley at the pinned
