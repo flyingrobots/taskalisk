@@ -206,13 +206,17 @@ missing field is untrusted.
 
 ### C5. Output escaping — implemented
 
-Rendered Markdown cells escape the backslash first, then `|`, `[` and `]`, turn
-`<` and `>` into entities, fold every Unicode line break into a space, drop
-every other C0 and C1 control character and every bidirectional control, and
-keep text from linking with a zero-width space after the colon of `scheme://`,
-the `www` of `www.` and an `@` before any non-space character (an email
-address, `mailto:` or a mention), wherever GFM could start a link. Mermaid labels replace
-quotes and angle brackets, and fold line breaks into spaces. Untrusted titles are never rendered (C3).
+Rendered Markdown cells escape the backslash first, fold every Unicode line
+break into a space, drop every other C0 and C1 control character and every
+bidirectional control, escape the `&` of a character reference (so `&#64;`
+stays text), escape `|`, `[` and `]`, turn `<` and `>` into entities, and keep
+text from linking with a zero-width space after the colon of every
+`scheme://`, the `www` of every `www.` and an `@` before any non-space
+character (an email address, `mailto:` or a mention), whatever precedes them.
+A resource key is a code span: shown as written, with only `|` escaped inside
+a table and a fence longer than any backtick run in it. Mermaid labels replace
+quotes and angle brackets, and fold line breaks into spaces. Untrusted titles
+are never rendered (C3).
 
 ### C6. Executable settings come only from the operator — planned (#13, #14)
 

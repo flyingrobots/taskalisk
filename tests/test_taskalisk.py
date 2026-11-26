@@ -682,7 +682,8 @@ class Trust(Harness):
         spec.loader.exec_module(tk)
         for title, expected in (("a&#64;evil.invalid", "a&amp;#64;evil.invalid"), ("a&#x40;evil.invalid", "a&amp;#x40;evil.invalid"),
                                 ("a&#X40;evil.invalid", "a&amp;#X40;evil.invalid"), ("a&commat;evil.invalid", "a&amp;commat;evil.invalid"),
-                                ("&lt;b&gt;", "&amp;lt;b&amp;gt;"), ("a & b", "a & b"), ("a &b c", "a &b c"), ("R&D; 5&6", "R&amp;D; 5&6")):
+                                ("&lt;b&gt;", "&amp;lt;b&amp;gt;"), ("a & b", "a & b"), ("a &b c", "a &b c"), ("R&D; 5&6", "R&D; 5&6"),  # no one-letter entity exists
+                                ("AT&amp;T", "AT&amp;amp;T")):
             with self.subTest(title):
                 self.assertEqual(tk._md_cell(title), expected)
 

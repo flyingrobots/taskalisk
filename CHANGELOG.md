@@ -13,7 +13,9 @@ schema version under `Unreleased` is a draft and may change in place.
   escaped first, every Unicode line break (CR, NEL, U+2028 and the rest) becomes a space, every
   other C0 or C1 control character (ESC included) and every bidirectional control is dropped, and
   a bare URL, a `www.` address, an email address or a mention gets a zero-width space so it does
-  not link. A title that needs none of this renders byte-for-byte as before.
+  not link, whatever precedes it; a character reference such as `&#64;` stays text. A resource
+  key is shown as written in its code span, no longer with doubled backslashes or `\[` escapes.
+  A title that needs none of this renders byte-for-byte as before.
 
 - **A secret in a URL query string or fragment is redacted** (flyingrobots/taskalisk#78). The
   value of a query or fragment parameter named `token`, `access_token`, `key`, `secret`,
