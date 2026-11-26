@@ -145,7 +145,10 @@ written; #26 classifies the Python's behaviour as a defect.
 2. Reconcile the Python against it and freeze the corpus (#26).
 3. Port the core to Rust at `/2` parity (#27 to #30). `--explain` (#4) is
    built on the core after #30.
-4. Add the adapters, safe edge writes and the cutover (#31, #1, #32).
+4. Add the adapters, safe edge writes and the cutover: the `gh` adapter
+   (#56), the git adapter (#57), the command line and renderers (#31, #58),
+   safe edge writes (#1) and the cutover (#32). Amended 2026-11-26 to match
+   section 2.
 5. Add the lifecycle audit and `compare-plans` (#33, #34).
 6. Land the `/3` changes one at a time (#35 to #37).
 7. Build the executor in Rust (#3, #9 to #15).

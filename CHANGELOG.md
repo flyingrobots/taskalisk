@@ -52,16 +52,20 @@ schema version under `Unreleased` is a draft and may change in place.
   subject; `origin/HEAD` and other symbolic refs left out), `worktree list --porcelain -z` for
   worktrees (path, head, branch or detached or bare, locked, prunable, whether the directory
   exists), `status --porcelain -z` in each worktree for its dirty state, and `rev-list
-  --left-right --count --end-of-options` for ahead/behind. The port gains `branches`, `worktrees`
-  and `ahead_behind`, with the value types `Branch`, `BranchScope`, `Worktree`, `Checkout` and
-  `AheadBehind`, because the inventory reports them and the port held only local branch names.
+  --left-right --count --end-of-options` for ahead/behind (an empty revision or base, or one
+  holding `..`, is refused as `InvalidRevision` instead of being read as `HEAD` or a range). The
+  port gains `branches`, `worktrees` and `ahead_behind`, with the value types `Branch`,
+  `BranchScope`, `Worktree`, `Checkout` and `AheadBehind`, because the inventory reports them and
+  the port held only local branch names.
   `GitRepository::open` takes the top level of a work tree (main or linked) and records its git
   directory and work tree (`rev-parse --absolute-git-dir --show-toplevel`); a subdirectory, a
   `.git` directory and a bare repository are refused. Every read runs against the recorded
   `--git-dir` and `--work-tree` and never discovers again, so a repository whose `.git` is gone
   fails instead of reading the repository above it; each worktree's `status` names that
   worktree's own `.git` the same way, after checking that it belongs to the opened repository (a
-  worktree directory replaced by another repository fails as `ForeignWorktree`); a submodule's or
+  worktree directory replaced by another repository fails as `ForeignWorktree`, and a linked
+  worktree whose `.git` is another worktree's, as after two directories are swapped, fails as
+  `MisplacedWorktree`); a submodule's or
   `--separate-git-dir` repository's main worktree, which git lists at its git directory, is read
   through the recorded work tree. It fails closed: each `read_*` method returns a `GitError`
   when `git` fails or answers in a shape it cannot read (an empty worktree listing included), for
@@ -118,7 +122,8 @@ schema version under `Unreleased` is a draft and may change in place.
 - **One crate per port adapter** (flyingrobots/taskalisk#57). Decision 0001, section 2, is amended:
   the git adapter is `issue-dag-git` (#57); the `gh` adapter is to be its own crate, `issue-dag-gh`
   (#56); the renderers and the command line go in the binary crate (#31); the in-memory
-  `RecordedForge` is in the core.
+  `RecordedForge` is in the core. Section 8, item 4, now names the issue of each adapter (#56,
+  #57) and of the command line and renderers (#31, #58).
 
 ### Fixed
 
