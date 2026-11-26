@@ -714,6 +714,26 @@ class Trust(Harness):
         graphql_calls = [c for c in self.calls() if c[:2] == ["api", "graphql"]]
         self.assertLessEqual(len(graphql_calls), 10)
 
+    def test_an_edit_history_past_the_page_limit_is_refused(self):
+        """Fresh cursors without end: the page bound stops the loop and refuses a partial editor list."""
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("taskalisk_edit_history", SCRIPT)
+        tk = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(tk)
+        calls = []
+
+        def endless(cmd, cwd=None):
+            calls.append(cmd)
+            page = {"hasNextPage": True, "endCursor": f"c{len(calls)}"}
+            return True, json.dumps({"data": {"repository": {"issue": {"body": "", "userContentEdits": {"pageInfo": page, "nodes": []}}}}}), ""
+
+        tk.EDIT_HISTORY_MAX_PAGES = 3
+        tk.run_cmd_checked = endless
+        errors = []
+        self.assertIsNone(tk.gh_issue_edit_history(str(self.repo), ("o/r", 1), errors))
+        self.assertEqual(len(calls), 3)
+        self.assertEqual([tk.classify(e) for e in errors], [("gh.response_invalid", False)])
+
     def test_a_long_edit_history_is_read_in_full(self):
         state = plan_state()
         state["edits_page_size"] = 1

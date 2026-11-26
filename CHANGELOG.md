@@ -9,6 +9,10 @@ schema version under `Unreleased` is a draft and may change in place.
 
 ### Fixed
 
+- **A repeated edit-history cursor ends the run** (flyingrobots/taskalisk#76). Reading an
+  issue's body edit history, a page that repeats an earlier cursor, or a history past 1,000 pages
+  of 100 edits, is `gh.response_invalid` (exit 2) instead of a loop without end.
+
 - **A bad edge object in a `--verify-dag` spec is `dag_spec.invalid`** (flyingrobots/taskalisk#74).
   A `confidence` that is not a finite number (a string, a bool, null, NaN, an infinity), or an
   `isHard` that is not a boolean, is refused before any plan line. Before, it ended in
