@@ -58,6 +58,28 @@ judged with the address `o/r#1`; the crate's corpus test runs every case. A
 run finding's example names a case under `corpus/cases/graph/`, whose issues
 are `o/r#1`, `o/r#2` and so on.
 
+## A reference that cannot be read
+
+A run reports why a reference does not resolve to an issue it can read when
+the observations say why. Three causes have a finding of their own:
+
+| Cause | Code | Receives it |
+| --- | --- | --- |
+| outside the read scope | `profile.D3` | each document that writes it, concerning the reference |
+| a pull request | `profile.D4` | the pull request; each open task that writes it in `.blocked_by` also receives `profile.X3` concerning it |
+| transferred | `profile.D5` | each document that writes it, concerning the old reference |
+
+A reference in the read scope that resolves to no issue the planner can see
+has no finding: rule
+[D10](../../../tests/fixtures/issue-dag/profiles/issue-dag-planning-2.md#3-discovery)
+makes the run incomplete, and the run reports the reason recorded for it. The
+bundle records that reason as free text
+([OB8](../../../tests/fixtures/issue-dag/corpus/bundle.md#2-observations)), so
+the crate does not tell an owner, a repository or an issue number that was not
+found apart; that needs a change to the specification first, which is
+flyingrobots/taskalisk#126 (decision D17). The test
+`crates/issue-dag-core/tests/unreadable_references.rs` pins all four cases.
+
 ## Entries
 
 The entries are in the catalogue's order (`CODES`): the document codes in the
@@ -666,3 +688,23 @@ To fix: read the task's body, review follow-ups and unmerged branches for a
 real prerequisite or dependent, and propose the edge. Many isolated tasks
 mean the dependencies have not been recorded yet, not that the work is
 independent. A task that is truly independent can keep the warning.
+
+### `taskalisk.redundant-edge`
+
+**Severity:** warning. **Rule:** [Transitive reduction](../../../skills/taskalisk/SKILL.md#core-doctrine), Core Doctrine 4 of the skill.
+
+An edge of the plan's graph is redundant: the transitive reduction (profile
+rule [G5](../../../tests/fixtures/issue-dag/profiles/issue-dag-planning-2.md#5-the-graph))
+removes it, because a longer path of `.blocked_by` edges between open nodes
+already orders the two issues. The warning's subject is the dependent, whose
+`.blocked_by` declares the edge; it concerns the prerequisite. Its detail is
+the node the edge is implied via: the first child of the prerequisite, in the
+text order of references (so `o/r#10` comes before `o/r#2`), other than the
+dependent, from which the dependent is reachable. The Python compiler reports
+the same edge as `edge.redundant`, with the same `implied_via`.
+
+In a plan where `o/r#2` is blocked by `o/r#1` and `o/r#3` by both, `o/r#3`
+receives `taskalisk.redundant-edge` concerning `o/r#1`, implied via `o/r#2`.
+
+To fix: nothing is required; the plan already ignores the edge. Keep it as
+evidence, or remove `o/r#1` from `o/r#3`'s `.blocked_by` if it adds nothing.

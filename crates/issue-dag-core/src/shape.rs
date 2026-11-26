@@ -7,10 +7,10 @@
 //! warnings never make a run invalid. [`shape_warnings`] reads them from a
 //! [`Graph`] that [`crate::plan`] returned.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use crate::finding::{Code, Finding, Severity};
-use crate::plan::Graph;
+use crate::plan::{Edge, Graph, Indexed};
 use crate::reference::IssueRef;
 
 /// Declares [`ShapeWarning`], its code and message, its list
@@ -27,7 +27,7 @@ macro_rules! shape_warnings {
         }
 
         impl ShapeWarning {
-            /// The stable code, such as `"taskalisk.isolated-task"`
+            /// The stable code, such as `"taskalisk.redundant-edge"`
             /// (tabled on [`crate::code`]).
             #[must_use]
             pub const fn code(self) -> &'static str {
@@ -61,13 +61,20 @@ shape_warnings! {
     /// An open node with no edge in or out, in a plan of two or more.
     IsolatedTask => "taskalisk.isolated-task",
         "the open task has no .blocked_by edge in or out: its prerequisites may not be recorded yet",
+    /// An edge the transitive reduction removes (profile rule G5).
+    RedundantEdge => "taskalisk.redundant-edge",
+        "the .blocked_by edge is implied by a path of other edges; the reduction removes it",
 }
 
 /// What a shape warning measured, beyond its finding.
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum Detail {
-    /// Nothing: the finding says it all.
-    None,
+    /// The node a redundant edge is implied via: the first child of its
+    /// prerequisite, in the text order of references, other than its
+    /// dependent, from which the dependent is reachable. The Python
+    /// compiler's `implied_via`.
+    ImpliedVia(IssueRef),
 }
 
 /// One shape warning: its finding, and what it measured.
@@ -75,8 +82,8 @@ pub enum Detail {
 pub struct ShapeFinding {
     /// The finding: its subject, code, the reference it concerns, message.
     pub finding: Finding,
-    /// What it measured.
-    pub detail: Detail,
+    /// What it measured, or `None` when the finding says it all.
+    pub detail: Option<Detail>,
 }
 
 /// The shape warnings of a plan's graph, sorted by their findings.
@@ -85,28 +92,45 @@ pub struct ShapeFinding {
 ///   enters or leaves, when the graph has at least two open nodes: a plan of
 ///   a single task draws none. Edges are those between open nodes (G3), so a
 ///   task whose prerequisites are all complete is isolated, as the Python
-///   compiler's isolated nodes are.
+///   compiler's isolated nodes are. It has no detail.
+/// - `taskalisk.redundant-edge`, for each edge the reduction removes (G5):
+///   the subject is the dependent, whose `.blocked_by` declares the edge,
+///   the finding concerns the prerequisite, and the detail is the node the
+///   edge is implied via ([`Detail::ImpliedVia`]).
 #[must_use]
 pub fn shape_warnings(graph: &Graph) -> Vec<ShapeFinding> {
     let mut found = Vec::new();
+    let mut via = Via::of(graph);
+    for edge in &graph.redundant {
+        found.push(ShapeFinding {
+            finding: finding(ShapeWarning::RedundantEdge, &edge.to, Some(&edge.from)),
+            detail: Some(Detail::ImpliedVia(via.of_edge(edge))),
+        });
+    }
+    isolated(graph, &mut found);
+    found.sort_by(|a, b| a.finding.cmp(&b.finding));
+    found
+}
+
+/// `taskalisk.isolated-task`: each open node no edge joins, in a graph of
+/// two or more open nodes.
+fn isolated(graph: &Graph, found: &mut Vec<ShapeFinding>) {
     let open: Vec<&IssueRef> = graph
         .nodes
         .iter()
         .filter(|(_, node)| !node.complete)
         .map(|(id, _)| id)
         .collect();
-    if open.len() > 1 {
-        let joined: BTreeSet<&IssueRef> =
-            graph.edges.iter().flat_map(|e| [&e.from, &e.to]).collect();
-        for id in open.into_iter().filter(|id| !joined.contains(id)) {
-            found.push(ShapeFinding {
-                finding: finding(ShapeWarning::IsolatedTask, id, None),
-                detail: Detail::None,
-            });
-        }
+    if open.len() < 2 {
+        return;
     }
-    found.sort_by(|a, b| a.finding.cmp(&b.finding));
-    found
+    let joined: BTreeSet<&IssueRef> = graph.edges.iter().flat_map(|e| [&e.from, &e.to]).collect();
+    for id in open.into_iter().filter(|id| !joined.contains(id)) {
+        found.push(ShapeFinding {
+            finding: finding(ShapeWarning::IsolatedTask, id, None),
+            detail: None,
+        });
+    }
 }
 
 /// The finding of `warning` for `subject`, about `concerns`.
@@ -117,4 +141,76 @@ fn finding(warning: ShapeWarning, subject: &IssueRef, concerns: Option<&IssueRef
         concerns.cloned(),
         warning.message(),
     )
+}
+
+/// What each open node reaches, built once for a graph, and the children of
+/// each prerequisite in the text order of their references, built when
+/// first asked for: enough to name the node each redundant edge is implied
+/// via without a search per edge.
+struct Via {
+    indexed: Indexed,
+    position: BTreeMap<IssueRef, usize>,
+    /// For each open node, by position, a bit set of the nodes it reaches.
+    descendants: Vec<Vec<u64>>,
+    /// The children of a node, by position, in reference text order.
+    sorted: BTreeMap<usize, Vec<usize>>,
+}
+
+impl Via {
+    /// The descendant sets of `graph`'s open nodes, over all its edges, in
+    /// reverse topological order. Empty when nothing is redundant, which
+    /// includes a graph with a cycle (G5 reduces only an acyclic one).
+    fn of(graph: &Graph) -> Self {
+        let indexed = Indexed::of(graph);
+        let mut descendants = Vec::new();
+        if !graph.redundant.is_empty() {
+            let (order, _) = indexed.kahn();
+            let words = indexed.ids.len().div_ceil(64);
+            descendants = vec![vec![0_u64; words]; indexed.ids.len()];
+            for &u in order.iter().rev() {
+                let mut set = vec![0_u64; words];
+                for &c in &indexed.children[u] {
+                    set[c / 64] |= 1 << (c % 64);
+                    for (word, child_word) in set.iter_mut().zip(&descendants[c]) {
+                        *word |= child_word;
+                    }
+                }
+                descendants[u] = set;
+            }
+        }
+        let position = indexed
+            .ids
+            .iter()
+            .enumerate()
+            .map(|(i, id)| (id.clone(), i))
+            .collect();
+        Self {
+            indexed,
+            position,
+            descendants,
+            sorted: BTreeMap::new(),
+        }
+    }
+
+    /// The node the redundant `edge` is implied via: the first child of its
+    /// prerequisite, in the text order of references, other than its
+    /// dependent, that reaches its dependent. The Python compiler picks its
+    /// `implied_via` so. A redundant edge always has one; if it had none,
+    /// the prerequisite itself is named.
+    fn of_edge(&mut self, edge: &Edge) -> IssueRef {
+        let (Some(&u), Some(&v)) = (self.position.get(&edge.from), self.position.get(&edge.to))
+        else {
+            return edge.from.clone();
+        };
+        let indexed = &self.indexed;
+        let children = self.sorted.entry(u).or_insert_with(|| {
+            let mut children = indexed.children[u].clone();
+            children.sort_by_cached_key(|&c| indexed.ids[c].to_string());
+            children
+        });
+        children
+            .iter()
+            .find(|&&w| w != v && self.descendants[w][v / 64] & (1 << (v % 64)) != 0)
+            .map_or_else(|| edge.from.clone(), |&w| self.indexed.ids[w].clone())
+    }
 }
