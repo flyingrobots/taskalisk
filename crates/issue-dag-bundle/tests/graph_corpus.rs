@@ -12,33 +12,23 @@
 //!   Python and the specification agree; the crate must equal it exactly.
 //!
 //! `findings` compare as a set (CC6), and in a normative planned case every
-//! member of the expected batch must be dispatchable (Q2). Ranking and
-//! batch selection are `flyingrobots/taskalisk#29`, not this crate yet, so
-//! the members `scores`, `waves`, `critical_path`, `batch`, `skipped` and
-//! `unknown_capacity` are not compared, and `ready` is compared as a set:
-//! its order is the rank order of rule K6.
+//! member of the expected batch must be dispatchable (Q2). Every other
+//! member compares exactly: `ready` in rank order (K6), `scores` (K5),
+//! `waves` (K7), `critical_path` (K8), `batch` in order of selection,
+//! `skipped` with reasons in the order considered, and `unknown_capacity`
+//! in ascending order (B3, B5).
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
 use issue_dag_bundle::load;
-use issue_dag_core::{Edge, Graph, Outcome, RecordedForge, plan};
+use issue_dag_core::{Edge, Graph, IssueRef, Outcome, RecordedForge, Skip, plan, rank, select};
 use serde_json::{Map, Value, json};
 
-/// The members of an expected result this crate does not compute yet.
-const RANKING_AND_BATCH: [&str; 6] = [
-    "scores",
-    "waves",
-    "critical_path",
-    "batch",
-    "skipped",
-    "unknown_capacity",
-];
-
-/// The members that describe the graph (CC6), not asserted for a
-/// normative invalid case (CC8).
-const GRAPH: [&str; 9] = [
+/// The members that describe the graph (CC6), its ranking and its batch,
+/// not asserted for a normative invalid case (CC8, F3).
+const GRAPH: [&str; 15] = [
     "nodes",
     "containers",
     "unmodeled",
@@ -48,6 +38,12 @@ const GRAPH: [&str; 9] = [
     "redundant",
     "not_planned",
     "ready",
+    "scores",
+    "waves",
+    "critical_path",
+    "batch",
+    "skipped",
+    "unknown_capacity",
 ];
 
 fn corpus_dir() -> PathBuf {
@@ -131,7 +127,41 @@ fn graph_json(graph: &Graph, out: &mut Map<String, Value>) {
     out.insert("edges".into(), sorted(edges));
     out.insert("redundant".into(), pairs(&graph.redundant));
     out.insert("not_planned".into(), pairs(&graph.not_planned));
-    out.insert("ready".into(), refs(&graph.ready));
+}
+
+/// The ranking (K5 to K8) and the batch (B3, B5) of a graph.
+fn ranking_json(graph: &Graph, capacities: &BTreeMap<String, u64>, out: &mut Map<String, Value>) {
+    let ids = |list: &[IssueRef]| list.iter().map(ToString::to_string).collect::<Vec<_>>();
+    let Some(ranking) = rank(graph) else {
+        return;
+    };
+    let batch = select(graph, &ranking, capacities);
+    let scores: Map<String, Value> = ranking
+        .scores
+        .iter()
+        .map(|(id, score)| (id.to_string(), json!(score)))
+        .collect();
+    let skipped: Vec<Value> = batch
+        .skipped
+        .iter()
+        .map(|(id, skip)| {
+            let mut item = json!({"id": id.to_string(), "reason": skip.reason()});
+            if let Skip::SemaphoreFull(names) = skip {
+                item["semaphores"] = json!(names);
+            }
+            item
+        })
+        .collect();
+    out.insert("ready".into(), json!(ids(&ranking.ready)));
+    out.insert("scores".into(), Value::Object(scores));
+    out.insert(
+        "waves".into(),
+        json!(ranking.waves.iter().map(|w| ids(w)).collect::<Vec<_>>()),
+    );
+    out.insert("critical_path".into(), json!(ids(&ranking.critical_path)));
+    out.insert("batch".into(), json!(ids(&batch.selected)));
+    out.insert("skipped".into(), json!(skipped));
+    out.insert("unknown_capacity".into(), json!(batch.unknown_capacity));
 }
 
 /// The dispatchable subset of a ready set (Q2), as references.
@@ -166,14 +196,15 @@ fn result_json(bundle_text: &str) -> Result<(Map<String, Value>, Option<Dispatch
     }
     if let Some(graph) = graph {
         graph_json(graph, &mut out);
+        ranking_json(graph, &bundle.parameters.capacities, &mut out);
     }
     let dispatchable = graph.map(|g| g.dispatchable().iter().map(ToString::to_string).collect());
     Ok((out, dispatchable))
 }
 
 /// Q2: in a normative planned case, every member of the expected batch is
-/// dispatchable: ready, not opaque, not blocked. The batch itself is chosen
-/// by rule B5, which is flyingrobots/taskalisk#29.
+/// dispatchable: ready, not opaque, not blocked. The member `batch` is also
+/// compared with the batch rule B5 selects.
 fn batch_not_dispatchable(
     expected: &Map<String, Value>,
     dispatchable: Option<&Dispatchable>,
@@ -193,21 +224,20 @@ fn batch_not_dispatchable(
 }
 
 /// Brings a member of an expected result into the form it is compared in:
-/// `findings` as a set, `ready` as a set.
+/// `findings` as a set.
 fn comparable(member: &str, value: &Value) -> Value {
     match (member, value) {
-        ("findings" | "ready", Value::Array(items)) => sorted(items.clone()),
+        ("findings", Value::Array(items)) => sorted(items.clone()),
         _ => value.clone(),
     }
 }
 
-/// CC8 for a normative case: every member the expected result holds, that
-/// this crate computes, equals the actual one.
+/// CC8 for a normative case: every member the expected result holds equals
+/// the actual one.
 fn normative_mismatch(expected: &Map<String, Value>, actual: &Map<String, Value>) -> Vec<String> {
     let invalid = expected.get("outcome") == Some(&json!("invalid"));
     expected
         .iter()
-        .filter(|(member, _)| !RANKING_AND_BATCH.contains(&member.as_str()))
         .filter(|(member, _)| !(invalid && GRAPH.contains(&member.as_str())))
         .filter_map(|(member, want)| {
             let want = comparable(member, want);
@@ -222,15 +252,10 @@ fn normative_mismatch(expected: &Map<String, Value>, actual: &Map<String, Value>
         .collect()
 }
 
-/// A characterisation case: the members this crate computes are exactly
+/// A characterisation case: the members of the actual result are exactly
 /// those of the expected result, and equal.
 fn exact_mismatch(expected: &Map<String, Value>, actual: &Map<String, Value>) -> Vec<String> {
-    let covered = |m: &Map<String, Value>| -> BTreeSet<String> {
-        m.keys()
-            .filter(|k| !RANKING_AND_BATCH.contains(&k.as_str()))
-            .cloned()
-            .collect()
-    };
+    let covered = |m: &Map<String, Value>| -> BTreeSet<String> { m.keys().cloned().collect() };
     let (want, got) = (covered(expected), covered(actual));
     let mut problems: Vec<String> = want
         .symmetric_difference(&got)
